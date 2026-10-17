@@ -29,7 +29,7 @@ input{width:100%;padding:12px;margin:5px 0;border-radius:10px;border:1px solid #
 #prof{top:48px;left:12px;display:flex;gap:10px;align-items:center;background:#0007;padding:8px 16px 8px 8px;border-radius:12px;text-align:left}#prof b{font-size:17px}#stats{font-size:12px;opacity:.8}
 #av{width:52px;height:52px;border-radius:10px;border:3px solid #fff}#edit{background:none;border:0;color:#fff;cursor:pointer;font-size:16px;margin-left:6px}
 #gbtn{top:118px;left:12px;background:#e53935;color:#fff;border:0;padding:8px 18px;border-radius:6px;font-weight:700;cursor:pointer}#acct{top:158px;left:12px;background:#0007;color:#fff;border:0;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px}
-.sq{background:#fff;color:#123;border:0;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;transition:.12s}.sq:hover{transform:scale(1.08)}#lock{left:12px;top:46%}
+.sq{background:#fff;color:#123;border:0;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;transition:.12s}.sq:hover{transform:scale(1.08)}
 #tr{top:10px;right:12px;display:flex;gap:8px}.sm{font-size:22px;width:48px;height:48px;padding:0;background:#000a;color:#fff}
 #modebox{right:250px;bottom:22px;background:#2a3d8f;border:3px solid #fff;border-radius:10px;padding:10px 26px;font-size:26px;font-weight:900;text-align:center}#modebox small{font-size:10px;opacity:.7}
 #play{right:20px;bottom:20px;background:#ffc400;color:#222;border:0;border-radius:10px;font-size:40px;font-weight:900;padding:16px 46px;cursor:pointer;box-shadow:0 6px 0 #b88a00;transition:.1s;animation:pl 1.6s infinite}@keyframes pl{50%{transform:scale(1.04)}}
@@ -79,3 +79,42 @@ kbd{background:#e9ecff;color:#16214f;border-radius:6px;padding:2px 7px;font:800 
 #friend.has{border:3px solid #fff;border-style:solid;font-size:18px;color:#fff;text-shadow:0 1px 3px #000}
 .card{background:linear-gradient(180deg,#27388a,#16214f);border:3px solid #ffffff38}
 #prof{border-radius:14px;background:linear-gradient(180deg,#2a3b92cc,#18235acc)}#modebox{background:linear-gradient(180deg,#3a4fb8,#26358a)}
+
+/* ===== v4: lobby side UI fix + rounds/weapons HUD ===== */
+#lob>#lleft{top:44px;left:12px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;pointer-events:none;max-height:calc(100vh - 56px)}
+#lleft>*{position:static!important;pointer-events:auto;margin:0}
+#lleft #gbtn,#lleft #acct{width:auto}
+#lside{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+#lside .sq{position:relative;width:86px;height:74px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:14px;line-height:1.1;text-align:center;border-radius:12px;background:linear-gradient(180deg,#34479f,#1b2552);border:2px solid #ffffff40;box-shadow:0 4px 0 #0b1235;transition:filter .12s,box-shadow .12s}
+#lside .sq .ic{font-size:24px;line-height:1}
+#lside .sq:hover{transform:none;filter:brightness(1.25)}
+#lside .sq:active{transform:translateY(3px);box-shadow:0 1px 0 #0b1235}
+@media(max-height:640px){#lside{flex-direction:row;flex-wrap:wrap;width:190px}#lside .sq{width:60px;height:56px;font-size:11px}#lside .sq .ic{font-size:18px}}
+@media(max-width:700px){#lob>#lleft{top:56px}#coins{right:12px;top:68px}}
+
+/* score + round banner */
+#score{gap:14px;padding:6px 26px}#score b{font-size:30px;min-width:22px;text-align:center}
+#rnd{position:absolute;top:58px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:800;letter-spacing:2px;background:#0007;padding:3px 14px;border-radius:12px;opacity:.9}
+#cd{position:absolute;top:30%;width:100%;text-align:center;font-size:120px;font-weight:900;text-shadow:0 6px 30px #000;opacity:0}#cd.on{animation:cdn 1s}
+@keyframes cdn{0%{opacity:0;transform:scale(1.8)}15%{opacity:1;transform:scale(1)}80%{opacity:1}to{opacity:0;transform:scale(.9)}}
+/* weapon bar (top-left, like 1v1.lol) */
+#wbar{position:absolute;top:14px;left:14px;display:flex;gap:4px}
+.ws{pointer-events:auto;cursor:pointer;position:relative;width:96px;height:62px;background:#0009;border:2px solid #ffffff22;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:.12s;opacity:.75}
+.ws i{position:absolute;top:2px;left:6px;font-style:normal;font-size:11px;font-weight:900;opacity:.8}
+.ws b{font-size:8px;letter-spacing:1px;font-weight:800;opacity:.85}.ws svg{margin-top:4px}
+.ws.on{background:#2a3d8f;border-color:#fff;opacity:1;transform:translateY(-3px);box-shadow:0 4px 14px #0008}
+/* hp + ammo */
+#bot .hpw{display:flex;align-items:center;gap:10px}
+#ammo{margin-left:auto;display:flex;align-items:baseline;gap:6px;text-shadow:0 2px 10px #000}
+#ammo b{font-size:52px;font-weight:900;line-height:1}#ammo small{font-size:22px;font-weight:800;opacity:.7}#ammo em{font-style:normal;font-size:12px;letter-spacing:2px;font-weight:800;opacity:.8;margin-left:6px;align-self:center}
+#ammo.low b{color:#ff6b81}
+#cross{--s:1;width:calc(14px*var(--s));height:calc(14px*var(--s));margin:calc(-7px*var(--s));transition:width .08s,height .08s,margin .08s,transform .1s}
+#scope{position:absolute;inset:0;display:none;background:radial-gradient(circle at 50% 50%,transparent 0,transparent 27vh,#000 27.3vh);}#scope.on{display:block}
+#scope::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:#000c}#scope::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:#000c}
+/* match-over screen */
+.endc{width:min(460px,94vw)}.endc small{letter-spacing:4px;opacity:.65;font-size:12px}.endc h1{font-size:54px;margin:6px 0 8px}
+#winner{font-size:22px;font-weight:900;color:#ffd23f;margin-bottom:16px;text-shadow:0 2px 12px #000a}
+#fin{display:flex;align-items:center;justify-content:center;gap:16px;background:#0000002e;border-radius:14px;padding:12px 16px;margin-bottom:12px}
+#fin .fp{flex:1;display:flex;align-items:center;gap:10px;font-weight:800}#fin .fp:first-child{justify-content:flex-start}#fin .fp:last-child{justify-content:flex-end}
+#fin .fp i{font-style:normal;font-size:14px;opacity:.9;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#fin .fp b{font-size:44px}#fin em{opacity:.6;font-style:normal}
+#rsub{opacity:.85;font-weight:700;margin-bottom:4px}

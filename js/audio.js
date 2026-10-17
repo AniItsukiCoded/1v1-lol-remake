@@ -3,7 +3,15 @@ function tone(f,d,type='sine',v=.15,sl=0,dl=0){const a=A(),o=a.createOscillator(
 function noise(d,v=.3,f=1500){const a=A(),b=a.createBuffer(1,a.sampleRate*d,a.sampleRate),x=b.getChannelData(0);for(let i=0;i<x.length;i++)x[i]=(Math.random()*2-1)*(1-i/x.length);const s=a.createBufferSource(),fl=a.createBiquadFilter(),g=a.createGain();s.buffer=b;fl.frequency.value=f;g.gain.value=v;s.connect(fl).connect(g).connect(out());s.start()}
 const bass=[55,55,82,55,73,73,98,73];let i=0;
 return{resume(){A().resume()},setVol(v){out().gain.value=v},click(){tone(660,.08,'triangle',.12)},
-shoot(v=1){noise(.18,.35*v,2800);tone(150,.14,'square',.2*v,-110)},hit(){tone(1200,.07,'square',.12);tone(800,.1,'square',.1,0,.05)},
+shoot(v=1){noise(.18,.35*v,2800);tone(150,.14,'square',.2*v,-110)},
+gun(k,v=1){switch(k){
+case 'smg':noise(.07,.28*v,4200);tone(220,.06,'square',.12*v,-120);break;
+case 'ar':noise(.13,.34*v,2400);tone(130,.11,'sawtooth',.16*v,-90);break;
+case 'shotgun':noise(.42,.6*v,1400);tone(90,.3,'sawtooth',.3*v,-60);tone(60,.25,'square',.2*v,-30,.02);break;
+case 'sniper':noise(.5,.5*v,900);tone(70,.5,'sawtooth',.35*v,-45);tone(1500,.08,'square',.08*v,-1200);break;
+case 'revolver':noise(.3,.5*v,1800);tone(110,.25,'square',.28*v,-70);break;
+default:noise(.15,.3*v,3000);tone(180,.12,'square',.18*v,-120)}},
+swap(){tone(500,.04,'square',.08);tone(700,.05,'square',.08,0,.05)},tick(){tone(880,.07,'triangle',.12)},go(){tone(1175,.25,'triangle',.18);tone(1568,.3,'triangle',.14,0,.08)},hit(){tone(1200,.07,'square',.12);tone(800,.1,'square',.1,0,.05)},
 hurt(){tone(120,.25,'sawtooth',.25,-60);noise(.12,.2,600)},empty(){tone(300,.05,'square',.1)},
 reload(){tone(400,.06,'square',.1);tone(300,.08,'square',.1,0,.5);tone(600,.06,'square',.12,0,1.2)},
 jump(){tone(250,.15,'sine',.12,300)},land(){noise(.1,.2,400)},step(){noise(.05,.06,500)},

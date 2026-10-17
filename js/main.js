@@ -29,8 +29,11 @@ const s=(await db.ref('users/'+user.uid).once('value').catch(()=>null))?.val()||
 $('#play').onclick=()=>{SFX.resume();SFX.click();go()};
 $('#cancel').onclick=()=>{SFX.click();qStop&&qStop();menu()};
 $('#home').onclick=()=>{SFX.click();menu()};$('#again').onclick=()=>{SFX.click();go()};
-function begin(mid,opp,oppName,oppSkin){qStop&&qStop();show('none');Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,skin:CFG.skin,onEnd:r=>{const gx=r.win?{x:150+r.me*15,c:25}:{x:50+r.me*15,c:8};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();$('#res').textContent=r.title.toUpperCase();$('#res').style.color=r.win?'#38f5c8':'#ff6b81';$('#rsub').textContent=`Final score ${r.me} – ${r.opp}  ·  +${gx.x} XP  +${gx.c} 🪙`;show('end');
-const f=r.win?'wins':'losses';db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c[f]=(c[f]||0)+1;return c})}})}
+function begin(mid,opp,oppName,oppSkin){qStop&&qStop();show('none');Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,skin:CFG.skin,onEnd:r=>{const gx=r.draw?{x:75+r.me*15,c:12}:r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();
+$('#res').textContent=r.draw?'DRAW':r.win?'VICTORY':'DEFEAT';$('#res').style.color=r.draw?'#ffd23f':r.win?'#38f5c8':'#ff6b81';
+$('#winner').textContent=r.draw?'Nobody wins this one':'🏆 '+r.winner+' WINS!';$('#en1').textContent=r.myName||'You';$('#en2').textContent=r.oppName||'Enemy';$('#e1').textContent=r.me;$('#e2').textContent=r.opp;
+$('#rtag').textContent=r.title=='Opponent left'?'OPPONENT LEFT':'MATCH OVER · FIRST TO 3';$('#rsub').textContent=`+${gx.x} XP  +${gx.c} 🪙`;show('end');
+if(r.draw)return;const f=r.win?'wins':'losses';db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c[f]=(c[f]||0)+1;return c})}})}
 function find(){if(!conn)return alert('You are offline. Check your connection.');show('queue');const uid=user.uid,w=db.ref('lobby/waiting'),inv=db.ref('invites/'+uid);let hb,done=0,taken=null;
 qStop=()=>{done=1;clearInterval(hb);inv.off();w.once('value',s=>{if((s.val()||{}).uid==uid)w.remove()});qStop=null};
 w.transaction(cur=>{if(cur&&cur.uid!==uid&&now()-cur.t<20000){taken=cur;return null}taken=null;return{uid,name:nm(),skin:CFG.skin,t:now()}}).then(async r=>{
@@ -61,9 +64,8 @@ SKINS.forEach(([c,p,nmn])=>{const own=CFG.owned.includes(c);if(own==!!shop)retur
 b.innerHTML='<div class="pv"></div><b></b><span class="pr"></span>';b.querySelector('.pv').style.setProperty('--c',hx(c));b.querySelector('b').textContent=nmn;b.querySelector('.pr').textContent=shop?'🪙 '+p:CFG.skin==c?'EQUIPPED':'EQUIP';
 b.onclick=()=>{SFX.click();if(shop){if(CFG.coins<p)return toast('Not enough coins');CFG.coins-=p;CFG.owned.push(c);toast(nmn+' unlocked!')}CFG.skin=c;saveCfg();ui();grid(shop);menu()};el.appendChild(b)});
 if(!n){const d=document.createElement('p');d.className='sub';d.style.gridColumn='1/-1';d.textContent='You own every color!';el.appendChild(d)}
-$('#mdl').checked=CFG.model!==false;$('#locker').classList.add('on')}
+$('#locker').classList.add('on')}
 $('#lock').onclick=()=>{SFX.click();grid(0)};$('#shop').onclick=()=>{SFX.click();grid(1)};$('#plus').onclick=()=>$('#shop').click();$('#tL').onclick=()=>{SFX.click();grid(0)};$('#tS').onclick=()=>{SFX.click();grid(1)};
-$('#mdl').onchange=e=>{CFG.model=e.target.checked;saveCfg();menu()};
 $('#daily').onclick=()=>{SFX.click();if(Date.now()-CFG.dly<864e5)return toast('Come back later for your next daily reward');CFG.dly=Date.now();CFG.coins+=50;saveCfg();ui();toast('Daily reward: +50 🪙')};
 $('#menu').onclick=e=>{if(e.target.id=='menu')Game.kick()};
 const sv=()=>{$('#sensv').textContent=CFG.sens.toFixed(1)+'x';$('#volv').textContent=Math.round(CFG.vol*100)+'%'};sv();$('#sens').addEventListener('input',sv);$('#vol').addEventListener('input',sv);
