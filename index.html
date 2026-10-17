@@ -1,0 +1,30 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1v1.LOL Clone</title><link rel="stylesheet" href="css/style.css"></head><body>
+<canvas id="c"></canvas>
+<div id="boot" class="screen on"><div class="card"><div class="spin"></div><h2 id="bt">Connecting…</h2><p id="berr"></p></div></div>
+<div id="net">● Connecting…</div>
+<div id="auth" class="screen"><div class="card"><h1>1V1<span>.ARENA</span></h1>
+<div class="tabs"><button class="tab on" data-m="in">Sign in</button><button class="tab" data-m="up">Sign up</button></div>
+<input id="name" placeholder="Username" maxlength="14" style="display:none"><input id="email" type="email" placeholder="Email"><input id="pass" type="password" placeholder="Password">
+<button id="go" class="btn">Sign in</button><button id="back" class="btn alt">Back (keep playing as guest)</button><p id="err"></p></div></div>
+<div id="menu" class="screen"><div id="lob">
+<div id="chips"><span id="fps">FPS: --</span><span id="ping">Ping: --</span></div>
+<div id="prof"><div id="av"></div><div><b id="who"></b><button id="edit" title="Change name">✎</button><div id="stats"></div></div></div>
+<button id="gbtn">G&nbsp; Login with Google</button><button id="acct">Email sign in / up</button>
+<button id="lock" class="sq">👕<br>Locker</button>
+<div id="tr"><button id="fs" class="sq sm">⛶</button><button id="gear" class="sq sm">⚙</button></div>
+<div id="modebox"><small>MODE</small><br>1v1</div><button id="play">PLAY!</button>
+<div id="hint">WASD move · Shift sprint · Space jump · Mouse aim/shoot · R reload · M music — first to 10 kills</div></div></div>
+<div id="locker" class="modal"><div class="card"><h2>Locker</h2><p class="hint">Pick your color — your opponent sees it too.</p><div id="sw"></div><button class="btn alt close">Done</button></div></div>
+<div id="settings" class="modal"><div class="card"><h2>Settings</h2><label>Mouse sensitivity<input id="sens" type="range" min=".3" max="2" step=".1"></label><label>Volume<input id="vol" type="range" min="0" max="1" step=".05"></label><label><input id="mus" type="checkbox"> Music</label><button class="btn alt close">Done</button></div></div>
+<div id="queue" class="screen"><div class="card"><div class="spin"></div><h2>Searching for opponent…</h2><button id="cancel" class="btn alt">Cancel</button></div></div>
+<div id="hud"><div id="score"><b id="s1">0</b><i>YOU</i><em>—</em><i id="on">ENEMY</i><b id="s2">0</b></div>
+<div id="cross"></div><div id="hit">✕</div><div id="eb"><u></u></div><div id="feed"></div><div id="vig"></div>
+<div id="bot"><div class="bar"><u id="hp"></u></div><span id="hpt">100</span><div id="ammo">12</div></div>
+<div id="msg"></div><div id="resume">Click to resume</div></div>
+<div id="end" class="screen"><div class="card"><h1 id="res"></h1><p id="rsub"></p><button id="again" class="btn">PLAY AGAIN</button><button id="home" class="btn alt">Menu</button></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="js/config.js"></script><script src="js/audio.js"></script><script src="js/game.js"></script><script src="js/main.js"></script></body></html>
