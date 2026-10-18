@@ -2,7 +2,7 @@ firebase.initializeApp(window.FIREBASE_CONFIG);
 window.CFG=Object.assign({sens:1,vol:1,music:true,skin:0x2f9bff,coins:0,xp:0,owned:[0x2f9bff,0xff4d4d],model:true,dly:0},JSON.parse(localStorage.cfg||'{}'));const saveCfg=()=>localStorage.cfg=JSON.stringify(CFG);
 const auth=firebase.auth(),db=firebase.database(),$=s=>document.querySelector(s);
 let mode='in',user=null,qStop=null,off=0,online=0,conn=false,presOff=null;
-const now=()=>Date.now()+off,show=id=>document.querySelectorAll('.screen').forEach(e=>e.classList.toggle('on',e.id==id));
+const now=()=>Date.now()+off,show=id=>{document.querySelectorAll('.screen').forEach(e=>e.classList.toggle('on',e.id==id));$('#net').style.display=id=='menu'?'':'none'};
 const nm=()=>user.displayName||('Guest '+user.uid.slice(-4).toUpperCase());
 const err=e=>$('#err').textContent=(e.message||e).replace('Firebase: ','').replace(/\s*\(auth.*\)\.?/,'');
 // ---- connection + presence ("online" indicator)
@@ -29,7 +29,7 @@ const s=(await db.ref('users/'+user.uid).once('value').catch(()=>null))?.val()||
 $('#play').onclick=()=>{SFX.resume();SFX.click();go()};
 $('#cancel').onclick=()=>{SFX.click();qStop&&qStop();menu()};
 $('#home').onclick=()=>{SFX.click();menu()};$('#again').onclick=()=>{SFX.click();go()};
-function begin(mid,opp,oppName,oppSkin){qStop&&qStop();show('none');Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,skin:CFG.skin,onEnd:r=>{const gx=r.draw?{x:75+r.me*15,c:12}:r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();
+function begin(mid,opp,oppName,oppSkin){qStop&&qStop();show('none');Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,skin:CFG.skin,onLeave:()=>{db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.losses=(c.losses||0)+1;return c});menu()},onEnd:r=>{const gx=r.draw?{x:75+r.me*15,c:12}:r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();
 $('#res').textContent=r.draw?'DRAW':r.win?'VICTORY':'DEFEAT';$('#res').style.color=r.draw?'#ffd23f':r.win?'#38f5c8':'#ff6b81';
 $('#winner').textContent=r.draw?'Nobody wins this one':'🏆 '+r.winner+' WINS!';$('#en1').textContent=r.myName||'You';$('#en2').textContent=r.oppName||'Enemy';$('#e1').textContent=r.me;$('#e2').textContent=r.opp;
 $('#rtag').textContent=r.title=='Opponent left'?'OPPONENT LEFT':'MATCH OVER · FIRST TO 3';$('#rsub').textContent=`+${gx.x} XP  +${gx.c} 🪙`;show('end');
@@ -67,14 +67,13 @@ if(!n){const d=document.createElement('p');d.className='sub';d.style.gridColumn=
 $('#locker').classList.add('on')}
 $('#lock').onclick=()=>{SFX.click();grid(0)};$('#shop').onclick=()=>{SFX.click();grid(1)};$('#plus').onclick=()=>$('#shop').click();$('#tL').onclick=()=>{SFX.click();grid(0)};$('#tS').onclick=()=>{SFX.click();grid(1)};
 $('#daily').onclick=()=>{SFX.click();if(Date.now()-CFG.dly<864e5)return toast('Come back later for your next daily reward');CFG.dly=Date.now();CFG.coins+=50;saveCfg();ui();toast('Daily reward: +50 🪙')};
-$('#menu').onclick=e=>{if(e.target.id=='menu')Game.kick()};
 const sv=()=>{$('#sensv').textContent=CFG.sens.toFixed(1)+'x';$('#volv').textContent=Math.round(CFG.vol*100)+'%'};sv();$('#sens').addEventListener('input',sv);$('#vol').addEventListener('input',sv);
 $('#sfp').checked=CFG.hud!==false;$('#sfp').onchange=e=>{CFG.hud=e.target.checked;saveCfg();ui()};$('#fs2').onclick=()=>$('#fs').click();
 // ---- party (invite a friend for a private 1v1)
 let party=null,pOff=null;
-function pui(){const m=party?party.m:{},ids=Object.keys(m).sort(a=>a==(party&&party.lead)?-1:1);$('#pnone').style.display=party?'none':'block';$('#pin').style.display=party?'block':'none';$('#pc').textContent=party?party.code:'';
+function pui(){const m=party?party.m:{},ids=Object.keys(m).sort((a,b)=>(a==party.lead?-1:0)-(b==party.lead?-1:0)||(a<b?-1:1));$('#pnone').style.display=party?'none':'block';$('#pin').style.display=party?'block':'none';$('#pc').textContent=party?party.code:'';
 [['#ps1',ids[0]],['#ps2',ids[1]]].forEach(([s,id])=>{const el=$(s);el.innerHTML='<i></i><b></b><small></small>';const i=el.querySelector('i');if(id){i.style.background=hx(m[id].skin);el.querySelector('b').textContent=m[id].name;el.querySelector('small').textContent=id==party.lead?'LEADER':'MEMBER'}else{i.className='em';i.textContent='+';el.querySelector('b').textContent='Waiting…'}});
-const o=ids.find(i=>i!=user.uid),f=$('#friend');f.classList.toggle('has',!!o);f.textContent=o?m[o].name.slice(0,2).toUpperCase():'+';f.style.background=o?hx(m[o].skin):'';f.title=o?m[o].name+' is in your party':'Invite to party'}
+const o=ids.find(i=>i!=user.uid),f=$('#friend');f.classList.toggle('has',!!o);f.textContent=o?m[o].name.slice(0,2).toUpperCase():'+';f.style.background=o?hx(m[o].skin):'';f.title=o?m[o].name+' is in your party':'Invite to party';Game.partner(o?{name:m[o].name,skin:m[o].skin}:null)}
 function attach(code,lead){const r=db.ref('parties/'+code),inv=db.ref('invites/'+user.uid),me=r.child('m/'+user.uid);if(lead)r.onDisconnect().remove();else me.onDisconnect().remove();
 r.on('value',s=>{const v=s.val();if(!v||!(v.m||{})[user.uid]){if(party){party=null;pOff&&pOff();pOff=null;toast('Party closed');pui()}return}party={code,lead:v.lead,m:v.m};pui()});
 inv.on('value',s=>{const v=s.val();if(v&&party&&party.lead!=user.uid){inv.remove();$('#party').classList.remove('on');begin(v.mid,v.uid,v.name,v.skin)}});

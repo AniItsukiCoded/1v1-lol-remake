@@ -5,6 +5,7 @@ const bass=[55,55,82,55,73,73,98,73];let i=0;
 return{resume(){A().resume()},setVol(v){out().gain.value=v},click(){tone(660,.08,'triangle',.12)},
 shoot(v=1){noise(.18,.35*v,2800);tone(150,.14,'square',.2*v,-110)},
 gun(k,v=1){switch(k){
+case 'pickaxe':noise(.12,.25*v,1200);tone(300,.1,'triangle',.15*v,-200);break;
 case 'smg':noise(.07,.28*v,4200);tone(220,.06,'square',.12*v,-120);break;
 case 'ar':noise(.13,.34*v,2400);tone(130,.11,'sawtooth',.16*v,-90);break;
 case 'shotgun':noise(.42,.6*v,1400);tone(90,.3,'sawtooth',.3*v,-60);tone(60,.25,'square',.2*v,-30,.02);break;

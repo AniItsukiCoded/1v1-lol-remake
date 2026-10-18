@@ -17,7 +17,7 @@
 <div id="tr"><button id="fs" class="sq sm">⛶</button><button id="gear" class="sq sm">⚙</button></div>
 <div id="friend">+</div>
 <div id="modebox"><small>MODE · RANDOM MAP</small><br>1v1</div><button id="play">PLAY!</button>
-<div id="hint">WASD · Shift sprint · Space jump · Mouse aim/shoot · Right-click aim · 1-6 / wheel weapons · R reload — first to 3 rounds<br>Skin: “1v1.lol Drop Kick” by youtube Argue (CC-BY-4.0)</div></div></div>
+<div id="hint">WASD · Shift sprint · Space jump · Mouse aim/shoot · Right-click aim · 1-3 / wheel weapons · Q wall · F floor · C ramp · R reload — first to 3 rounds<br>Skin: “1v1.lol Drop Kick” by youtube Argue (CC-BY-4.0)</div></div></div>
 <div id="locker" class="modal"><div class="panel wide"><div class="ph"><div class="tb"><button id="tL" class="t2 on">👕 LOCKER</button><button id="tS" class="t2">🛒 SHOP</button></div><div class="cc">🪙 <b id="cn2">0</b></div><button class="x close">✕</button></div><div class="pb"><div id="sw"></div></div></div></div>
 <div id="party" class="modal"><div class="panel"><div class="ph"><h2>🎉 PARTY</h2><button class="x close">✕</button></div><div class="pb"><div id="pslots"><div class="slot" id="ps1"></div><div class="slot" id="ps2"></div></div>
 <div id="pnone"><p class="sub">Invite a friend and play a private 1v1 against them.</p><button id="pnew" class="btn">CREATE PARTY</button><div class="join"><input id="pcode" placeholder="Party code" maxlength="5"><button id="pjoin" class="btn alt">JOIN</button></div></div>
@@ -28,15 +28,18 @@
 <div class="row"><span>Music</span><label class="tg"><input id="mus" type="checkbox"><i></i></label></div>
 <div class="row"><span>Show FPS &amp; ping</span><label class="tg"><input id="sfp" type="checkbox"><i></i></label></div>
 <div class="row"><span>Fullscreen</span><button id="fs2" class="mini">TOGGLE</button></div>
-<h3>CONTROLS</h3><div class="keys"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>Move</span><span><kbd>Shift</kbd>Sprint</span><span><kbd>Space</kbd>Jump</span><span><kbd>Mouse</kbd>Aim &amp; shoot</span><span><kbd>R</kbd>Reload</span><span><kbd>1</kbd>-<kbd>6</kbd>Weapons</span><span><kbd>RMB</kbd>Aim / scope</span><span><kbd>M</kbd>Music</span></div>
+<h3>CONTROLS</h3><div class="keys"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>Move</span><span><kbd>Shift</kbd>Sprint</span><span><kbd>Space</kbd>Jump</span><span><kbd>Mouse</kbd>Aim &amp; shoot</span><span><kbd>R</kbd>Reload</span><span><kbd>1</kbd>-<kbd>3</kbd>Weapons</span><span><kbd>Q</kbd><kbd>F</kbd><kbd>C</kbd>Build</span><span><kbd>RMB</kbd>Aim / scope</span><span><kbd>M</kbd>Music</span></div>
 <button class="btn close">DONE</button></div></div></div>
 <div id="queue" class="screen"><div class="card"><div class="spin"></div><h2>Searching for opponent…</h2><button id="cancel" class="btn alt">Cancel</button></div></div>
 <div id="hud"><div id="score"><b id="s1">0</b><i>YOU</i><em>—</em><i id="on">ENEMY</i><b id="s2">0</b></div><div id="rnd">ROUND 1</div>
-<div id="wbar"></div><div id="cd"></div><div id="scope"></div>
+<div id="wbar"></div><div id="bhint"><kbd>Q</kbd>Wall <kbd>F</kbd>Floor <kbd>C</kbd>Ramp</div><div id="cd"></div><div id="scope"></div>
 <div id="cross"></div><div id="hit">✕</div><div id="eb"><u></u></div><div id="feed"></div><div id="vig"></div>
 <div id="bot"><div class="hpw"><div class="bar"><u id="hp"></u></div><span id="hpt">100</span></div><div id="ammo"><b id="am">12</b><small id="amr">/48</small><em id="wnm">PISTOL</em></div></div>
-<div id="msg"></div><div id="resume">Click to resume</div></div>
+<div id="msg"></div><div id="resume">Click to play</div></div>
 <div id="toast"></div>
+<div id="pause"><div class="panel"><div class="ph"><h2>⏸ PAUSED</h2></div><div class="pb"><div id="pbtns"><p class="sub">The match keeps running while this menu is open.</p>
+<button id="pres" class="btn">RESUME</button><button id="pset" class="btn alt">SETTINGS</button><button id="pleaveg" class="btn alt">LEAVE MATCH</button></div>
+<div id="pconf" style="display:none"><p class="sub">Leave this match? It counts as a forfeit and your opponent wins.</p><button id="pyes" class="btn alt">YES, LEAVE</button><button id="pno" class="btn">STAY IN MATCH</button></div></div></div></div>
 <div id="end" class="screen"><div class="card endc"><small id="rtag">MATCH OVER</small><h1 id="res"></h1><div id="winner"></div>
 <div id="fin"><div class="fp"><i id="en1"></i><b id="e1">0</b></div><em>—</em><div class="fp"><b id="e2">0</b><i id="en2"></i></div></div>
 <p id="rsub"></p><button id="again" class="btn">PLAY AGAIN</button><button id="home" class="btn alt">Menu</button></div></div>

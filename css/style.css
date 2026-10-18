@@ -118,3 +118,10 @@ kbd{background:#e9ecff;color:#16214f;border-radius:6px;padding:2px 7px;font:800 
 #fin .fp{flex:1;display:flex;align-items:center;gap:10px;font-weight:800}#fin .fp:first-child{justify-content:flex-start}#fin .fp:last-child{justify-content:flex-end}
 #fin .fp i{font-style:normal;font-size:14px;opacity:.9;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#fin .fp b{font-size:44px}#fin em{opacity:.6;font-style:normal}
 #rsub{opacity:.85;font-weight:700;margin-bottom:4px}
+
+/* pause menu + build hint */
+#pause{position:fixed;inset:0;display:none;place-items:center;background:#060a22b8;backdrop-filter:blur(6px);z-index:7}#pause.on{display:grid}
+#pause .panel{width:min(380px,92vw)}#pause .btn{margin-top:12px}
+#bhint{position:absolute;bottom:92px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;font-size:12px;font-weight:800;background:#0007;padding:5px 14px;border-radius:12px;opacity:.85}
+#bhint kbd{margin-right:4px}
+.ws{width:118px}
