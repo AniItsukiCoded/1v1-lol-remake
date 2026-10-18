@@ -125,3 +125,10 @@ kbd{background:#e9ecff;color:#16214f;border-radius:6px;padding:2px 7px;font:800 
 #bhint{position:absolute;bottom:92px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;font-size:12px;font-weight:800;background:#0007;padding:5px 14px;border-radius:12px;opacity:.85}
 #bhint kbd{margin-right:4px}
 .ws{width:118px}
+
+/* Fortnite-style build quickbar */
+#bq{position:absolute;right:16px;bottom:118px;display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;justify-content:flex-end;max-width:340px;pointer-events:auto}
+.bs{position:relative;width:62px;height:62px;border-radius:10px;background:#0a1030b8;border:2px solid #ffffff2a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.12s;opacity:.8}
+.bs i{position:absolute;top:2px;left:6px;font-style:normal;font-size:11px;font-weight:900;opacity:.85}.bs span{font-size:24px;line-height:1;color:#7cc0ff}.bs b{font-size:8px;letter-spacing:1px;margin-top:3px;opacity:.85}
+.bs.on{background:#2a4fc9;border-color:#fff;opacity:1;transform:translateY(-4px);box-shadow:0 0 16px #5aa0ff99}
+#mats{width:100%;text-align:right;font-weight:900;font-size:15px;text-shadow:0 2px 8px #000;margin-top:2px}
