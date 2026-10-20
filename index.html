@@ -11,14 +11,19 @@
 <div id="chips"><span id="fps">FPS: --</span><span id="ping">Ping: --</span></div>
 <div id="lleft"><div id="prof"><div id="av"></div><div class="pi"><div><b id="who"></b><button id="edit" title="Change name">✎</button></div><div id="lvl"><i id="lv">1</i><div class="xb"><u id="xf"></u><span id="xt"></span></div></div><div id="stats"></div></div></div>
 <button id="gbtn">G&nbsp; Login with Google</button><button id="acct">Email sign in / up</button>
-<div id="lside"><button id="daily" class="sq"><span class="ic">🎁</span>Daily<s id="dot"></s></button><button id="lock" class="sq"><span class="ic">👕</span>Locker</button><button id="shop" class="sq"><span class="ic">🛒</span>Shop</button></div></div>
-<div id="pass"><b>LOL<br>PASS</b><div class="xb"><u id="pf"></u></div><em id="pl">1</em></div>
-<div id="coins">🪙 <b id="cn">0</b><button id="plus">+</button></div>
+<div id="lside"><button id="daily" class="sq"><span class="ic">🎁</span>Daily<s id="dot"></s></button><button id="lock" class="sq"><span class="ic">👕</span>Locker</button><button id="shop" class="sq"><span class="ic">🛒</span>Shop</button><button id="bpb" class="sq"><span class="ic">⭐</span>Pass<s id="bdot"></s></button><button id="evb" class="sq hw" style="display:none"><span class="ic">🎃</span>Event<s id="edot"></s></button></div></div>
+<div id="evban" style="display:none"><span>🎃</span><b id="evbt">HALLOWEEN EVENT</b><i id="evbl"></i></div>
+<div id="hpass" style="display:none"><b>🎃<br>SPOOKY<br>PASS</b><div class="xb"><u id="hf"></u></div><em id="hl">0</em><s id="hdot"></s></div>
+<div id="lpass"><s id="pdot"></s><b>LOL<br>PASS</b><div class="xb"><u id="pf"></u></div><em id="pl">1</em></div>
+<div id="coins">🪙 <b id="cn">0</b><button id="plus">+</button></div><div id="candyc" style="display:none">🍬 <b id="cdy">0</b></div>
 <div id="tr"><button id="fs" class="sq sm">⛶</button><button id="gear" class="sq sm">⚙</button></div>
 <div id="friend">+</div>
 <div id="modebox"><small>MODE · RANDOM MAP</small><br>1v1</div><button id="play">PLAY!</button>
 <div id="hint">WASD · Shift sprint · Space jump · Mouse aim/shoot · Right-click aim · 1-2 / F / wheel weapons · Z wall · X floor · C stairs · V roof · G edit · T material · R reload — first to 3 rounds<br>Skin: “1v1.lol Drop Kick” by youtube Argue (CC-BY-4.0)</div></div></div>
-<div id="locker" class="modal"><div class="panel wide"><div class="ph"><div class="tb"><button id="tL" class="t2 on">👕 LOCKER</button><button id="tS" class="t2">🛒 SHOP</button></div><div class="cc">🪙 <b id="cn2">0</b></div><button class="x close">✕</button></div><div class="pb"><div id="sw"></div></div></div></div>
+<div id="locker" class="modal"><div class="panel wide"><div class="ph"><div class="tb"><button id="tL" class="t2 on">👕 LOCKER</button><button id="tS" class="t2">🛒 SHOP</button></div><div class="cc">🪙 <b id="cn2">0</b></div><button class="x close">✕</button></div><div class="pb"><div id="lf" class="flt"></div><div id="sw"></div></div></div></div>
+<div id="bpm" class="modal"><div class="panel pass"><div class="ph"><h2 id="bpt">PASS</h2><div class="cc">🪙 <b id="cn3">0</b></div><button class="x close">✕</button></div><div class="pb" id="bpb2"></div></div></div>
+<div id="evm" class="modal"><div class="panel mm"><div class="mh"><button id="evback" class="mb">‹</button><h2 id="evh">Halloween 2026</h2><div class="mcn"><button id="evplus">+</button><b id="cdy2">0</b><span>🍬</span></div><button class="x close">✕</button></div><div id="evc"></div></div></div>
+<div id="reveal"><div class="rv"><small id="rvk">NEW ITEM</small><div class="rvi" id="rvi"></div><b id="rvn"></b><span id="rvr"></span><button class="btn" id="rvok">NICE!</button></div></div>
 <div id="party" class="modal"><div class="panel"><div class="ph"><h2>🎉 PARTY</h2><button class="x close">✕</button></div><div class="pb"><div id="pslots"><div class="slot" id="ps1"></div><div class="slot" id="ps2"></div></div>
 <div id="pnone"><p class="sub">Invite a friend and play a private 1v1 against them.</p><button id="pnew" class="btn">CREATE PARTY</button><div class="join"><input id="pcode" placeholder="Party code" maxlength="5"><button id="pjoin" class="btn alt">JOIN</button></div></div>
 <div id="pin" style="display:none"><div class="codebox"><small>PARTY CODE</small><b id="pc"></b></div><button id="pcopy" class="btn">COPY INVITE LINK</button><button id="pleave" class="btn alt">LEAVE PARTY</button><p class="sub">The party leader presses PLAY to start the match.</p></div></div></div></div>
@@ -26,6 +31,7 @@
 <div class="srow"><span>Mouse sensitivity</span><output id="sensv"></output><input id="sens" type="range" min=".3" max="2" step=".1"></div>
 <div class="srow"><span>Volume</span><output id="volv"></output><input id="vol" type="range" min="0" max="1" step=".05"></div>
 <div class="row"><span>Music</span><label class="tg"><input id="mus" type="checkbox"><i></i></label></div>
+<div class="row"><span>🎃 Spooky arena effects</span><button id="hwfx" class="mini">FULL</button></div>
 <div class="row"><span>Show FPS &amp; ping</span><label class="tg"><input id="sfp" type="checkbox"><i></i></label></div>
 <div class="row"><span>Fullscreen</span><button id="fs2" class="mini">TOGGLE</button></div>
 <h3>CONTROLS</h3><div class="keys"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>Move</span><span><kbd>Shift</kbd>Sprint</span><span><kbd>Space</kbd>Jump</span><span><kbd>Mouse</kbd>Aim &amp; shoot</span><span><kbd>R</kbd>Reload</span><span><kbd>1</kbd><kbd>2</kbd><kbd>F</kbd>Weapons</span><span><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd>Build</span><span><kbd>G</kbd>Edit</span><span><kbd>T</kbd>Material</span><span><kbd>RMB</kbd>Aim / scope</span><span><kbd>M</kbd>Music</span></div>
@@ -33,7 +39,7 @@
 <div id="queue" class="screen"><div class="card"><div class="spin"></div><h2>Searching for opponent…</h2><button id="cancel" class="btn alt">Cancel</button></div></div>
 <div id="hud"><div id="score"><b id="s1">0</b><i>YOU</i><em>—</em><i id="on">ENEMY</i><b id="s2">0</b></div><div id="rnd">ROUND 1</div>
 <div id="wbar"></div><div id="bq"></div><div id="cd"></div><div id="scope"></div>
-<div id="cross"></div><div id="hit">✕</div><div id="eb"><u></u></div><div id="feed"></div><div id="vig"></div>
+<div id="candy" style="display:none">🍬 <b id="cdm">0</b></div><div id="cross"></div><div id="hit">✕</div><div id="eb"><u></u></div><div id="feed"></div><div id="vig"></div>
 <div id="bot"><div class="hpw"><div class="bar"><u id="hp"></u></div><span id="hpt">100</span></div><div id="ammo"><b id="am">12</b><small id="amr">/48</small><em id="wnm">PISTOL</em></div></div>
 <div id="msg"></div><div id="resume">Click to play</div></div>
 <div id="toast"></div>
@@ -47,4 +53,4 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="js/skin.js"></script><script src="js/config.js"></script><script src="js/audio.js"></script><script src="js/game.js"></script><script src="js/main.js"></script></body></html>
+<script src="js/skin.js"></script><script src="js/config.js"></script><script src="js/audio.js"></script><script src="js/cosmetics.js"></script><script src="js/gunskins.js"></script><script src="js/events.js"></script><script src="js/game.js"></script><script src="js/main.js"></script><script src="js/passes.js"></script></body></html>
