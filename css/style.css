@@ -357,3 +357,20 @@ body.touch .card{padding:18px}body.touch h1{font-size:34px}
 body.touch input{font-size:16px} /* iOS zooms into inputs below 16px */
 body.touch .btn{padding:12px}body.touch .mini{min-height:34px}
 @media(max-height:420px){body.touch .ph{padding-top:6px;padding-bottom:6px}body.touch .endc h1{font-size:34px;margin:2px 0}body.touch #fin .fp b{font-size:30px}body.touch #winner{font-size:17px;margin-bottom:8px}}
+
+/* ---- v4 polish: smoother, GPU-composited animations ---- */
+.eb2{left:0;top:0;will-change:transform}
+.eb2 u{transition:width .18s cubic-bezier(.2,.8,.3,1)}
+#msg.on{animation:ms2 2.2s cubic-bezier(.2,.9,.25,1) both}
+@keyframes ms2{0%{opacity:0;transform:scale(1.7)}10%{opacity:1;transform:scale(.96)}16%{transform:scale(1)}78%{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(1.04) translateY(-10px)}}
+#cd.on{animation:cdn2 1s cubic-bezier(.2,.9,.25,1) both}
+@keyframes cdn2{0%{opacity:0;transform:scale(2)}14%{opacity:1;transform:scale(.94)}22%{transform:scale(1)}75%{opacity:1}to{opacity:0;transform:scale(.8)}}
+#hit.on{animation:hm2 .28s ease-out}
+@keyframes hm2{0%{opacity:1;transform:scale(.6) rotate(-12deg)}40%{transform:scale(1.35) rotate(6deg)}to{opacity:0;transform:scale(1.7)}}
+#feed div{will-change:transform,opacity}
+.card{animation:pop .45s cubic-bezier(.2,1.3,.35,1) both}
+.btn{transition:transform .14s cubic-bezier(.2,.9,.3,1.2),filter .14s,box-shadow .14s}
+.screen.on{animation-fill-mode:both}
+#queue.on .card{animation:pop .35s cubic-bezier(.2,1.3,.35,1) both}
+#qbot{animation:pop .4s cubic-bezier(.2,1.4,.4,1) both}
+@media (prefers-reduced-motion:reduce){.card,#qbot,#msg.on,#cd.on{animation-duration:.01s}}
