@@ -133,7 +133,7 @@ return p=='rotation'?new T.QuaternionKeyframeTrack('n'+n+'.quaternion',t,v):new 
 return SKG={ge,ibm:F('ibm',Float32Array),used,clip:new T.AnimationClip('kick',D.dur,tracks)}}
 
 function rig(col){const D=window.SKIN,G=skinData();if(!G)return null;const cid=window.COS?COS.id(col):0,gp=w=>window.GUN?GUN.get(w,GUN.pick(col,w)):null;col=col%16777216;
-const J=new Set(D.joints),mat=new T.MeshStandardMaterial({color:col,roughness:.6,skinning:true,side:T.DoubleSide}),root=new T.Group();
+const J=new Set(D.joints),mat=new T.MeshStandardMaterial({color:col,roughness:.48,metalness:.08,emissive:col,emissiveIntensity:.1,skinning:true,side:T.DoubleSide}),root=new T.Group();
 const os=D.nodes.map((n,i)=>{const o=i==D.mesh?new T.SkinnedMesh(G.ge,mat):J.has(i)?new T.Bone():new T.Object3D();o.name='n'+i;o.userData.nm=n.n;
 if(n.m)new T.Matrix4().fromArray(n.m).decompose(o.position,o.quaternion,o.scale);else{n.t&&o.position.fromArray(n.t);n.r&&o.quaternion.fromArray(n.r);n.s&&o.scale.fromArray(n.s)}return o});
 D.nodes.forEach((n,i)=>(n.p<0?root:os[n.p]).add(os[i]));
