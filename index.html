@@ -1,9 +1,9 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0b0b1a">
-<title>1v1.LOL Clone</title><link rel="stylesheet" href="css/style.css"></head><body>
+<title>1v1.Arena</title><link rel="stylesheet" href="css/style.css"></head><body>
 <canvas id="c"></canvas>
 <div id="boot" class="screen on"><div class="card"><div class="spin"></div><h2 id="bt">Connecting…</h2><p id="berr"></p></div></div>
 <div id="net">● Connecting…</div>
-<div id="auth" class="screen"><div class="card"><h1>1V1<span>.ARENA</span></h1>
+<div id="auth" class="screen"><div class="card"><h1>1v1<span>.Arena</span></h1>
 <div class="tabs"><button class="tab on" data-m="in">Sign in</button><button class="tab" data-m="up">Sign up</button></div>
 <input id="name" placeholder="Username" maxlength="14" style="display:none"><input id="email" type="email" placeholder="Email"><input id="pass" type="password" placeholder="Password">
 <button id="go" class="btn">Sign in</button><button id="back" class="btn alt">Back (keep playing as guest)</button><p id="err"></p></div></div>
@@ -19,7 +19,7 @@
 <div id="tr"><button id="fs" class="sq sm">⛶</button><button id="gear" class="sq sm">⚙</button></div>
 <div id="friend">+</div>
 <div id="modebox" title="Click to switch between 1v1 and 2v2"><small>MODE · RANDOM MAP · click to change</small><br><b id="modet">1v1</b></div><button id="play">PLAY!</button>
-<div id="hint">WASD · Shift sprint · Space jump · Mouse aim/shoot · Right-click aim · 1-2 / F / wheel weapons · Z wall · X floor · C stairs · V roof · G edit · T material · R reload (all rebindable in ⚙) — first to 3 rounds<br>Skin: “1v1.lol Drop Kick” by youtube Argue (CC-BY-4.0)</div></div></div>
+</div></div>
 <div id="locker" class="modal"><div class="panel wide"><div class="ph"><div class="tb"><button id="tL" class="t2 on">👕 LOCKER</button><button id="tS" class="t2">🛒 SHOP</button></div><div class="cc">🪙 <b id="cn2">0</b></div><button class="x close">✕</button></div><div class="pb"><div id="lf" class="flt"></div><div id="sw"></div></div></div></div>
 <div id="bpm" class="modal"><div class="panel pass"><div class="ph"><h2 id="bpt">PASS</h2><div class="cc">🪙 <b id="cn3">0</b></div><button class="x close">✕</button></div><div class="pb" id="bpb2"></div></div></div>
 <div id="evm" class="modal"><div class="panel mm"><div class="mh"><button id="evback" class="mb">‹</button><h2 id="evh">Halloween 2026</h2><div class="mcn"><button id="evplus">+</button><b id="cdy2">0</b><span>🍬</span></div><button class="x close">✕</button></div><div id="evc"></div></div></div>
@@ -31,6 +31,7 @@
 <div class="srow"><span>Mouse sensitivity</span><output id="sensv"></output><input id="sens" type="range" min=".3" max="2" step=".1"></div>
 <div class="srow"><span>Volume</span><output id="volv"></output><input id="vol" type="range" min="0" max="1" step=".05"></div>
 <div class="srow"><span>Graphics quality</span><output id="qlv"></output><input id="ql" type="range" min="0" max="10" step="1"></div><p class="qn" id="qln"></p>
+<p class="qn" style="margin-top:14px;opacity:.6">Character model: “1v1.lol Drop Kick” by youtube Argue (CC-BY-4.0)</p>
 <div class="row"><span>Music</span><label class="tg"><input id="mus" type="checkbox"><i></i></label></div>
 <div class="row"><span>🎃 Spooky arena effects</span><button id="hwfx" class="mini">FULL</button></div>
 <div class="row"><span>Show FPS &amp; ping</span><label class="tg"><input id="sfp" type="checkbox"><i></i></label></div>

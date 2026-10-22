@@ -1,4 +1,4 @@
-# 1v1.ARENA – online third-person 1v1 shooter
+# 1v1.Arena – online third-person 1v1 shooter
 Static site (Three.js + Firebase Auth + Realtime Database). Everyone starts as a guest ("Guest 1234"); they can sign up later to keep stats.
 
 ## One-time Firebase setup
