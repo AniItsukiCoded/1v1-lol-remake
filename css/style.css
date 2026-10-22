@@ -374,3 +374,5 @@ body.touch .btn{padding:12px}body.touch .mini{min-height:34px}
 #queue.on .card{animation:pop .35s cubic-bezier(.2,1.3,.35,1) both}
 #qbot{animation:pop .4s cubic-bezier(.2,1.4,.4,1) both}
 @media (prefers-reduced-motion:reduce){.card,#qbot,#msg.on,#cd.on{animation-duration:.01s}}
+/* lobby: the controls/credit strip was removed, so the pass banners sit lower */
+#lpass{bottom:20px}#hpass{bottom:76px}
