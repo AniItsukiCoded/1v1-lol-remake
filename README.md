@@ -59,6 +59,12 @@ Left half of the screen = floating move stick (push to the rim to sprint), right
 - **Queue:** the invite is cleared before queueing (it used to be cleared after, which could erase a fresh match), cancelling removes the disconnect hook, transaction retries are bounded, and an opponent who never connects (16s) sends you back to search.
 - **Practice bot:** if nobody else is online (after ~2s) or nobody joins within 12s, a bot match starts (also the "PLAY VS BOT NOW" button after 3s). It runs locally, adapts a little to the score, gives half XP/coins and no wins/losses, candy or pass XP.
 
+## v4 changes (bot, animations, lag)
+- **Bot queue:** the bot match no longer depends on Firebase at all. The "PLAY VS BOT NOW" button shows after 1s, the timer starts immediately (bot after 2s if nobody else is online, otherwise 8s), matchmaking errors/offline fall back to a bot instead of an alert, and leaving the queue happens in the background. Bots get a random two-word name + number (e.g. `SwiftFalcon4821`, see `botName()` in `js/main.js`).
+- **Lag/freeze fixes:** shared audio noise buffer (was rebuilt on every shot/step), pooled spark/tracer/shell meshes (no per-shot material), allocation-free `rayBox` (3 camera rays per frame x every box), HUD writes only when values change, health bars move with `transform`, and **dynamic resolution** (render scale steps down when the GPU can't hold ~50fps, back up with headroom).
+- **Smoother remote players:** render delay adapts to measured jitter (100-260ms), position smoothing is frame-rate independent, and the walk cycle uses a smoothed speed (no more leg stutter per packet).
+- **Animation:** hit flinch (you and enemies), shell casings tumble, sparks shrink, landing camera dip, new pop/overshoot animations for FIGHT!/countdown/hit marker/cards.
+
 ## Party
 The lobby "+" opens a party: create one, copy the invite link (or share the 5-letter code), and when your friend joins the leader presses PLAY for a private 1v1. **Re-paste `database.rules.json` into the Firebase Rules tab** (it includes a `parties` section). Invite links (`?party=CODE`) are one-shot and the code is removed from the URL after joining.
 
