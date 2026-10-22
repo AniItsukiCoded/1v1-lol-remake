@@ -5,12 +5,22 @@ Static site (Three.js + Firebase Auth + Realtime Database). Everyone starts as a
 1. Authentication → Sign-in method: enable **Anonymous** and **Email/Password**.
 2. Realtime Database → create it, then paste `database.rules.json` into the Rules tab (or `firebase deploy --only database`).
 
-3. **Publish the updated `database.rules.json`** (it adds `saves/` for account progress and the new `halloween26v2/` leaderboard). Without it, progress simply stays on the device and the leaderboard shows "unavailable".
+3. **Publish the updated `database.rules.json`** (it adds `saves/` for account progress, the `halloween26v2/` leaderboard and `lobby2/` for 2v2 matchmaking). Without it, progress stays on the device, the leaderboard shows "unavailable" and 2v2 can't find matches.
 
 ## Saving & the data reset
 - **Logged-in accounts** (email or Google) save their progress (coins, XP, skins, gun skins, passes, event) to `saves/<uid>` in the Realtime Database and load it on any device. Guests keep progress only on this device; signing up from a guest uploads that progress to the new account. Signing out clears the device so the next person starts fresh.
 - **`DATA_VER` in `js/main.js`** is the reset switch. When a player's saved version differs, all *progress* (and their win/loss record) is wiped once; accounts, usernames and settings are kept, and anything earned afterwards is kept. Bump the number to reset everybody again.
 - The Halloween leaderboard moved to `halloween26v2` so old candy totals don't carry over. You can delete the old `halloween26` node in the Firebase console.
+
+## Modes, settings & controls
+- **1v1 / 2v2:** click the mode box next to PLAY to switch. 2v2 = you + a teammate vs two opponents, first team to 3 rounds; a round ends when a whole team is down (no friendly fire; teammates get green tags and a health panel). Solo players are matched with random teammates through `lobby2/q`; if you are in a party of two, the party leader's PLAY queues you as a duo. Team 0 spawns on the west side, team 1 on the east.
+- **Graphics quality 0-10** (Settings, default 10 = the original look): render scale, shadow size/refresh, scenery detail, particles. Saved on the device. Anti-aliasing (on from 6) applies after a reload.
+- **Keybinds** (Settings → Controls): every action has a main and an alternative key/mouse button. Stored as `CFG.kb`, so they are part of the account cloud save (guests: this device). A data reset (`DATA_VER`) keeps them.
+- **Custom crosshair** (Settings → Crosshair): ring / cross / dot / your own image, with size, opacity, thickness, colour, outline and "grow while moving". Saved in this browser only (`localStorage.xh`), never in Firebase.
+- **Animations:** aim-down-sights stance, weapon kick, shotgun pump, reload, draw, sprint low-ready, muzzle flash and shell casings (other players' animations are synced through `a`, `rl` and shot events).
+
+## Performance notes
+The random freezes came from the per-gun `PointLight`s being added/removed when switching weapons or build mode (every change of the scene's light count recompiles every shader), and from per-shot geometry that was never freed. Muzzle flashes are now meshes, effect/build geometry is shared and cached, old maps/characters are disposed, and shaders are pre-compiled when a match starts.
 
 ## Hosting (pick one)
 - **Firebase Hosting (easiest, no custom domain):** `npm i -g firebase-tools && firebase login && firebase deploy`. You get `v1-lol-1e584.web.app`, which is authorized for sign-in automatically.
@@ -38,8 +48,19 @@ Skin model: "1v1.lol Drop Kick" (https://sketchfab.com/3d-models/1v1lol-drop-kic
 
 Maps (picked per match, same for both players): Grasslands, Crate Yard, Container Port, Neon Dome. Lobby: level/XP, coins, daily reward, locker + shop, click the character to make it kick.
 
+## Mobile / touch
+Phones and tablets are detected automatically (`js/touch.js`; force with `?touch=1`, disable with `?touch=0`). Play in landscape (a "rotate your phone" overlay shows in portrait during a match).
+Left half of the screen = floating move stick (push to the rim to sprint), right half = drag to look, **FIRE** (hold; drag on it to aim while shooting), ◎ aim (tap to toggle), ⤒ jump, ↻ reload, 🧱 shows the build bar (tap a piece, tap the material counter to cycle, ✎ edit), ❚❚ pause. Tap the weapon cards at the top to switch weapons. Look speed uses the Mouse sensitivity slider. Default graphics quality is Low-ish (4) on touch devices. Keyboard rebinding is hidden on touch.
+
+## Netcode, queue & bot (v3)
+- **Hits are decided on the shooter's screen** (what you see is what you hit). Shot events carry `h:[{u,dm,hd}]` claims; the victim validates round/phase/max-damage and applies them. Previously the victim re-checked the shot against its own (newer) position, so many visible hits did nothing.
+- **Smooth movement:** remote players are drawn ~100ms in the past by interpolating timestamped samples (`ts`), extrapolating up to 150ms when packets stall; position packets go out every 50ms.
+- **Frozen/countdown damage:** round end, next-round and the 3-2-1 countdown are now scheduled on the shared server clock (death timestamps `dts`, match start time from the match id), so both players go live together. Shots landing in the last 600ms of someone's countdown still count.
+- **Queue:** the invite is cleared before queueing (it used to be cleared after, which could erase a fresh match), cancelling removes the disconnect hook, transaction retries are bounded, and an opponent who never connects (16s) sends you back to search.
+- **Practice bot:** if nobody else is online (after ~2s) or nobody joins within 12s, a bot match starts (also the "PLAY VS BOT NOW" button after 3s). It runs locally, adapts a little to the score, gives half XP/coins and no wins/losses, candy or pass XP.
+
 ## Party
-The lobby "+" opens a party: create one, copy the invite link (or share the 5-letter code), and when your friend joins the leader presses PLAY for a private 1v1. **Re-paste `database.rules.json` into the Firebase Rules tab** (it now includes a `parties` section).
+The lobby "+" opens a party: create one, copy the invite link (or share the 5-letter code), and when your friend joins the leader presses PLAY for a private 1v1. **Re-paste `database.rules.json` into the Firebase Rules tab** (it includes a `parties` section). Invite links (`?party=CODE`) are one-shot and the code is removed from the URL after joining.
 
 ## Halloween event (Haunted Harvest, MM2 style) + passes + cosmetics
 **Event window:** Oct 1 → Dec 1 2026 (edit `EVT` in `js/events.js`; test with `?event=1` / `?event=0` on the URL). Candy stops spawning when it ends, but the hub stays open **7 more days** so players can spend candy and claim rewards.

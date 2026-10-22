@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0b0b1a">
 <title>1v1.LOL Clone</title><link rel="stylesheet" href="css/style.css"></head><body>
 <canvas id="c"></canvas>
 <div id="boot" class="screen on"><div class="card"><div class="spin"></div><h2 id="bt">Connecting…</h2><p id="berr"></p></div></div>
@@ -18,8 +18,8 @@
 <div id="coins">🪙 <b id="cn">0</b><button id="plus">+</button></div><div id="candyc" style="display:none">🍬 <b id="cdy">0</b></div>
 <div id="tr"><button id="fs" class="sq sm">⛶</button><button id="gear" class="sq sm">⚙</button></div>
 <div id="friend">+</div>
-<div id="modebox"><small>MODE · RANDOM MAP</small><br>1v1</div><button id="play">PLAY!</button>
-<div id="hint">WASD · Shift sprint · Space jump · Mouse aim/shoot · Right-click aim · 1-2 / F / wheel weapons · Z wall · X floor · C stairs · V roof · G edit · T material · R reload — first to 3 rounds<br>Skin: “1v1.lol Drop Kick” by youtube Argue (CC-BY-4.0)</div></div></div>
+<div id="modebox" title="Click to switch between 1v1 and 2v2"><small>MODE · RANDOM MAP · click to change</small><br><b id="modet">1v1</b></div><button id="play">PLAY!</button>
+<div id="hint">WASD · Shift sprint · Space jump · Mouse aim/shoot · Right-click aim · 1-2 / F / wheel weapons · Z wall · X floor · C stairs · V roof · G edit · T material · R reload (all rebindable in ⚙) — first to 3 rounds<br>Skin: “1v1.lol Drop Kick” by youtube Argue (CC-BY-4.0)</div></div></div>
 <div id="locker" class="modal"><div class="panel wide"><div class="ph"><div class="tb"><button id="tL" class="t2 on">👕 LOCKER</button><button id="tS" class="t2">🛒 SHOP</button></div><div class="cc">🪙 <b id="cn2">0</b></div><button class="x close">✕</button></div><div class="pb"><div id="lf" class="flt"></div><div id="sw"></div></div></div></div>
 <div id="bpm" class="modal"><div class="panel pass"><div class="ph"><h2 id="bpt">PASS</h2><div class="cc">🪙 <b id="cn3">0</b></div><button class="x close">✕</button></div><div class="pb" id="bpb2"></div></div></div>
 <div id="evm" class="modal"><div class="panel mm"><div class="mh"><button id="evback" class="mb">‹</button><h2 id="evh">Halloween 2026</h2><div class="mcn"><button id="evplus">+</button><b id="cdy2">0</b><span>🍬</span></div><button class="x close">✕</button></div><div id="evc"></div></div></div>
@@ -30,18 +30,35 @@
 <div id="settings" class="modal"><div class="panel"><div class="ph"><h2>⚙ SETTINGS</h2><button class="x close">✕</button></div><div class="pb">
 <div class="srow"><span>Mouse sensitivity</span><output id="sensv"></output><input id="sens" type="range" min=".3" max="2" step=".1"></div>
 <div class="srow"><span>Volume</span><output id="volv"></output><input id="vol" type="range" min="0" max="1" step=".05"></div>
+<div class="srow"><span>Graphics quality</span><output id="qlv"></output><input id="ql" type="range" min="0" max="10" step="1"></div><p class="qn" id="qln"></p>
 <div class="row"><span>Music</span><label class="tg"><input id="mus" type="checkbox"><i></i></label></div>
 <div class="row"><span>🎃 Spooky arena effects</span><button id="hwfx" class="mini">FULL</button></div>
 <div class="row"><span>Show FPS &amp; ping</span><label class="tg"><input id="sfp" type="checkbox"><i></i></label></div>
 <div class="row"><span>Fullscreen</span><button id="fs2" class="mini">TOGGLE</button></div>
-<h3>CONTROLS</h3><div class="keys"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>Move</span><span><kbd>Shift</kbd>Sprint</span><span><kbd>Space</kbd>Jump</span><span><kbd>Mouse</kbd>Aim &amp; shoot</span><span><kbd>R</kbd>Reload</span><span><kbd>1</kbd><kbd>2</kbd><kbd>F</kbd>Weapons</span><span><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd>Build</span><span><kbd>G</kbd>Edit</span><span><kbd>T</kbd>Material</span><span><kbd>RMB</kbd>Aim / scope</span><span><kbd>M</kbd>Music</span></div>
+<h3>CROSSHAIR <small style="opacity:.6;letter-spacing:1px">(saved in this browser)</small></h3>
+<div id="xhprev"><div id="xhp" class="xh"></div></div>
+<div class="row"><span>Style</span><div id="xhst" class="seg"><button data-s="ring">Ring</button><button data-s="cross">Cross</button><button data-s="dot">Dot</button><button data-s="img">Image</button></div></div>
+<div id="xhimr" class="row col" style="display:none"><span>Your image</span><div class="xhb"><button id="xhup" class="mini">UPLOAD IMAGE</button><button id="xhrm" class="mini alt">REMOVE</button></div><input id="xhfile" type="file" accept="image/*" hidden></div>
+<p id="xhhint" class="sub l"></p>
+<div class="srow"><span>Size</span><output id="xhszv"></output><input id="xhsz" type="range" min="6" max="140" step="1"></div>
+<div class="srow"><span>Opacity</span><output id="xhopv"></output><input id="xhop" type="range" min="10" max="100" step="5"></div>
+<div id="xhthr" class="srow"><span>Thickness</span><output id="xhthv"></output><input id="xhth" type="range" min="1" max="8" step="1"></div>
+<div id="xhcr" class="row"><span>Color</span><input id="xhc" type="color"></div>
+<div id="xhtr" class="row" style="display:none"><span>Recolor image (use its shape only)</span><label class="tg"><input id="xhtint" type="checkbox"><i></i></label></div>
+<div class="row"><span>Dark outline</span><label class="tg"><input id="xhol" type="checkbox"><i></i></label></div>
+<div class="row"><span>Grow when moving / shooting</span><label class="tg"><input id="xhdy" type="checkbox"><i></i></label></div>
+<div class="row"><span></span><button id="xhreset" class="mini alt">RESET CROSSHAIR</button></div>
+<div id="kbwrap"><h3>CONTROLS <small style="opacity:.6;letter-spacing:1px">(saved to your account)</small></h3>
+<p class="sub l">Click a box, then press a key or a mouse button (Esc cancels, Delete clears). Click the box again to bind Left Click. Each action has a main and an alternative key.</p>
+<div id="kbl"></div><div class="row"><span></span><button id="kbreset" class="mini alt">RESET CONTROLS</button></div></div>
 <button class="btn close">DONE</button></div></div></div>
-<div id="queue" class="screen"><div class="card"><div class="spin"></div><h2>Searching for opponent…</h2><button id="cancel" class="btn alt">Cancel</button></div></div>
-<div id="hud"><div id="score"><b id="s1">0</b><i>YOU</i><em>—</em><i id="on">ENEMY</i><b id="s2">0</b></div><div id="rnd">ROUND 1</div>
+<div id="queue" class="screen"><div class="card"><div class="spin"></div><h2 id="qtxt">Searching for opponent…</h2><button id="qbot" class="btn" style="display:none">PLAY VS BOT NOW</button><button id="cancel" class="btn alt">Cancel</button></div></div>
+<div id="hud"><div id="score"><b id="s1">0</b><i id="you">YOU</i><em>—</em><i id="on">ENEMY</i><b id="s2">0</b></div><div id="rnd">ROUND 1</div>
 <div id="wbar"></div><div id="bq"></div><div id="cd"></div><div id="scope"></div>
-<div id="candy" style="display:none">🍬 <b id="cdm">0</b></div><div id="cross"></div><div id="hit">✕</div><div id="eb"><u></u></div><div id="feed"></div><div id="vig"></div>
-<div id="bot"><div class="hpw"><div class="bar"><u id="hp"></u></div><span id="hpt">100</span></div><div id="ammo"><b id="am">12</b><small id="amr">/48</small><em id="wnm">PISTOL</em></div></div>
+<div id="candy" style="display:none">🍬 <b id="cdm">0</b></div><div id="cross" class="xh"></div><div id="hit">✕</div><div id="eb"><u></u></div><div id="feed"></div><div id="vig"></div>
+<div id="mate"><span id="matet"></span><div class="bar"><u id="mateh"></u></div></div><div id="bot"><div class="hpw"><div class="bar"><u id="hp"></u></div><span id="hpt">100</span></div><div id="ammo"><b id="am">12</b><small id="amr">/48</small><em id="wnm">PISTOL</em></div></div>
 <div id="msg"></div><div id="resume">Click to play</div></div>
+<div id="rot"><div><b>⟳</b><p>Rotate your phone to landscape to play</p></div></div>
 <div id="toast"></div>
 <div id="pause"><div class="panel"><div class="ph"><h2>⏸ PAUSED</h2></div><div class="pb"><div id="pbtns"><p class="sub">The match keeps running while this menu is open.</p>
 <button id="pres" class="btn">RESUME</button><button id="pset" class="btn alt">SETTINGS</button><button id="pleaveg" class="btn alt">LEAVE MATCH</button></div>
@@ -53,4 +70,4 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="js/skin.js"></script><script src="js/config.js"></script><script src="js/audio.js"></script><script src="js/cosmetics.js"></script><script src="js/gunskins.js"></script><script src="js/events.js"></script><script src="js/game.js"></script><script src="js/main.js"></script><script src="js/passes.js"></script></body></html>
+<script src="js/skin.js"></script><script src="js/controls.js"></script><script src="js/crosshair.js"></script><script src="js/config.js"></script><script src="js/audio.js"></script><script src="js/cosmetics.js"></script><script src="js/gunskins.js"></script><script src="js/events.js"></script><script src="js/touch.js"></script><script src="js/game.js"></script><script src="js/main.js"></script><script src="js/passes.js"></script></body></html>
