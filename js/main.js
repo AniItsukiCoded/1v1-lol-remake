@@ -54,28 +54,31 @@ $('#res').textContent=r.draw?'DRAW':r.win?'VICTORY':'DEFEAT';$('#res').style.col
 $('#winner').textContent=r.draw?'Nobody wins this one':'🏆 '+r.winner+' WINS!';$('#en1').textContent=r.myName||'You';$('#en2').textContent=r.oppName||'Enemy';$('#e1').textContent=r.me;$('#e2').textContent=r.opp;
 $('#rtag').textContent=r.title=='Opponent left'?'OPPONENT LEFT':'MATCH OVER · FIRST TO 3';$('#rsub').textContent=`+${gx.x} XP  +${gx.c} 🪙`+ex;show('end');
 if(r.draw||bot)return;const f=r.win?'wins':'losses';db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c[f]=(c[f]||0)+1;return c})}})}
-/* practice bot: runs entirely on this device (no network), used when nobody is online or the search times out */
-function beginBot(){const n=['Rex','Nova','Blaze','Pixel','Zed','Mako','Echo','Viper'],c=[0xff4d4d,0xffa42e,0xb04dff,0x4dffa8,0xff6bd6];
-begin('bot_'+now(),'BOT','BOT '+n[Math.random()*n.length|0],c[Math.random()*c.length|0],null,true)}
+function botName(){const A=['Swift','Silent','Lucky','Crimson','Frosty','Rapid','Shadow','Turbo','Cosmic','Sneaky','Mighty','Rogue','Neon','Savage','Clutch','Ghost','Atomic','Wild','Hyper','Iron'],
+N=['Falcon','Tiger','Viper','Wolf','Panda','Cobra','Raven','Shark','Dragon','Fox','Hawk','Bear','Lynx','Ninja','Titan','Comet','Storm','Blaze','Pixel','Rider'],
+r=a=>a[Math.random()*a.length|0];return r(A)+r(N)+(10+Math.random()*9990|0)}
+/* practice bot: runs entirely on this device (no network). Always works, even offline. */
+function beginBot(){const c=[0xff4d4d,0xffa42e,0xb04dff,0x4dffa8,0xff6bd6,0x38f5c8,0xffd23f];
+begin('bot_'+now(),'BOT',botName(),c[Math.random()*c.length|0],null,true)}
 /* 1v1 queue. One waiting slot (lobby/waiting) claimed with a transaction. Fixes: invite is cleared BEFORE queueing (it used to be cleared after, which could eat a
    match that had just been made), the disconnect hook is cancelled on cancel (it used to delete somebody else's waiting entry), and a bot match starts if
    nobody is online (after ~2s) or nobody joins within 12s. */
-function find(){if(!conn)return alert('You are offline. Check your connection.');show('queue');$('#qtxt').textContent='Searching for opponent…';$('#qbot').style.display='none';
+function find(){if(!conn){toast('Offline – starting a practice match vs a bot');return beginBot()}show('queue');$('#qtxt').textContent='Searching for opponent…';$('#qbot').style.display='none';
 const uid=user.uid,w=db.ref('lobby/waiting'),inv=db.ref('invites/'+uid);let hb,tm,done=0,sec=0,queued=0;
-const stop=()=>{done=1;clearInterval(hb);clearInterval(tm);inv.off();$('#qbot').style.display='none';if(queued){w.onDisconnect().cancel().catch(()=>{});w.transaction(c=>c&&c.uid===uid?null:undefined).catch(()=>{})}qStop=qBot=null};
+const stop=()=>{done=1;clearInterval(hb);clearInterval(tm);inv.off();$('#qbot').style.display='none';if(queued){queued=0;w.onDisconnect().cancel().catch(()=>{});w.transaction(c=>c&&c.uid===uid?null:undefined).catch(()=>{})}qStop=qBot=null};
 qStop=stop;
-const toBot=async()=>{if(done)return;if(queued){let mine=0;try{const r=await w.transaction(c=>{if(c&&c.uid===uid){mine=1;return null}return undefined});if(!r.committed&&!mine){ /* somebody just took my slot: their invite is on its way */
-$('#qtxt').textContent='Opponent found…';clearTimeout(toBot.f);toBot.f=setTimeout(()=>{if(!done){stop();beginBot()}},6000);return}}catch(e){}queued=0}
-if(!done){stop();beginBot()}};
+/* the bot never waits on the network: leave the queue in the background and start immediately (a slot somebody grabbed in the meantime just times out on their side) */
+const toBot=()=>{if(done)return;$('#qtxt').textContent='Starting bot match…';stop();beginBot()};
 qBot=toBot;
-(async()=>{try{await inv.remove().catch(()=>{});if(done)return;
+(async()=>{try{await Promise.race([inv.remove().catch(()=>{}),new Promise(r=>setTimeout(r,2500))]);if(done)return;
 inv.on('value',s=>{const v=s.val();if(v&&!done){inv.remove();beginAny(v)}});
 let taken=null,r;for(let t=0;t<6&&!done;t++){taken=null;r=await w.transaction(cur=>{if(cur&&cur.uid!==uid&&now()-cur.t<20000){taken=cur;return null}taken=null;return{uid,name:nm(),skin:SK(),t:now()}});if(r.committed)break}
-if(done){if(r&&r.committed&&!taken)w.remove();return}if(!r||!r.committed)throw new Error('Matchmaking busy, try again');
+if(done){if(r&&r.committed&&!taken)w.remove().catch(()=>{});return}if(!r||!r.committed)throw new Error('busy');
 if(taken){const mid=`${taken.uid}_${uid}_${now()}`;await db.ref('matches/'+mid+'/meta').set({a:taken.uid,b:uid});await db.ref('invites/'+taken.uid).set({mid,uid,name:nm(),skin:SK(),t:now()});begin(mid,taken.uid,taken.name,taken.skin)}
-else{queued=1;w.onDisconnect().remove();hb=setInterval(()=>w.update({t:now()}).catch(()=>{}),8000);
-tm=setInterval(()=>{if(done)return;sec++;const others=Math.max(0,online-1);$('#qtxt').textContent=`Searching for opponent… ${sec}s · ${others} other player${others==1?'':'s'} online`;if(sec==3)$('#qbot').style.display='block';if((others==0&&sec>=2)||sec>=12){$('#qtxt').textContent='No opponent found – starting a bot match…';toBot()}},1000)}}
-catch(e){stop();menu();alert(e.message)}})()}
+else{queued=1;w.onDisconnect().remove();hb=setInterval(()=>w.update({t:now()}).catch(()=>{}),8000)}}
+catch(e){if(!done){toast('Matchmaking unavailable – starting a bot match');toBot()}}})();
+/* the timer runs from the very start, so the bot is available even if matchmaking hangs or errors */
+tm=setInterval(()=>{if(done)return;sec++;const others=Math.max(0,online-1);if(!$('#qtxt').textContent.startsWith('Starting'))$('#qtxt').textContent=`Searching for opponent… ${sec}s · ${others} other player${others==1?'':'s'} online`;if(sec>=1)$('#qbot').style.display='block';if((others==0&&sec>=2)||sec>=8){$('#qtxt').textContent='No opponent found – starting a bot match…';toBot()}},1000)}
 $('#qbot').onclick=()=>{SFX.click();qBot&&qBot()};
 
 // ---- lobby extras
