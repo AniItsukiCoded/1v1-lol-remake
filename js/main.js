@@ -5,7 +5,8 @@ const DATA_VER=2;
 const PROG={skin:0x2f9bff,coins:0,xp:0,owned:[0x2f9bff,0xff4d4d],dly:0,gs:[0,0,0],kb:{}},PK=[...Object.keys(PROG),'ev','bp'],fresh=()=>JSON.parse(JSON.stringify(PROG));
 let saved={};try{saved=JSON.parse(localStorage.cfg||'{}')||{}}catch(e){}
 window.CFG=Object.assign({sens:1,vol:1,music:true,model:true,q:window.TOUCH?4:10,mode:'1v1'},fresh(),saved);
-CFG.q=CFG.q==null||!Number.isFinite(+CFG.q)?10:Math.max(0,Math.min(10,Math.round(+CFG.q)));if(CFG.mode!=='2v2')CFG.mode='1v1';
+/* graphics: 0 Anti-Lag, 1 Low, 2 Normal, 3 Higher. One-time reset (GQ_VER) puts everyone on Normal; phones/tablets are always Normal */
+const GQ_VER=1;if(CFG.gqv!==GQ_VER||window.TOUCH||CFG.gq==null||!Number.isFinite(+CFG.gq)){CFG.gq=2;CFG.gqv=GQ_VER}CFG.gq=Math.max(0,Math.min(3,Math.round(+CFG.gq)));if(CFG.mode!=='2v2')CFG.mode='1v1';
 if(CFG.ver!==DATA_VER){const kb0=CFG.kb;PK.forEach(k=>delete CFG[k]);Object.assign(CFG,fresh());if(kb0&&typeof kb0=='object')CFG.kb=kb0;CFG.ver=DATA_VER;CFG.own=''} /* a data reset keeps your keybinds */
 const saveLocal=()=>{try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}}; /* device-only settings (quality, mode): no cloud upload */
 const saveCfg=()=>{try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}cloudDirty()};
@@ -91,9 +92,9 @@ document.querySelectorAll('.modal .close').forEach(b=>b.onclick=()=>{SFX.click()
 $('#sens').value=CFG.sens;$('#vol').value=CFG.vol;$('#mus').checked=CFG.music;
 $('#sens').oninput=e=>{CFG.sens=+e.target.value;saveCfg()};$('#vol').oninput=e=>{CFG.vol=+e.target.value;SFX.setVol(CFG.vol);saveCfg()};$('#mus').onchange=e=>{CFG.music=e.target.checked;SFX.music(CFG.music);saveCfg()};
 const HWL=['OFF','LITE','FULL'],hwShow=()=>{$('#hwfx').textContent=HWL[CFG.hwfx===undefined?2:CFG.hwfx]};hwShow();$('#hwfx').onclick=()=>{SFX.click();CFG.hwfx=((CFG.hwfx===undefined?2:CFG.hwfx)+2)%3;saveCfg();hwShow();toast('Spooky effects: '+HWL[CFG.hwfx]+(CFG.hwfx<2?' (applies next match)':''))};
-const QN=['Potato','Very low','Very low','Low','Low','Medium','Medium','High','High','Very high','Ultra'];
-function qShow(){$('#qlv').textContent=CFG.q+' · '+QN[CFG.q];$('#qln').textContent=Game.qinfo(CFG.q)}
-$('#ql').value=CFG.q;qShow();$('#ql').oninput=e=>{CFG.q=+e.target.value;saveLocal();const r=Game.quality(CFG.q);qShow();if(r&&r.reload)toast('Anti-aliasing changes after you reload the page')};
+const QN=['Anti-Lag','Low Quality','Normal','Higher Quality'];
+function qShow(){$('#qlv').textContent=QN[CFG.gq];$('#qln').textContent=Game.qinfo(CFG.gq)}
+if(window.TOUCH){const r=$('#ql').closest('.srow');r&&(r.style.display='none');$('#qln').style.display='none'}$('#ql').value=CFG.gq;qShow();$('#ql').oninput=e=>{CFG.gq=+e.target.value;saveLocal();const r=Game.quality(CFG.gq);qShow();if(r&&r.reload)toast('Anti-aliasing changes after you reload the page')};
 CTL.build($('#kbl'),$('#kbreset'));
 const modeShow=()=>{$('#modet').textContent=CFG.mode};modeShow();
 $('#modebox').onclick=()=>{SFX.click();CFG.mode=CFG.mode=='2v2'?'1v1':'2v2';saveLocal();modeShow();toast(CFG.mode=='2v2'?'2v2: you + a teammate vs 2 opponents (party up with a friend to be teammates)':'1v1 mode')};

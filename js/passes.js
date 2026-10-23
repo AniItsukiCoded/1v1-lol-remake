@@ -18,8 +18,15 @@ const Q=a=>document.querySelectorAll(a),on=()=>EVT.on(),fmt=n=>Math.round(n).toL
 const dot=(id,v)=>{const e=$(id);if(e)e.style.display=v?'block':'none'};
 let matchCandy=0,matchPass=0,rvq=[],view='home',bn=1,lfs='all',rkTab='global',rkTimer=0;
 const bpTier=()=>Math.min(30,Math.floor(CFG.bp.xp/PASSES.bp.per));
-const swHtml=(col,ico,big)=>`<div class="pv${big?' big':''}${String(ico).slice(0,4)=='<svg'?' gun':''}" style="--c:${col==null?'#ffc400':hx(col)}"><span class="pe">${ico}</span></div>`;
-const WS=['Shotgun','Rifle','Pickaxe'],icn=it=>it.k=='gun'?Game.gunIcon(it.w,it.g.c):it.ico,icol=it=>it.k=='gun'?it.col:it.v%16777216,swI=(it,big)=>swHtml(icol(it),icn(it),big),inm=it=>it.k=='gun'?it.n+' '+WS[it.w]:it.n,
+/* player skins/colours show a rendered portrait of the character (Game.thumb); guns/coins keep their icon */
+const TGIF='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+const swHtml=(col,ico,big,v)=>{const gun=String(ico).slice(0,4)=='<svg',ch=v!=null&&!gun,st=`--c:${col==null?'#ffc400':hx(col)}`;
+if(ch){const u=Game.thumbCached(v);return`<div class="pv ch${big?' big':''}" style="${st}"><img alt="" draggable="false" data-sv="${v}" data-ico="${ico||''}" ${u?'data-done="1" ':''}src="${u||TGIF}"></div>`}
+return`<div class="pv${big?' big':''}${gun?' gun':''}" style="${st}"><span class="pe">${ico}</span></div>`};
+let thBusy=0;function thFill(){if(thBusy)return;thBusy=1;const go=()=>{const im=document.querySelector('img[data-sv]:not([data-done])');if(!im){thBusy=0;return}const v=im.dataset.sv,u=Game.thumb(v);
+document.querySelectorAll('img[data-sv="'+v+'"]:not([data-done])').forEach(x=>{if(u){x.src=u;x.dataset.done=1}else{const e=document.createElement('span');e.className='pe';e.textContent=x.dataset.ico||'';x.parentNode.classList.remove('ch');x.replaceWith(e)}});setTimeout(go,16)};setTimeout(go,0)}
+new MutationObserver(()=>{if(document.querySelector('img[data-sv]:not([data-done])'))thFill()}).observe(document.body,{childList:true,subtree:true});
+const WS=['Shotgun','Rifle','Pickaxe'],icn=it=>it.k=='gun'?Game.gunIcon(it.w,it.g.c):it.ico,icol=it=>it.k=='gun'?it.col:it.v%16777216,ival=it=>it.k=='gun'?null:it.v,swI=(it,big)=>swHtml(icol(it),icn(it),big,ival(it)),inm=it=>it.k=='gun'?it.n+' '+WS[it.w]:it.n,
  kindOf=it=>it.k=='gun'?'NEW GUN SKIN':it.k=='skin'?'NEW SKIN':'NEW COLOR',eq=it=>it.k=='gun'?CFG.gs[it.w]==it.gn:CFG.skin==it.v;
 function equip(it){if(it.k=='gun')CFG.gs[it.w]=CFG.gs[it.w]==it.gn?0:it.gn;else CFG.skin=it.v;saveCfg()}
 const dur=m=>{m=Math.max(0,m);const d=Math.floor(m/864e5),h=Math.floor(m%864e5/36e5);return d?d+'d '+h+'h':h+'h '+Math.floor(m%36e5/6e4)+'m'},left=()=>dur(EVT.left()),closeLeft=()=>dur(EVT.end+7*864e5-Date.now()),open=()=>EVT.open();
@@ -33,12 +40,12 @@ const dailyList=()=>DQ;
 /* ---------- reveal popup ---------- */
 function reveal(o){rvq.push(o);if(!$('#reveal').classList.contains('on'))nextReveal()}
 function nextReveal(){const o=rvq.shift();if(!o){$('#reveal').classList.remove('on');return}
-$('#rvk').textContent=o.kind||'NEW ITEM';$('#rvi').innerHTML=swHtml(o.col,o.ico,1);$('#rvn').textContent=o.name;const r=RAR[o.rar]||RAR.common;$('#rvr').textContent=o.sub||r[0];$('#rvr').style.color=r[1];$('#rvi').style.setProperty('--r',r[1]);
+$('#rvk').textContent=o.kind||'NEW ITEM';$('#rvi').innerHTML=swHtml(o.col,o.ico,1,o.v);$('#rvn').textContent=o.name;const r=RAR[o.rar]||RAR.common;$('#rvr').textContent=o.sub||r[0];$('#rvr').style.color=r[1];$('#rvi').style.setProperty('--r',r[1]);
 $('#rvok').textContent=o.btn||'NICE!';$('#reveal').dataset.go=o.go||'';$('#reveal').classList.add('on');SFX.claim()}
 $('#rvok').onclick=()=>{SFX.click();const g=$('#reveal').dataset.go;nextReveal();if(g==='ev')openEvent('home')};
 /* returns a short text for the reward; shows a popup for items (only epic+ when quiet) */
 function give(rw,quiet){if(Array.isArray(rw))return rw.map(r=>give(r,quiet)).join(' + ');if(rw.k=='coins'){CFG.coins+=rw.n;return rw.n+' 🪙'}if(rw.k=='key'){E.keys+=rw.n;return rw.n+' 🗝️'}if(rw.k=='candy'){E.candy+=rw.n;return fmt(rw.n)+' 🍬'}
-const it=ITEM(rw.id);if(own(it.v)){CFG.coins+=60;return inm(it)+' (owned → 60 🪙)'}CFG.owned.push(it.v);if(!quiet||['epic','legendary','mythic'].includes(it.rar))reveal({ico:icn(it),col:icol(it),name:inm(it),rar:it.rar,kind:kindOf(it)});return inm(it)}
+const it=ITEM(rw.id);if(own(it.v)){CFG.coins+=60;return inm(it)+' (owned → 60 🪙)'}CFG.owned.push(it.v);if(!quiet||['epic','legendary','mythic'].includes(it.rar))reveal({ico:icn(it),col:icol(it),v:ival(it),name:inm(it),rar:it.rar,kind:kindOf(it)});return inm(it)}
 function art(rw,big){if(Array.isArray(rw))rw=rw[0];if(rw.k=='coins')return`<span class="ci">🪙</span>`;if(rw.k=='key')return`<span class="ci">🗝️</span>`;if(rw.k=='candy')return`<span class="ci">🍬</span>`;return swI(ITEM(rw.id),big)}
 const rwName=rw=>Array.isArray(rw)?rw.map(rwName).join(' + '):rw.k=='coins'?fmt(rw.n)+' coins':rw.k=='candy'?fmt(rw.n)+' candy':rw.k=='key'?'Box Key'+(rw.n>1?' x'+rw.n:''):inm(ITEM(rw.id));
 const rwRar=rw=>Array.isArray(rw)?rwRar(rw[0]):rw.k=='item'?ITEM(rw.id).rar:'common';
@@ -67,7 +74,7 @@ if(!shop&&lfs!='all')list=list.filter(x=>lfs=='hw'?x.src=='hw':lfs=='bp'?x.src==
 list.sort((a,b)=>eq(b)-eq(a)||RO[a.rar]-RO[b.rar]);
 if(shop&&on()){const n=document.createElement('button');n.className='cd evcard';n.style.gridColumn='1/-1';n.innerHTML='<span class="ic">🎃</span><b>Halloween skins &amp; gun skins are earned in the Event menu</b><span class="pr">OPEN</span>';n.onclick=()=>{SFX.click();$('#locker').classList.remove('on');openEvent('home')};el.appendChild(n)}
 list.forEach(x=>{const b=document.createElement('button'),r=RAR[x.rar];b.className='cd r-'+x.rar+(!shop&&eq(x)?' sel':'');b.style.setProperty('--r',r[1]);
-b.innerHTML=swHtml(icol(x),x.k=='color'?'':icn(x))+'<b></b><span class="pr"></span>'+(x.rar!='common'||x.k=='gun'?`<small class="rt" style="color:${r[1]}">${r[0]}${x.k=='gun'?' · '+WS[x.w].toUpperCase():''}</small>`:'');
+b.innerHTML=swHtml(icol(x),x.k=='color'?'':icn(x),0,ival(x))+'<b></b><span class="pr"></span>'+(x.rar!='common'||x.k=='gun'?`<small class="rt" style="color:${r[1]}">${r[0]}${x.k=='gun'?' · '+WS[x.w].toUpperCase():''}</small>`:'');
 b.querySelector('b').textContent=x.n;b.querySelector('.pr').textContent=shop?'🪙 '+fmt(x.price):eq(x)?'EQUIPPED':'EQUIP';
 b.onclick=()=>{SFX.click();if(shop){if(CFG.coins<x.price)return toast('Not enough coins');CFG.coins-=x.price;CFG.owned.push(x.v);toast(x.n+' unlocked!')}if(x.k=='gun'&&eq(x)){equip(x);toast(x.n+' removed — stock '+WS[x.w].toLowerCase())}else equip(x);ui();locker(shop);menu()};el.appendChild(b)});
 if(!list.length){const d=document.createElement('p');d.className='sub';d.style.gridColumn='1/-1';d.textContent=shop?'You own every color!':'Nothing here yet — earn skins from the passes and events.';el.appendChild(d)}
@@ -122,7 +129,7 @@ function openBox(useKey){const B=BOX;if(!needOpen())return;if(useKey){if(E.keys<
 let r=Math.random()*100,t=B.tiers[0];for(const x of B.tiers){if(r<x[2]){t=x;break}r-=x[2]}
 const it=ITEM(t[5][Math.random()*t[5].length|0]);let sub=t[1].toUpperCase();
 if(own(it.v)){E.candy+=t[4];sub+=' · DUPLICATE → +'+fmt(t[4])+' 🍬'}else CFG.owned.push(it.v);
-bump('box',1);saveCfg();ui();reveal({ico:icn(it),col:icol(it),name:inm(it),rar:it.rar,kind:'HALLOWEEN BOX',sub});renderEvent()}
+bump('box',1);saveCfg();ui();reveal({ico:icn(it),col:icol(it),v:ival(it),name:inm(it),rar:it.rar,kind:'HALLOWEEN BOX',sub});renderEvent()}
 
 /* ----- goals (lifetime milestones) ----- */
 const gv=s=>s=='tot'?E.tot:s=='dq'?E.dqDone:s=='tier'?E.tier:s=='own'?ITEMS.filter(x=>x.src=='hw'&&own(x.v)).length:(E.st[s]||0);
