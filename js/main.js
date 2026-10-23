@@ -4,7 +4,7 @@ firebase.initializeApp(window.FIREBASE_CONFIG);
 const DATA_VER=2;
 const PROG={skin:0x2f9bff,coins:0,xp:0,owned:[0x2f9bff,0xff4d4d],dly:0,gs:[0,0,0],kb:{}},PK=[...Object.keys(PROG),'ev','bp'],fresh=()=>JSON.parse(JSON.stringify(PROG));
 let saved={};try{saved=JSON.parse(localStorage.cfg||'{}')||{}}catch(e){}
-window.CFG=Object.assign({sens:1,vol:1,music:true,model:true,q:window.TOUCH?4:10,mode:'1v1'},fresh(),saved);
+window.CFG=Object.assign({sens:1,vol:1,music:true,model:true,q:window.TOUCH?4:10,mode:'1v1',fp:false,fpfov:90},fresh(),saved);
 /* graphics: 0 Anti-Lag, 1 Low, 2 Normal, 3 Higher. One-time reset (GQ_VER) puts everyone on Normal; phones/tablets are always Normal */
 const GQ_VER=1;if(CFG.gqv!==GQ_VER||window.TOUCH||CFG.gq==null||!Number.isFinite(+CFG.gq)){CFG.gq=2;CFG.gqv=GQ_VER}CFG.gq=Math.max(0,Math.min(3,Math.round(+CFG.gq)));if(CFG.mode!=='2v2')CFG.mode='1v1';
 if(CFG.ver!==DATA_VER){const kb0=CFG.kb;PK.forEach(k=>delete CFG[k]);Object.assign(CFG,fresh());if(kb0&&typeof kb0=='object')CFG.kb=kb0;CFG.ver=DATA_VER;CFG.own=''} /* a data reset keeps your keybinds */
@@ -37,7 +37,7 @@ if(user&&user.isAnonymous)await user.linkWithCredential(firebase.auth.EmailAuthP
 await auth.currentUser.updateProfile({displayName:n});user=auth.currentUser;await cloudAttach();menu()}else await auth.signInWithEmailAndPassword(e,p)}catch(x){err(x)}};
 $('#back').onclick=()=>{SFX.click();menu()};
 $('#acct').onclick=async()=>{SFX.click();if(user.isAnonymous){$('#err').textContent='';show('auth')}else{presOff&&presOff();await cloudPush();cloud.ready=false;cloud.uid=cloud.p=null;wipe();await auth.signOut()}};
-async function menu(){show('menu');ui();if(!menu.j){menu.j=1;const c=new URLSearchParams(location.search).get('party');if(c){strip();joinParty(c)}}partyRefresh();Game.lobby(true,CFG.skin);EV.welcome();$('#av').style.background=hx(CFG.skin);$('#gbtn').style.display=user.isAnonymous?'block':'none';$('#who').textContent=nm().slice(0,14);$('#acct').textContent=user.isAnonymous?'Email sign in / up':'Sign out';
+async function menu(){show('menu');ui();if(!menu.j){menu.j=1;const c=new URLSearchParams(location.search).get('party');if(c){strip();joinParty(c)}}partyRefresh();Game.lobby(true,CFG.skin);EV.welcome();$('#av').style.background=hx(CFG.skin);bustBg($('#av'),CFG.skin);$('#gbtn').style.display=user.isAnonymous?'block':'none';$('#who').textContent=nm().slice(0,14);$('#acct').textContent=user.isAnonymous?'Email sign in / up':'Sign out';
 let s=(await db.ref('users/'+user.uid).once('value').catch(()=>null))?.val()||{};
 if(s.v!==DATA_VER){s={name:nm(),wins:0,losses:0,v:DATA_VER};db.ref('users/'+user.uid).set(s).catch(()=>{})} /* data reset: win/loss record starts over, the account stays */
 $('#stats').textContent=`Wins ${s.wins||0} · Losses ${s.losses||0}`}
@@ -119,19 +119,22 @@ cloud.ready=true;await cloudPush()})()}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)cloudPush()});addEventListener('pagehide',()=>{cloudPush()});
 // ---- progression, locker, shop, daily
 const need=l=>300+150*(l-1),hx=c=>'#'+(c%16777216).toString(16).padStart(6,'0');
+/* head-and-shoulders portrait as a small avatar background (falls back to the plain colour if the portrait can't render) */
+function bustBg(el,skin){if(!el)return;let u='';try{u=Game.thumb(skin)}catch(e){}el.style.backgroundImage=u?`url(${u})`:'';el.style.backgroundSize='cover';el.style.backgroundPosition='center'}
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.remove('on');void e.offsetWidth;e.classList.add('on')}
 function ui(){let l=1,x=CFG.xp;while(x>=need(l)){x-=need(l);l++}const p=x/need(l)*100+'%';$('#lv').textContent=l;$('#xf').style.width=p;$('#xt').textContent=x+'/'+need(l);$('#cn').textContent=$('#cn2').textContent=CFG.coins;$('#dot').style.display=Date.now()-CFG.dly>864e5?'block':'none';$('#chips').style.display=CFG.hud===false?'none':'flex';EV.ui()}
 function grid(shop){EV.locker(shop)}
 $('#lock').onclick=()=>{SFX.click();grid(0)};$('#shop').onclick=()=>{SFX.click();grid(1)};$('#plus').onclick=()=>$('#shop').click();$('#tL').onclick=()=>{SFX.click();grid(0)};$('#tS').onclick=()=>{SFX.click();grid(1)};
 $('#daily').onclick=()=>{SFX.click();if(Date.now()-CFG.dly<864e5)return toast('Come back later for your next daily reward');CFG.dly=Date.now();CFG.coins+=50;saveCfg();ui();toast('Daily reward: +50 🪙')};
 const sv=()=>{$('#sensv').textContent=CFG.sens.toFixed(1)+'x';$('#volv').textContent=Math.round(CFG.vol*100)+'%'};sv();$('#sens').addEventListener('input',sv);$('#vol').addEventListener('input',sv);
+$('#fpv').checked=!!CFG.fp;$('#fpv').onchange=e=>{CFG.fp=e.target.checked;saveCfg()};const fpfShow=()=>{$('#fpfv').textContent=Math.round(CFG.fpfov||90)+'°'};$('#fpf').value=CFG.fpfov||90;fpfShow();$('#fpf').oninput=e=>{CFG.fpfov=+e.target.value;saveCfg();fpfShow()};
 $('#sfp').checked=CFG.hud!==false;$('#sfp').onchange=e=>{CFG.hud=e.target.checked;saveCfg();ui()};$('#fs2').onclick=()=>$('#fs').click();
 // ---- party (invite a friend for a private 1v1 / to be teammates in 2v2)
 let party=null,pOff=null;
 const strip=()=>{try{const u=new URL(location.href);if(u.searchParams.has('party')){u.searchParams.delete('party');history.replaceState(null,'',u.pathname+(u.search||'')+u.hash)}}catch(e){}}; /* invite link is one-shot: a reload must not re-join */
 function pui(){const m=party?party.m:{},ids=Object.keys(m).sort((a,b)=>(a==party.lead?-1:0)-(b==party.lead?-1:0)||(a<b?-1:1));$('#pnone').style.display=party?'none':'block';$('#pin').style.display=party?'block':'none';$('#pc').textContent=party?party.code:'';
 $('#pin .sub').textContent=party&&party.lead!=user.uid?'Waiting for the party leader to press PLAY.':'The party leader presses PLAY to start the match.';
-[['#ps1',ids[0]],['#ps2',ids[1]]].forEach(([s,id])=>{const el=$(s);el.innerHTML='<i></i><b></b><small></small>';const i=el.querySelector('i');if(id){i.style.background=hx(m[id].skin);el.querySelector('b').textContent=m[id].name;el.querySelector('small').textContent=id==party.lead?'LEADER':'MEMBER'}else{i.className='em';i.textContent='+';el.querySelector('b').textContent='Waiting…'}});
+[['#ps1',ids[0]],['#ps2',ids[1]]].forEach(([s,id])=>{const el=$(s);el.innerHTML='<i></i><b></b><small></small>';const i=el.querySelector('i');if(id){i.style.background=hx(m[id].skin);bustBg(i,m[id].skin);el.querySelector('b').textContent=m[id].name;el.querySelector('small').textContent=id==party.lead?'LEADER':'MEMBER'}else{i.className='em';i.textContent='+';el.querySelector('b').textContent='Waiting…'}});
 const o=ids.find(i=>i!=user.uid),f=$('#friend');f.classList.toggle('has',!!o);f.textContent=o?m[o].name.slice(0,2).toUpperCase():'+';f.style.background=o?hx(m[o].skin):'';f.title=o?m[o].name+' is in your party':'Invite to party';Game.partner(o?{name:m[o].name,skin:m[o].skin}:null)}
 function dropParty(){const p=pOff;pOff=null;party=null;p&&p();pui()}
 function attach(code,lead){const r=db.ref('parties/'+code),inv=db.ref('invites/'+user.uid),me=r.child('m/'+user.uid);let n=0;
