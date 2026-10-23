@@ -52,17 +52,11 @@ const WEAPONS=[
  parts:[['b',.045,.045,.95,0,0,.3,'#8a5a30'],['b',.05,.5,.08,0,0,.78,'#c0c8dc'],['b',.06,.1,.12,0,0,.78,'#6b7390']],mz:0}
 ];
 const PICK=2;
-function buildGun(w,sk){const g=new T.Group(),em=sk&&sk.e?new T.Color(sk.e):null,gl=sk&&sk.g?new Set(sk.g):null;
-const mk=(p,i,ci)=>{const o={color:sk&&sk.c[i]?sk.c[i]:p[ci],roughness:sk?.35:.5,metalness:sk?.45:.3};if(em&&(!gl||gl.has(i))){o.emissive=em;o.emissiveIntensity=sk.ei}return new T.MeshStandardMaterial(o)};
-w.parts.forEach((p,i)=>{let m;if(p[0]=='b'){m=new T.Mesh(new T.BoxGeometry(p[1],p[2],p[3]),mk(p,i,7));m.position.set(p[4],p[5],p[6])}
-else{m=new T.Mesh(new T.CylinderGeometry(p[1],p[1],p[2],8),mk(p,i,6));m.rotation.x=Math.PI/2;m.position.set(p[3],p[4],p[5])}
-m.castShadow=true;g.add(m)});
+function buildGun(w,sk){const g=WPN.build(T,w.id,sk);
 const mz=new T.Object3D();mz.position.set(0,.045,w.mz);g.add(mz);g.userData.mz=mz;if(!w.melee){const f=flashObj();mz.add(f);g.userData.fl=f}return g}
 const flashMat=()=>new T.MeshBasicMaterial({color:0xffc864,transparent:true,opacity:.95,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide,fog:false});
 function flashObj(){const f=new T.Group(),m=flashMat(),a=new T.Mesh(PLG,m),b=new T.Mesh(PLG,m);a.rotation.y=Math.PI/2;a.scale.set(.55,.3,1);a.position.z=.22;b.rotation.x=Math.PI/2;b.scale.set(.3,.55,1);b.position.z=.22;f.add(a,b);f.visible=false;return f}
-function gunIcon(w,cols,sz){const x=w.parts.map((p,i)=>p[0]=='b'?[p[6],p[5],p[3],p[2],cols&&cols[i]||p[7]]:[p[5],p[4],p[2],p[1]*2,cols&&cols[i]||p[6]]);
-const sx=z=>(z+.4)*100,sy=y=>(.3-y)*100,lt=c=>c=='#111'||c=='#0c0c18'?'#cfd6ee':c=='#2b2f3a'||c=='#1d2029'?'#e9ecff':c;
-return `<svg viewBox="0 0 150 62" width="${sz?sz*2.4:68}" height="${sz||28}">`+x.map(r=>`<rect x="${sx(r[0]-r[2]/2)}" y="${sy(r[1]+r[3]/2)}" width="${r[2]*100}" height="${r[3]*100}" fill="${cols?r[4]:lt(r[4])}" opacity=".95"/>`).join('')+'</svg>'}
+function gunIcon(w,cols,sz,sk){return WPN.icon(w.id,cols,sz,sk)}
 /* ---- input: every key / mouse button maps to an action through js/controls.js (rebindable) ---- */
 const TCH=()=>!!window.TOUCH,paused=()=>$('#pause').classList.contains('on');
 /* desktop: mouse must be captured (pointer lock). touch: always "captured" unless the pause menu is open */
@@ -257,11 +251,12 @@ st.fk+=((o.fire||0)-st.fk)*(1-Math.exp(-dt*((o.fire||0)>st.fk?45:14)));st.ikw+=(
 const lt=o.land||0;st.ld+=(lt-st.ld)*(1-Math.exp(-dt*(lt>st.ld?30:8)));
 st.ads+=((o.ads||0)-st.ads)*(1-Math.exp(-dt*13));st.spr+=((o.spr||0)-st.spr)*(1-Math.exp(-dt*9));
 const rp=o.rl==null?-1:o.rl,re=rp<0?0:Math.min(1,rp/.12)*Math.min(1,(1-rp)/.12);st.rle+=(re-st.rle)*(1-Math.exp(-dt*(re>st.rle?18:10)));
+{const gu=guns[o.gun==null?1:o.gun],pg=gu&&gu.userData.pump;if(pg)pg.position.z=-(o.pump||0)*.17}
 poseT(Object.assign({},o,{air:o.idle?0:st.air,u:st.u,land:st.ld,ads:st.ads,spr:st.spr,rle:st.rle,rlp:rp,fire:st.fk,dw:o.draw==null?0:1-ease(Math.max(0,Math.min(1,o.draw)))}));
 const a=st.init?1-Math.exp(-dt*((o.swing||-1)>=0||(o.fire||0)>.04?40:24)):1;
 ALL.forEach((r,i)=>{if(st.init)sq[i].slerp(r.b.quaternion,a);else sq[i].copy(r.b.quaternion);r.b.quaternion.copy(sq[i])});
 const hb=BN.Hips_01.b;st.hy=st.init?st.hy+(hb.position.y-st.hy)*a:hb.position.y;hb.position.y=st.hy;st.init=1;if(IKL&&st.ikw>.002)ikRun(st.ikw,IKL)}
-function flashUpd(dt){const cur=gi>=0?guns[gi]:null,f=cur&&cur.userData.fl;guns.forEach(x=>{const y=x.userData.fl;if(y&&y!==f)y.visible=false});if(!f)return;if(flT>0){flT-=dt;f.visible=true;f.rotation.z=Math.random()*6.283;const s=.75+Math.random()*.5;f.scale.set(s,s,s)}else f.visible=false}
+function flashUpd(dt){const cur=gi>=0?guns[gi]:null,f=cur&&cur.userData.fl;if(cur&&cur.userData.glow){const tt=performance.now()/1000;cur.userData.glow.forEach(q=>{q.m.emissiveIntensity=q.b*(1-q.a+q.a*(.5+.5*Math.sin(tt*q.s+q.p)))})}guns.forEach(x=>{const y=x.userData.fl;if(y&&y!==f)y.visible=false});if(!f)return;if(flT>0){flT-=dt;f.visible=true;f.rotation.z=Math.random()*6.283;const s=.75+Math.random()*.5;f.scale.set(s,s,s)}else f.visible=false}
 return{g,mat,pose,setGun,flash(){if(FLASH)flT=.055},
 kick(){ac.reset();ac.paused=false;ac.play();kT=G.clip.duration},kicking:()=>kT>0,
 update(dt,o){cT+=dt;flashUpd(dt);cs&&cs.upd&&cs.upd(cT,dt,o||{});if(kT>0){kT-=dt;mx.update(dt);st.init=0;if(kT<=0){ac.stop()}return}pose(o,dt)},
@@ -676,7 +671,7 @@ ros.forEach(p=>{if(p.u===uid)return;const mate=p.t===myT,col=mate?0x38f5c8:0xff4
 const r=char(sk);Object.assign(r,{u:p.u,name:p.n,team:p.t,mate,c:p.c,tg:new T.Vector3(),opv:new T.Vector3(),wi:1,hp:100,dead:0,odk:0,dc:0,seen:p.u==='BOT'?1:0,bot:p.u==='BOT'?1:0,left:0,t:0,fk:0,rc:0,wp:0,lt:0,pa:false,ads:0,pt:0,r:yawAt(p.c)});r.setGun(1);r.g.rotation.y=r.r;r.g.position.set(p.c[0],0,p.c[1]);r.tg.copy(r.g.position);r.opv.copy(r.g.position);
 r.g.add(tag(p.n,MODE2?(mate?'#7dffb0':'#ff9a9a'):'#fff'));sc.add(r.g);
 r.bar=document.createElement('div');r.bar.className='eb2'+(mate?' mate':'');r.bar.innerHTML='<u></u>';$('#hud').appendChild(r.bar);RP.push(r)});
-{const wb=$('#wbar');WEAPONS.forEach((w,i)=>{const sv=wb&&wb.children[i]&&wb.children[i].querySelector('svg'),sk=GUN.get(i,GUN.pick(mc,i));if(sv)sv.outerHTML=gunIcon(w,sk&&sk.c)})}me.setGun(1);buildT=null;mat=[500,300,200];msel=0;EDIT=null;visY=0;sc.add(me.g);
+{const wb=$('#wbar');WEAPONS.forEach((w,i)=>{const sv=wb&&wb.children[i]&&wb.children[i].querySelector('svg'),sk=GUN.get(i,GUN.pick(mc,i));if(sv)sv.outerHTML=gunIcon(w,sk&&sk.c,0,sk)})}me.setGun(1);buildT=null;mat=[500,300,200];msel=0;EDIT=null;visY=0;sc.add(me.g);
 Object.assign(S,{w:1,eq:0,nextShot:0,lat:0,rl:0,deaths:0,swingT:0,hadLock:0,killer:null,pumpT:0,rlT0:0});$('#pause').classList.remove('on');$('#pconf').style.display='none';rd=0;ads=0;fireK=0;phase='live';cdN=-1;clearTimeout(pt);
 const base='matches/'+mid;pRef=db.ref(base+'/p/'+uid);shRef=db.ref(base+'/shots');pRef.onDisconnect().remove();RP.forEach(r=>{r.ref=db.ref(base+'/p/'+r.u);oRefs.push(r.ref)});
 {const mt=+String(mid).split('_').pop();firstTg=!BOTM&&Number.isFinite(mt)&&Math.abs(clk()-mt)<60000?mt+6000:0}newRound();
@@ -729,4 +724,4 @@ move(x,y){K.ax=x;K.ay=y;K.sprint=(x*x+y*y>.9&&y>.25)?1:0},
 look(dx,dy){if(!run||paused())return;const k=.0042*(window.CFG?CFG.sens:1)*(cam.fov/75);yaw-=dx*k;pitch=Math.max(-PMAX,Math.min(PMAX,pitch-dy*k))},
 tapAim(){if(!run||!hold())return;if(EDIT||buildT){down('aim',false);up('aim')}else K.aim=K.aim?0:1},
 pause(){if(!run||phase=='ended')return;for(const k in K)K[k]=0;$('#pause').classList.add('on');$('#pconf').style.display='none';$('#pbtns').style.display='block'}};
-return{input,start,lobby,leave,resume,quality,qinfo,thumb,thumbCached:v=>THC.get(+v||0),gunIcon:(wi,cols,sz)=>gunIcon(WEAPONS[wi],cols,sz),partner(i){PI=i;lobbyPartner()},kick(){LC&&LC.kick&&LC.kick()}}})();
+return{input,start,lobby,leave,resume,quality,qinfo,thumb,thumbCached:v=>THC.get(+v||0),gunIcon:(wi,cols,sz,sk)=>gunIcon(WEAPONS[wi],cols,sz,sk),partner(i){PI=i;lobbyPartner()},kick(){LC&&LC.kick&&LC.kick()}}})();

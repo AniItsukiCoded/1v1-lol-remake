@@ -26,7 +26,7 @@ return`<div class="pv${big?' big':''}${gun?' gun':''}" style="${st}"><span class
 let thBusy=0;function thFill(){if(thBusy)return;thBusy=1;const go=()=>{const im=document.querySelector('img[data-sv]:not([data-done])');if(!im){thBusy=0;return}const v=im.dataset.sv,u=Game.thumb(v);
 document.querySelectorAll('img[data-sv="'+v+'"]:not([data-done])').forEach(x=>{if(u){x.src=u;x.dataset.done=1}else{const e=document.createElement('span');e.className='pe';e.textContent=x.dataset.ico||'';x.parentNode.classList.remove('ch');x.replaceWith(e)}});setTimeout(go,16)};setTimeout(go,0)}
 new MutationObserver(()=>{if(document.querySelector('img[data-sv]:not([data-done])'))thFill()}).observe(document.body,{childList:true,subtree:true});
-const WS=['Shotgun','Rifle','Pickaxe'],icn=it=>it.k=='gun'?Game.gunIcon(it.w,it.g.c):it.ico,icol=it=>it.k=='gun'?it.col:it.v%16777216,ival=it=>it.k=='gun'?null:it.v,swI=(it,big)=>swHtml(icol(it),icn(it),big,ival(it)),inm=it=>it.k=='gun'?it.n+' '+WS[it.w]:it.n,
+const WS=['Shotgun','Rifle','Pickaxe'],icn=it=>it.k=='gun'?Game.gunIcon(it.w,it.g.c,0,it.g):it.ico,icol=it=>it.k=='gun'?it.col:it.v%16777216,ival=it=>it.k=='gun'?null:it.v,swI=(it,big)=>swHtml(icol(it),icn(it),big,ival(it)),inm=it=>it.k=='gun'?it.n+' '+WS[it.w]:it.n,
  kindOf=it=>it.k=='gun'?'NEW GUN SKIN':it.k=='skin'?'NEW SKIN':'NEW COLOR',eq=it=>it.k=='gun'?CFG.gs[it.w]==it.gn:CFG.skin==it.v;
 function equip(it){if(it.k=='gun')CFG.gs[it.w]=CFG.gs[it.w]==it.gn?0:it.gn;else CFG.skin=it.v;saveCfg()}
 const dur=m=>{m=Math.max(0,m);const d=Math.floor(m/864e5),h=Math.floor(m%864e5/36e5);return d?d+'d '+h+'h':h+'h '+Math.floor(m%36e5/6e4)+'m'},left=()=>dur(EVT.left()),closeLeft=()=>dur(EVT.end+7*864e5-Date.now()),open=()=>EVT.open();
