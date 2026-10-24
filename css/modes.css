@@ -26,3 +26,10 @@ body.pad #padhint{display:block}body.pad #hud.on~#padhint{display:none}
 #padmap{display:grid;grid-template-columns:1fr;gap:4px;margin:8px 0 14px;font-size:12px}#padmap .pm{display:flex;justify-content:space-between;gap:10px;background:#0004;padding:5px 10px;border-radius:8px}#padmap b{color:#ffd23f;text-align:right}
 body.pad:not(.touch) .tzone,body.pad:not(.touch) .tb{display:none!important}
 @media(max-width:700px){#padhint{font-size:10px;white-space:normal;width:92vw;text-align:center}}
+
+/* joined late: spectating until the next round */
+#latebn{display:none;position:absolute;left:50%;top:78px;transform:translateX(-50%);z-index:5;pointer-events:none;text-align:center;max-width:min(92vw,560px);padding:10px 22px 11px;border-radius:16px;background:linear-gradient(135deg,#2a0d4acc,#12306acc);border:1px solid #ffd23f99;box-shadow:0 8px 30px #0008;animation:lbpulse 2.4s ease-in-out infinite}
+#latebn b{display:block;font-size:16px;letter-spacing:2px;color:#ffd23f;text-shadow:0 2px 8px #000}
+#latebn span{display:block;margin-top:4px;font-size:13px;font-weight:800;color:#fff;opacity:.92}
+@keyframes lbpulse{50%{border-color:#ffd23fff;box-shadow:0 8px 34px #ffd23f33}}
+body.lite #latebn{animation:none}

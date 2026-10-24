@@ -490,3 +490,6 @@ body.lite #score{box-shadow:none}
   .htiles{gap:8px;margin-top:8px}.ht{aspect-ratio:auto;height:64px;border-radius:14px}.hti{font-size:26px}.ht em{font-size:11px}
   .qr{padding:8px}.sec{font-size:18px}
 }
+
+/* in-match HUD: a backdrop blur over the live 3D canvas is re-computed every single frame (weapon bar, build bar): the panels are already mostly opaque, so drop it */
+#hud .ws,#hud #wbar .ws,#hud .tb,#hud #resume{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}

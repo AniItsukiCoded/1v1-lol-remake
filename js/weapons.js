@@ -206,11 +206,16 @@ const MC=new Map();
 function material(T,r){const key=[r.col,r.rough.toFixed(2),r.metal.toFixed(2),r.em?r.em[0]+r.em[1].toFixed(2):''].join('|');let m=MC.get(key);
  if(!m){const o={color:new T.Color(r.col),roughness:r.rough,metalness:r.metal};if(r.em){o.emissive=new T.Color(r.em[0]);o.emissiveIntensity=r.em[1]}m=new T.MeshStandardMaterial(o);MC.set(key,m)}return m}
 /* id: 'shotgun' | 'ar' | 'pickaxe'; sk: a js/gunskins.js entry or null.  userData.pump = group that slides on a pump; userData.glow = pulsing emissive materials */
-function build(T,id,sk){const g=new T.Group(),bins=new Map(),groups={},glow=[],res=resolve(id,sk),amp=sk?{mythic:.3,legendary:.22,epic:.16}[sk.rar]||.1:0;
+/* the tessellated geometry of a gun only depends on the weapon + skin, so it is built ONCE and shared by every copy (every player in every match used to re-tessellate 3 guns, which was a big part of the match-load freeze) */
+const BC=new Map();
+function binsOf(T,id,sk){const key=id+'|'+(sk?JSON.stringify([sk.c,sk.e,sk.ei,sk.g,sk.rar,sk.v,sk.d]):''),hit=BC.get(key);if(hit)return hit;
+ const bins=new Map(),res=resolve(id,sk);
  res.forEach(r=>{const k=(r.p.g||'')+'#'+r.col+r.rough+r.metal+(r.em?r.em[0]+r.em[1]:'');let b=bins.get(k);if(!b){b={g:r.p.g||'',r,P:[],N:[]};bins.set(k,b)}
   const t=tess(r.p);for(let i=0;i<t.P.length;i++){b.P.push(t.P[i]);b.N.push(t.N[i])}});
- bins.forEach(b=>{const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(b.P,3));geo.setAttribute('normal',new T.Float32BufferAttribute(b.N,3));
-  const m=material(T,b.r),mesh=new T.Mesh(geo,m);mesh.castShadow=true;
+ const out=[];bins.forEach(b=>{const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(b.P,3));geo.setAttribute('normal',new T.Float32BufferAttribute(b.N,3));geo.userData.keep=1;out.push({g:b.g,r:b.r,geo})});
+ BC.set(key,out);return out}
+function build(T,id,sk){const g=new T.Group(),groups={},glow=[],amp=sk?{mythic:.3,legendary:.22,epic:.16}[sk.rar]||.1:0;
+ binsOf(T,id,sk).forEach(b=>{const m=material(T,b.r),mesh=new T.Mesh(b.geo,m);mesh.castShadow=true;
   if(b.r.em&&!glow.some(q=>q.m===m))glow.push({m,b:b.r.em[1],a:amp,s:2.2+glow.length*.37,p:glow.length*1.3});
   let tgt=g;if(b.g){if(!groups[b.g]){groups[b.g]=new T.Group();g.add(groups[b.g]);g.userData[b.g]=groups[b.g]}tgt=groups[b.g]}tgt.add(mesh)});
  g.userData.glow=glow;return g}
