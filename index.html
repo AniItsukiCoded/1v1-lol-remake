@@ -34,8 +34,16 @@
 <p class="qn" style="margin-top:14px;opacity:.6">Character model: “1v1.lol Drop Kick” by youtube Argue (CC-BY-4.0)</p>
 <div class="row"><span>Music</span><label class="tg"><input id="mus" type="checkbox"><i></i></label></div>
 <div class="row"><span>🎃 Spooky arena effects</span><button id="hwfx" class="mini">FULL</button></div>
+<h3>FIRST PERSON <small style="opacity:.6;letter-spacing:1px">(saved in this browser)</small></h3>
 <div class="row"><span>First-person view <small style="opacity:.6">(third person by default · key B in a match)</small></span><label class="tg"><input id="fpv" type="checkbox"><i></i></label></div>
-<div class="srow"><span>First-person FOV</span><output id="fpfv"></output><input id="fpf" type="range" min="70" max="110" step="1"></div>
+<div class="srow"><span>Field of view</span><output id="fpfv"></output><input id="fpf" type="range" min="60" max="120" step="1"></div>
+<div class="srow"><span>Weapon sway <small style="opacity:.6">(gun lags behind when you turn)</small></span><output id="fpswv"></output><input id="fpsw" type="range" min="0" max="150" step="5"></div>
+<div class="srow"><span>Camera bob <small style="opacity:.6">(walking, strafing, landing)</small></span><output id="fpbov"></output><input id="fpbo" type="range" min="0" max="150" step="5"></div>
+<div class="row"><span>Show arms</span><label class="tg"><input id="fpar" type="checkbox"><i></i></label></div>
+<div class="srow"><span>Gun position: left / right</span><output id="fpgxv"></output><input id="fpgx" type="range" min="-10" max="10" step="1"></div>
+<div class="srow"><span>Gun position: down / up</span><output id="fpgyv"></output><input id="fpgy" type="range" min="-10" max="10" step="1"></div>
+<div class="srow"><span>Gun position: close / far</span><output id="fpgzv"></output><input id="fpgz" type="range" min="-10" max="10" step="1"></div>
+<div class="row"><span></span><button id="fpreset" class="mini alt">RESET FIRST PERSON</button></div>
 <div class="row"><span>Show FPS &amp; ping</span><label class="tg"><input id="sfp" type="checkbox"><i></i></label></div>
 <div class="row"><span>Fullscreen</span><button id="fs2" class="mini">TOGGLE</button></div>
 <h3>CROSSHAIR <small style="opacity:.6;letter-spacing:1px">(saved in this browser)</small></h3>
@@ -56,7 +64,7 @@
 <div id="kbl"></div><div class="row"><span></span><button id="kbreset" class="mini alt">RESET CONTROLS</button></div></div>
 <button class="btn close">DONE</button></div></div></div>
 <div id="queue" class="screen"><div class="card"><div class="spin"></div><h2 id="qtxt">Searching for opponent…</h2><button id="qbot" class="btn" style="display:none">PLAY VS BOT NOW</button><button id="cancel" class="btn alt">Cancel</button></div></div>
-<div id="hud"><div id="score"><b id="s1">0</b><i id="you">YOU</i><em>—</em><i id="on">ENEMY</i><b id="s2">0</b></div><div id="rnd">ROUND 1</div>
+<div id="hud"><div id="cut"></div><div id="score"><b id="s1">0</b><i id="you">YOU</i><em>—</em><i id="on">ENEMY</i><b id="s2">0</b></div><div id="rnd">ROUND 1</div>
 <div id="wbar"></div><div id="bq"></div><div id="cd"></div><div id="scope"></div>
 <div id="candy" style="display:none">🍬 <b id="cdm">0</b></div><div id="cross" class="xh"></div><div id="hit">✕</div><div id="eb"><u></u></div><div id="feed"></div><div id="vig"></div>
 <div id="mate"><span id="matet"></span><div class="bar"><u id="mateh"></u></div></div><div id="bot"><div class="hpw"><div class="bar"><u id="hp"></u></div><span id="hpt">100</span></div><div id="ammo"><b id="am">12</b><small id="amr">/48</small><em id="wnm">PISTOL</em></div></div>
