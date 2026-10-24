@@ -310,3 +310,148 @@ kbd{border-radius:7px;background:linear-gradient(180deg,#fff,#d9d4ff);box-shadow
 /* ---- fix: the tab bars (.tb inside modal headers) shared a class name with the touch buttons and were hidden ---- */
 .ph .tb,.evh .tb,body.touch .ph .tb,body.touch .evh .tb{display:flex;position:static;place-items:stretch;flex:1;gap:6px;border-radius:0;background:none;border:0;box-shadow:none;backdrop-filter:none;pointer-events:auto;touch-action:manipulation;--u:auto;width:auto;height:auto;font-family:inherit}
 .evh .tb,body.touch .evh .tb{min-width:200px}
+
+/* =====================================================================
+   MOBILE PERFORMANCE
+   Blur filters, big soft shadows and endless animations are the usual
+   cause of lag on phones (especially on top of the WebGL canvas), so
+   touch devices get a flat, cheap version of the same look.
+   ===================================================================== */
+body.touch *,body.touch *::before,body.touch *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.touch .modal,body.touch #pause{background:#0a0526eb}
+body.touch #queue{background:#10082bf2}
+body.touch #end{background:#10082bf2}
+body.touch .card,body.touch .panel,body.touch .rv{box-shadow:0 10px 24px #000a,inset 0 1px 0 #ffffff33}
+body.touch .screen::before,body.touch #menu.on::before{animation:none}
+body.touch #menu.on::before{background:linear-gradient(180deg,#10082b88,transparent 20%,transparent 75%,#10082bbb)}
+body.touch #play,body.touch #play::after,body.touch #lob s,body.touch #evban,body.touch .pkh,body.touch .qb.rd,body.touch .rw.ready,body.touch .tbox.rdy,body.touch #rot b{animation:none!important}
+body.touch #play{box-shadow:0 6px 0 #a85d00}
+body.touch #lside .sq,body.touch #modebox,body.touch #lpass,body.touch #prof,body.touch .sm,body.touch #coins{box-shadow:0 3px 0 #0d0630}
+body.touch #lside .sq .ic,body.touch .pv.ch img,body.touch .hti,body.touch .pkh{filter:none!important}
+body.touch #hud .tb{box-shadow:0 3px 0 #0007}
+body.touch #score,body.touch #rnd,body.touch .ws,body.touch .bs,body.touch #mate{box-shadow:none}
+body.touch #msg,body.touch #cd{text-shadow:0 3px 0 #0008;-webkit-text-stroke:1.5px #10082b}
+body.touch .bar{box-shadow:none}
+body.touch .btn{box-shadow:0 4px 0 #a85d00}body.touch .btn.alt{box-shadow:0 4px 0 #261a68}
+body.touch .btn::after{display:none}
+body.touch *{transition-duration:.1s!important}
+/* scrolling lists: keep each scroller on its own layer, and stop scroll chaining into the game */
+body.touch .panel,body.touch #evc,body.touch .ptrack{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+body.touch #evc,body.touch #sw,body.touch .ptrack{contain:content}
+
+/* =====================================================================
+   HALLOWEEN EVENT HUB (revamp)
+   ===================================================================== */
+.panel.mm{
+  --hw-night:#150826;--hw-night2:#2a0f45;--hw-pump:#ff7a12;--hw-gold:#ffd23f;--hw-slime:#a6ff3d;--hw-grape:#b44bff;
+  width:min(1000px,97vw);border:3px solid #ff7a1299;border-radius:26px;color:#fff;overflow:hidden;
+  background:
+    radial-gradient(120% 60% at 50% -10%,#ff7a1233,transparent 60%),
+    linear-gradient(180deg,var(--hw-night2),var(--hw-night));
+  box-shadow:0 0 0 1px #000,0 28px 70px #000c,0 0 70px #ff7a1226,inset 0 1px 0 #ffffff33}
+.mm .mh{padding:12px 14px 10px;background:linear-gradient(180deg,#8a2a0a,#4a1038);border-bottom:3px solid #1a0510;box-shadow:inset 0 1px 0 #ffffff40}
+.mm .mh h2{font-family:var(--font-d);font-weight:400;font-size:30px;letter-spacing:.08em;
+  color:var(--hw-gold);-webkit-text-stroke:1px #2a0d00;paint-order:stroke fill;text-shadow:0 4px 0 #1a0510,0 0 24px #ff7a1288}
+.mb{width:48px;height:40px;border-radius:12px;background:linear-gradient(180deg,#7a3aa0,#4a1a70);box-shadow:0 4px 0 #1a0510;font-size:28px;transition:.12s}
+.mb:active{transform:translateY(3px);box-shadow:0 1px 0 #1a0510}
+.mcn{background:#150826dd;border:2px solid #ffd23f55;border-radius:24px;padding:3px 12px 3px 4px;font-family:var(--font-d);font-weight:400;font-size:20px;color:var(--hw-gold)}
+.mcn button{background:linear-gradient(180deg,#ffa040,var(--hw-pump));color:#2a0d00;box-shadow:0 2px 0 #a33f00}
+#evc{padding:16px 18px 22px}
+.sec{font-family:var(--font-d);font-weight:400;font-size:24px;letter-spacing:.06em;color:var(--hw-gold);text-shadow:0 3px 0 #0008;margin:6px 0}
+.sec small{font-family:var(--font-b);font-weight:800;font-size:12px;color:#fff;opacity:.6;letter-spacing:.04em}
+
+/* hero scene */
+.hhome{height:340px;border-radius:20px;border:2px solid #ff7a1255;overflow:hidden;
+  background:linear-gradient(180deg,#1b0836,#3a1050 55%,#6a1f3a 100%);box-shadow:inset 0 0 60px #0008}
+.hbg{opacity:1;background:
+  radial-gradient(circle at 82% 26%,#fff6c8 0 38px,#ffe27a55 39px 62px,transparent 64px),
+  radial-gradient(2px 2px at 12% 18%,#fff9,transparent),radial-gradient(2px 2px at 30% 40%,#fff8,transparent),
+  radial-gradient(2px 2px at 48% 14%,#fff9,transparent),radial-gradient(2px 2px at 64% 34%,#fff7,transparent),
+  radial-gradient(2px 2px at 92% 56%,#fff8,transparent),radial-gradient(2px 2px at 20% 62%,#fff6,transparent),
+  linear-gradient(0deg,#0d0418 0 14%,transparent 40%)}
+.hbg::after{content:"🏚️";right:4%;bottom:-2%;font-size:210px;opacity:.9;filter:brightness(0) drop-shadow(0 0 18px #ff7a1244)}
+.hbg::before{content:"🦇  🦇\A   🦇";white-space:pre;position:absolute;right:20%;top:14%;font-size:24px;opacity:.75;filter:brightness(0) invert(.1);letter-spacing:6px;line-height:1.6}
+.hfig{left:9%}
+.bub{background:#fff6dc;color:#2a0d00;border:3px solid var(--hw-pump);border-radius:16px;font-family:var(--font-d);font-weight:400;font-size:19px;letter-spacing:.04em;box-shadow:0 5px 0 #7a2a00}
+.bub::after{border-top-color:var(--hw-pump)}
+.pkh{filter:drop-shadow(0 0 22px #ff7a12aa)}
+.bdy{border-radius:14px 14px 6px 6px;background:linear-gradient(180deg,#b44bff,#6a1fb0);box-shadow:0 0 0 3px #1a0510}
+.hinfo{right:5%;top:auto;bottom:22px;background:#150826cc;border:2px solid #ff7a1266;border-radius:16px;padding:10px 16px;text-align:right}
+.hinfo b{font-family:var(--font-d);font-weight:400;font-size:34px;color:var(--hw-gold)}
+.hinfo small{font-weight:800}
+
+/* hub tiles */
+.htiles{gap:12px;margin-top:14px}
+.ht{border:2px solid #ffffff44;border-radius:20px;aspect-ratio:1/.9;
+  background:linear-gradient(180deg,#ffffff2e,transparent 50%),linear-gradient(180deg,#a03bff,#ff7a12);
+  box-shadow:0 6px 0 #4a1038,0 12px 20px #0006;font-family:var(--font-d)}
+.ht em{font-family:var(--font-d);font-size:14px;letter-spacing:.06em}
+.hti{font-size:42px}
+@media(hover:hover){.ht:hover{transform:translateY(-4px);filter:brightness(1.1)}}
+.ht:active{transform:translateY(4px);box-shadow:0 2px 0 #4a1038}
+.ht s,.cd s{background:var(--coral);border:2px solid #fff}
+
+/* quests */
+.qh{background:linear-gradient(90deg,#8a2a0a66,transparent);border-left:5px solid var(--hw-pump);border-radius:6px 14px 14px 6px;padding:6px 14px;margin-top:14px}
+.qh span{font-weight:800;font-size:14px;opacity:.8}
+.qr{background:#ffffff0a;border:1px solid #ffffff14;border-radius:18px;padding:12px;margin-top:8px}
+.ql{background:linear-gradient(180deg,#4a1a70,#2a0f45);border:2px solid #ffffff22;border-radius:14px;font-weight:800}
+.qb{border:2px solid #ffffff22;border-radius:16px;background:linear-gradient(180deg,#3d1a60,#240d3d);overflow:hidden;transition:transform .12s}
+.qb>span{background:#150826cc;font-family:var(--font-d);font-weight:400;letter-spacing:.05em;padding:6px}
+.qb.rd{box-shadow:0 0 0 3px var(--hw-slime),0 0 18px #a6ff3d88}.qb.rd>span{background:var(--hw-slime);color:#122a00}
+.qp::before{background:#150826;border:2px solid #ffffff1f;height:16px;border-radius:9px}
+.qf{background:linear-gradient(90deg,var(--hw-pump),var(--hw-gold));height:16px;border-radius:9px;top:10px}
+.qv{background:linear-gradient(180deg,#ffe27a,var(--hw-pump));color:#2a0d00;text-shadow:none;font-family:var(--font-d);font-weight:400;border:2px solid #fff}
+.qp i{background:#150826;border:3px solid #ff7a1288}
+.qp b{font-family:var(--font-d);font-weight:400;color:var(--hw-gold)}
+
+/* mystery box, goals, ranks, final-view */
+.mt{border:3px solid #150826;border-radius:16px;overflow:hidden;background:#240d3d}
+.mth{background:#150826;font-family:var(--font-d);font-weight:400}
+.mta{background:#3a1a5a}.mt.on .mta{background:linear-gradient(180deg,#ff9a3a,#a8350f)}
+.mt.nx{border-color:var(--cyan)}.mtn{background:#1a0a30}
+.mt small{background:#150826;color:var(--hw-grape)}
+.mt.fin .mth.view{background:linear-gradient(180deg,#c040f0,#7a1fb0)}
+.buybar{margin-top:14px}
+.bb{border:2px solid #ffffff33;border-radius:12px;background:linear-gradient(180deg,#6a4a90,#40285f);box-shadow:0 4px 0 #1a0a30;font-family:var(--font-d);font-weight:400}
+.bb.buy{background:linear-gradient(180deg,#ffa040,var(--hw-pump));color:#2a0d00;box-shadow:0 4px 0 #a33f00}
+.bbm{background:#150826cc;border-radius:12px}
+.fvb,.bxc,.bxi,.bxart,.rwr{background:#1a0a30;border:2px solid #ffffff1c;border-radius:16px}
+.bxn{background:linear-gradient(180deg,#5a2a7a,#3a1a5a);border-radius:12px;font-family:var(--font-d);font-weight:400}
+.bxc h4{background:#3a1a5a}
+.bxs{background:#150826cc;border-radius:14px;font-family:var(--font-d);font-weight:400}
+.bxs button{background:linear-gradient(180deg,#ffa040,var(--hw-pump));color:#2a0d00;border-radius:10px;box-shadow:0 3px 0 #a33f00;font-family:var(--font-d);font-weight:400}
+.fvp{background:linear-gradient(180deg,#8a2a9a,#4a1a70);border-radius:16px;font-family:var(--font-d);font-weight:400}
+.rkt button{border-radius:12px;background:#150826cc;font-family:var(--font-d);font-weight:400;letter-spacing:.04em}
+.rkt button.on{background:linear-gradient(180deg,#ffa040,var(--hw-pump));color:#2a0d00;box-shadow:0 3px 0 #a33f00}
+.rk{background:#ffffff0d;border-radius:14px;border:1px solid #ffffff14}
+.rk.me{outline:2px solid var(--hw-slime)}
+.rk.r1{background:linear-gradient(90deg,#e0a800,#8a5a00);box-shadow:0 0 18px #ffd23f44}
+.rk.r2{background:linear-gradient(90deg,#9a9aa8,#585866)}.rk.r3{background:linear-gradient(90deg,#b4683c,#6a3a20)}
+.rka{border-radius:12px}
+.gr{background:#ffffff0d;border:1px solid #ffffff14;border-radius:16px}
+.gp{background:#150826;border:2px solid #ffffff1f;border-radius:10px}.gp div{background:linear-gradient(90deg,var(--hw-pump),var(--hw-gold))}
+.exch{text-align:center}.exa{font-size:54px;display:flex;justify-content:center;gap:14px;align-items:center}.exa i{font-style:normal;color:var(--hw-gold)}
+.exr{background:#150826cc;border-radius:14px;padding:10px;margin:10px auto;max-width:420px}
+.treat h3{font-family:var(--font-d);font-weight:400;color:var(--hw-gold)}
+
+/* shared Halloween pass panel + banner polish */
+.panel.hwp{border-color:#ff7a1299;background:radial-gradient(120% 60% at 50% -10%,#ff7a1233,transparent 60%),linear-gradient(180deg,#2a0f45,#150826)}
+.hwp .ph{background:linear-gradient(180deg,#8a2a0a,#4a1038)}
+#evban{background:linear-gradient(90deg,#2a0d4a,#7a2a1a,#2a0d4a);font-family:var(--font-d);font-weight:400;letter-spacing:.08em;font-size:13px;border-radius:30px}
+#hpass{background:linear-gradient(180deg,#ffffff26,transparent 55%),linear-gradient(135deg,#ff9a3a,#a8350f);box-shadow:0 5px 0 #4a1000,0 10px 20px #0006}
+#candyc,#candy{background:#150826dd;border:2px solid #ff7a1299;color:var(--hw-gold);font-family:var(--font-d);font-weight:400}
+@media(max-width:700px){
+  .hhome{height:250px}.hbg::after{font-size:140px}.hinfo{bottom:10px;padding:6px 10px}.hinfo b{font-size:24px}
+  .mm .mh h2{font-size:22px}.sec{font-size:20px}
+  .qt{gap:10px}.ht{aspect-ratio:1/.8}
+}
+@media(max-height:500px){
+  .mm .mh{padding:6px 10px}.mm .mh h2{font-size:20px}.mb{height:34px}
+  #evc{padding:10px 12px 14px;max-height:none}
+  .hhome{height:170px}.hbg::after{font-size:110px}.hbg::before{display:none}
+  .hfig{left:4%;transform:scale(.52);transform-origin:bottom left}
+  .hinfo{bottom:8px;padding:5px 10px;border-radius:12px}.hinfo b{font-size:22px}.hinfo small{font-size:10px}
+  .htiles{gap:8px;margin-top:8px}.ht{aspect-ratio:auto;height:64px;border-radius:14px}.hti{font-size:26px}.ht em{font-size:11px}
+  .qr{padding:8px}.sec{font-size:18px}
+}
