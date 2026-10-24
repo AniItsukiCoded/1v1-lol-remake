@@ -1,7 +1,8 @@
 /* ================= HALLOWEEN EVENT HUB (MM2 style), LOL PASS, LOCKER =================
    Loaded after main.js (uses its CFG, saveCfg, toast, ui, menu, hx, db, user, nm, SFX).  Data lives in events.js, outfits in cosmetics.js. */
 const EV=(()=>{
-let E;const own=v=>CFG.owned.includes(v);
+let E,OWNER=false,KNOWN=false;const INF=999999999; /* OWNER = account is on the backend admin list (see admin.js): owns every skin, infinite coins/candy/keys, never on leaderboards */
+const own=v=>OWNER||CFG.owned.includes(v);
 /* make CFG safe to use (runs on load and again after an account save is loaded) */
 function norm(){
 CFG.ev=Object.assign({candy:0,tot:0,tier:0,keys:0,tday:'',streak:0,seen:0,d:{day:'',s:{},c:[]},dqDone:0,pq:[],ach:[],st:{},rk:0,lbT:0},CFG.ev||{});
@@ -11,8 +12,11 @@ CFG.ev.st=Object.assign({gold:0,win:0,play:0,box:0},CFG.ev.st||{});if(!Array.isA
 CFG.bp=Object.assign({xp:0,cf:[]},CFG.bp||{});if(!Number.isFinite(CFG.bp.xp)||CFG.bp.xp<0)CFG.bp.xp=0;if(!Array.isArray(CFG.bp.cf))CFG.bp.cf=[];
 ITEMS.filter(x=>x.src=='start').forEach(x=>{if(!CFG.owned.includes(x.v))CFG.owned.push(x.v)});
 /* equipped gun skins [shotgun, rifle, pickaxe]: 0 = stock; drop anything not owned */
-if(!Array.isArray(CFG.gs))CFG.gs=[0,0,0];CFG.gs=[0,1,2].map(w=>{const n=CFG.gs[w]|0,it=ITEMS.find(x=>x.k=='gun'&&x.w==w&&x.gn==n);return it&&CFG.owned.includes(it.v)?n:0});
-E=CFG.ev}
+if(!Array.isArray(CFG.gs))CFG.gs=[0,0,0];CFG.gs=[0,1,2].map(w=>{const n=CFG.gs[w]|0,it=ITEMS.find(x=>x.k=='gun'&&x.w==w&&x.gn==n);return it&&own(it.v)?n:0});
+E=CFG.ev;fix()}
+/* owners: keep coins / candy / keys topped up (shown as infinity). Accounts that stopped being owners lose the fake pile. */
+function fix(){if(!E)return;if(OWNER){if(!(CFG.coins>=INF))CFG.coins=INF;if(!(E.candy>=INF))E.candy=INF;if(!(E.keys>=999))E.keys=999}
+else if(KNOWN){if(CFG.coins>=INF/2)CFG.coins=0;if(E.candy>=INF/2)E.candy=0;if(E.keys>=999)E.keys=0}}
 norm();
 const Q=a=>document.querySelectorAll(a),on=()=>EVT.on(),fmt=n=>Math.round(n).toLocaleString();
 const dot=(id,v)=>{const e=$(id);if(e)e.style.display=v?'block':'none'};
@@ -68,7 +72,7 @@ let h=`<div class="phd"><div class="pt"><small>SEASON 1 · LEVEL PASS</small><di
 <p class="sub">Pass XP comes from <b>rounds</b>: every round you win is +${PASSXP.win} XP, every round you lose is +${PASSXP.loss} XP. Every ${P.per} XP unlocks the next tier — tap a glowing reward to claim it.</p></div><div class="ptrack" id="ptk">`;
 for(let i=0;i<30;i++){const rw=P.free[i],got=CFG.bp.cf.includes(i),st=got?'got':t<i+1?'lock':'ready';
 h+=`<div class="tier ${i<t?'rch':''}"><div class="tn">${i+1}</div><button class="rw ${st} r-${rwRar(rw)}" data-i="${i}">${art(rw)}<b>${rwName(rw)}</b><em>${got?'✓':st=='ready'?'CLAIM':''}</em></button></div>`}
-$('#bpb2').innerHTML=h+'</div>';$('#cn3').textContent=CFG.coins;$('#bpm').classList.add('on');const tk=$('#ptk');tk.scrollLeft=Math.max(0,t-2)*100;
+$('#bpb2').innerHTML=h+'</div>';$('#cn3').textContent=OWNER?'∞':CFG.coins;$('#bpm').classList.add('on');const tk=$('#ptk');tk.scrollLeft=Math.max(0,t-2)*100;
 $('#pall').onclick=()=>{SFX.click();let n=0;for(let i=0;i<30;i++)n+=bpClaim(i,1);ui();if(n)toast('Claimed '+n+' reward'+(n>1?'s':''));renderBp()}}
 $('#bpb2').onclick=e=>{const b=e.target.closest('.rw');if(!b)return;SFX.click();if(bpClaim(+b.dataset.i)){ui();renderBp()}else if(b.classList.contains('lock'))toast('Reach tier '+(+b.dataset.i+1)+' first')};
 
@@ -95,7 +99,7 @@ function claimableQ(){rollDay();let n=0;dailyList().forEach(q=>q.st.forEach((s,i
 const treatReady=()=>E.tday!=dayKey(),yest=()=>new Date(Date.now()-864e5).toDateString(),liveStreak=()=>E.tday==dayKey()||E.tday==yest()?E.streak:0;
 function openEvent(v){if(!open())return toast('The Halloween event has ended');view=v||'home';$('#evm').classList.add('on');renderEvent()}
 function candyArt(n){return`<div class="cart"><span class="c1">🍬</span><span class="c2">🍭</span><span class="c3">🍬</span>${n!=null?`<i>x${fmt(n)}</i>`:''}</div>`}
-function renderEvent(){rollDay();$('#cdy2').textContent=fmt(E.candy);$('#evh').textContent=EVT.title;$('#evback').style.visibility=view=='home'?'hidden':'visible';const c=$('#evc');c.className='v-'+view;
+function renderEvent(){rollDay();$('#cdy2').textContent=OWNER?'∞':fmt(E.candy);$('#evh').textContent=EVT.title;$('#evback').style.visibility=view=='home'?'hidden':'visible';const c=$('#evc');c.className='v-'+view;
 if(view=='home'){const T=[['quests','📜','Quests',claimableQ()],['pass','⏩','Pass',E.candy>=nextCost()&&E.tier<30],['box','🧰','Box',E.keys>0],['treat','🍬','Treats',treatReady()],['exch','🪙','Exchange',E.candy>=100],['ranks','🏆','Ranks',EVT.ended()&&!E.rk],['goals','🏅','Goals',claimableG()],['coll','📖','Collection',0]];
 c.innerHTML=`<div class="hhome"><div class="hbg"></div><div class="hfig"><div class="bub">Happy Halloween!</div><div class="pkh">🎃</div><div class="bdy"><i class="vest"></i><i class="belt"></i></div></div><div class="hinfo">${on()?`<small>EVENT ENDS IN</small><b>${left()}</b>`:`<small>EVENT ENDED · SHOP CLOSES IN</small><b>${closeLeft()}</b>`}<small>Pass tier ${E.tier}/30 · ${E.keys} 🗝️ · ${fmt(E.tot)} 🍬 collected</small></div></div>
 <div class="htiles">${T.map(t=>`<button class="ht" data-v="${t[0]}"><span class="hti">${t[1]}</span><em>${t[2]}</em>${t[3]?'<s></s>':''}</button>`).join('')}</div>`}
@@ -146,7 +150,7 @@ function goalsView(){const dn=ACH.filter(a=>E.ach.includes(a.id)).length;return`
 return`<div class="gr ${cl?'dn':''}"><div class="gm"><b>${a.n}</b><small>${a.d}</small><div class="gp"><div style="width:${v/a.goal*100}%"></div><span>${fmt(v)} / ${fmt(a.goal)}</span></div></div><button class="qb ${rd?'rd':''} ${cl?'dn':''}" data-g="${a.id}">${art(a.r)}<span>${cl?'Claimed ✓':rd?'CLAIM':rwName(a.r)}</span></button></div>`}).join('')}</div>`}
 
 /* ----- ranks ----- */
-function syncLB(force){if(!user||!on()||!E.tot)return Promise.resolve();const n=Date.now();if(!force&&n-E.lbT<20000)return Promise.resolve();E.lbT=n;try{return db.ref(EVT.lb+'/lb/'+user.uid).set({n:nm().slice(0,14),c:Math.min(E.tot,5000000),s:CFG.skin,d:Math.min(todayCandy(),500000),dk:utcKey()}).catch(()=>{})}catch(e){return Promise.resolve()}}
+function syncLB(force){if(!user||!on()||!E.tot||OWNER)return Promise.resolve();const n=Date.now();if(!force&&n-E.lbT<20000)return Promise.resolve();E.lbT=n;try{return db.ref(EVT.lb+'/lb/'+user.uid).set({n:nm().slice(0,14),c:Math.min(E.tot,5000000),s:CFG.skin,d:Math.min(todayCandy(),500000),dk:utcKey()}).catch(()=>{})}catch(e){return Promise.resolve()}}
 function fetchLB(f){f=f||'c';return new Promise((res,rej)=>{try{db.ref(EVT.lb+'/lb').orderByChild(f).limitToLast(50).once('value').then(s=>{const a=[];s.forEach(c=>{const v=c.val();if(v&&Number.isFinite(v[f])&&(f=='c'||v.dk==utcKey()))a.push(Object.assign({id:c.key,v:v[f]},v))});a.sort((x,y)=>(y.v-x.v)||String(x.n).localeCompare(String(y.n)));res(a)}).catch(rej)}catch(e){rej(e)}})}
 const esc=t=>String(t==null?'':t).replace(/[<>&"']/g,'');
 function ranksView(){const gl=rkTab!='rew';return`<div class="rkt"><button class="${rkTab=='global'?'on':''}" data-rk="global">🏆 Global</button><button class="${rkTab=='today'?'on':''}" data-rk="today">📅 Today</button><button class="${rkTab=='rew'?'on':''}" data-rk="rew">🎁 Rewards</button></div>`+(gl?`<div class="rkh"><b>${rkTab=='today'?'Today\'s top collectors (resets 00:00 UTC)':on()?'Leaderboards end in: '+left():'Final standings'}</b><small>Ranked by 🍬 collected — spending candy never lowers your score · updates every 20s</small></div><div id="rkl"><p class="sub">Loading…</p></div>`
@@ -191,12 +195,25 @@ if(on()){bump('play',1);if(r.win){dstat('win',1);bump('win',1)}const b=CANDY.mat
 saveCfg();syncLB(1);return s}
 
 /* ---------- lobby widgets ---------- */
-function refresh(){rollDay();const t=bpTier(),live=open(),hwShow=live||E.tier>0||E.tot>0,nc=nextCost();
+function refresh(){fix();rollDay();const t=bpTier(),live=open(),hwShow=live||E.tier>0||E.tot>0,nc=nextCost();
 $('#pl').textContent=t;$('#pf').style.width=(t>=30?100:CFG.bp.xp%250/250*100)+'%';$('#hl').textContent=E.tier;$('#hf').style.width=(E.tier>=30?100:Math.min(1,E.candy/nc)*100)+'%';$('#cn3').textContent=CFG.coins;$('#cdy').textContent=fmt(E.candy);$('#cdy2').textContent=fmt(E.candy);
 $('#hpass').style.display=hwShow?'flex':'none';$('#evb').style.display=live?'':'none';$('#candyc').style.display=live?'':'none';$('#evban').style.display=live?'flex':'none';
 dot('#pdot',bpClaimable());dot('#bdot',bpClaimable());dot('#hdot',live&&E.tier<30&&E.candy>=nc);dot('#edot',live&&(treatReady()||claimableQ()>0||claimableG()>0||E.keys>0||(E.tier<30&&E.candy>=nc)||(EVT.ended()&&!E.rk)));
+if(OWNER)['#cn','#cn2','#cn3','#cdy','#cdy2'].forEach(s=>{const e=$(s);if(e)e.textContent='∞'});$('#admb').style.display=OWNER?'':'none';
 $('#evbt').textContent=on()?'HALLOWEEN EVENT':'EVENT ENDED';$('#evbl').textContent=on()?left():'shop closes in '+closeLeft();document.body.classList.toggle('hw',on())}
 $('#lpass').onclick=$('#bpb').onclick=()=>{SFX.click();renderBp()};$('#hpass').onclick=()=>{SFX.click();openEvent('pass')};$('#evb').onclick=$('#evban').onclick=()=>{SFX.click();openEvent('home')};
 setInterval(()=>{if(user)refresh()},30000);
 function welcome(){if(on()&&!E.seen){E.seen=1;saveCfg();reveal({kind:'🎃 EVENT STARTED',ico:'🎃',col:0xa030ff,name:EVT.title,rar:'mythic',sub:'Collect 🍬 · Quests · Spooky Pass · Boxes',btn:'SEE EVENT',go:'ev'})}}
-return{on,ui:refresh,locker,candy,afkCandy,round,matchStart,matchDone,welcome,openEvent,sync:()=>syncLB(1),reload:()=>{norm();rollDay();refresh()}}})();
+/* ---------- admin / owner hooks (used by admin.js + main.js) ---------- */
+function setOwner(b,known){OWNER=!!b;KNOWN=known!==false;fix();
+if(OWNER&&user)db.ref(EVT.lb+'/lb/'+user.uid).remove().catch(()=>{}); /* owners are not on the leaderboards: drop any entry they already had */
+saveCfg();refresh()}
+const lim=(v,a,b)=>Math.max(a,Math.min(b,Math.floor(+v)||0));
+const admin={
+ setSpooky(n){E.tier=lim(n,0,30);saveCfg();ui();renderEvent()},
+ setLol(n){CFG.bp.xp=lim(n,0,30)*PASSES.bp.per;CFG.bp.cf=CFG.bp.cf.filter(i=>i<lim(n,0,30));saveCfg();ui()},
+ addXp(n){CFG.xp+=lim(n,0,1e7);saveCfg();ui()},
+ resetDaily(){E.d={day:'',s:{},c:[]};E.tday='';CFG.dly=0;saveCfg();ui()},
+ /* a gift sent by an admin from the panel (claimed from the gifts/<uid> inbox) */
+ gift(g){const c=lim(g.candy,0,1e7),o=lim(g.coins,0,1e7),k=lim(g.keys,0,1000);E.candy+=c;CFG.coins+=o;E.keys+=k;saveCfg();ui();return{c,o,k}}};
+return{on,ui:refresh,owner:()=>OWNER,setOwner,admin,locker,candy,afkCandy,round,matchStart,matchDone,welcome,openEvent,sync:()=>syncLB(1),reload:()=>{norm();rollDay();refresh()}}})();

@@ -11,7 +11,7 @@
 <div id="chips"><span id="fps">FPS: --</span><span id="ping">Ping: --</span><span id="devb"></span></div>
 <div id="lleft"><div id="prof"><div id="av"></div><div class="pi"><div><b id="who"></b><button id="edit" title="Change name">✎</button></div><div id="lvl"><i id="lv">1</i><div class="xb"><u id="xf"></u><span id="xt"></span></div></div><div id="stats"></div></div></div>
 <button id="gbtn">G&nbsp; Login with Google</button><button id="acct">Email sign in / up</button>
-<div id="lside"><button id="daily" class="sq"><span class="ic">🎁</span>Daily<s id="dot"></s></button><button id="lock" class="sq"><span class="ic">👕</span>Locker</button><button id="shop" class="sq"><span class="ic">🛒</span>Shop</button><button id="bpb" class="sq"><span class="ic">⭐</span>Pass<s id="bdot"></s></button><button id="afkb" class="sq afkq"><span class="ic">💤</span>AFK Zone</button><button id="evb" class="sq hw" style="display:none"><span class="ic">🎃</span>Event<s id="edot"></s></button></div></div>
+<div id="lside"><button id="daily" class="sq"><span class="ic">🎁</span>Daily<s id="dot"></s></button><button id="lock" class="sq"><span class="ic">👕</span>Locker</button><button id="shop" class="sq"><span class="ic">🛒</span>Shop</button><button id="bpb" class="sq"><span class="ic">⭐</span>Pass<s id="bdot"></s></button><button id="afkb" class="sq afkq"><span class="ic">💤</span>AFK Zone</button><button id="evb" class="sq hw" style="display:none"><span class="ic">🎃</span>Event<s id="edot"></s></button><button id="admb" class="sq admq" style="display:none"><span class="ic">🛠️</span>Admin</button></div></div>
 <div id="evban" style="display:none"><span>🎃</span><b id="evbt">HALLOWEEN EVENT</b><i id="evbl"></i></div>
 <div id="hpass" style="display:none"><b>🎃<br>SPOOKY<br>PASS</b><div class="xb"><u id="hf"></u></div><em id="hl">0</em><s id="hdot"></s></div>
 <div id="lpass"><s id="pdot"></s><b>LOL<br>PASS</b><div class="xb"><u id="pf"></u></div><em id="pl">1</em></div>
@@ -75,6 +75,24 @@
 <p class="sub l">Click a box, then press a key or a mouse button (Esc cancels, Delete clears). Click the box again to bind Left Click. Each action has a main and an alternative key.</p>
 <div id="kbl"></div><div class="row"><span></span><button id="kbreset" class="mini alt">RESET CONTROLS</button></div></div>
 <button class="btn close">DONE</button></div></div></div>
+<div id="admin" class="modal"><div class="panel wide"><div class="ph"><h2>🛠 ADMIN PANEL</h2><button class="x close">✕</button></div><div class="pb">
+<p class="sub l" id="admwho"></p>
+<h3>🎁 GIVE TO PLAYERS</h3>
+<div class="row"><span>Sending to: <b id="admto">nobody selected</b></span></div>
+<div class="admr"><button id="admall" class="mini alt">👥 EVERYONE ONLINE</button><button id="admref" class="mini alt">↻ ONLINE PLAYERS</button></div>
+<div class="join"><input id="admq" placeholder="Search a username (starts with…)" maxlength="24" autocomplete="off"><button id="admfind" class="btn alt">FIND</button></div>
+<div id="admlist"></div>
+<div class="admg"><div><small>🍬 CANDY</small><input id="admc" type="number" min="0" max="10000000" value="0" inputmode="numeric"></div><div><small>🪙 COINS</small><input id="admo" type="number" min="0" max="10000000" value="0" inputmode="numeric"></div><div><small>🗝️ KEYS</small><input id="admk" type="number" min="0" max="1000" value="0" inputmode="numeric"></div></div>
+<button id="admsend" class="btn">SEND GIFT</button>
+<p class="sub l">Players get it the next time they are in the game (it lands in their inbox, so offline players are fine).</p>
+<h3>👑 OWNER TOOLS (YOU)</h3>
+<p class="sub l">You always have every skin, infinite candy / coins / keys, and you never show on a leaderboard.</p>
+<div class="row"><span>LOL Pass tier (0-30)</span><input class="adn" id="admlol" type="number" min="0" max="30" value="30"><button id="admlolb" class="mini">SET</button></div>
+<div class="row"><span>Spooky Pass tier (0-30)</span><input class="adn" id="admspk" type="number" min="0" max="30" value="30"><button id="admspkb" class="mini">SET</button></div>
+<div class="row"><span>Add XP (level)</span><input class="adn" id="admxp" type="number" min="0" max="10000000" value="1000"><button id="admxpb" class="mini">ADD</button></div>
+<div class="row"><span>Reset daily reward, treat &amp; quests</span><button id="admrd" class="mini alt">RESET</button></div>
+<p class="sub l">Add or remove admins in the Firebase Realtime Database: <b>fyusaugczduirdgyfdr</b> &rarr; (email before the @) = 1 or 0.</p>
+<button class="btn close">DONE</button></div></div></div>
 <div id="queue" class="screen"><div class="card"><div class="spin"></div><h2 id="qtxt">Searching for opponent…</h2><button id="qbot" class="btn" style="display:none">PLAY VS BOT NOW</button><button id="cancel" class="btn alt">Cancel</button></div></div>
 <div id="afk" class="screen"><div id="afkfx"></div>
 <div id="afkbar"><span>🪙 <b id="afkcoins">0</b></span><span id="afkcandybar">🍬 <b id="afkcandyn">0</b></span></div>
@@ -101,4 +119,4 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="js/skin.js"></script><script src="js/controls.js"></script><script src="js/crosshair.js"></script><script src="js/config.js"></script><script src="js/modes.js"></script><script src="js/audio.js"></script><script src="js/cosmetics.js"></script><script src="js/gunskins.js"></script><script src="js/events.js"></script><script src="js/touch.js"></script><script src="js/pad.js"></script><script src="js/weapons.js"></script><script src="js/game.js"></script><script src="js/main.js"></script><script src="js/passes.js"></script><script src="js/lobby2.js"></script></body></html>
+<script src="js/skin.js"></script><script src="js/controls.js"></script><script src="js/crosshair.js"></script><script src="js/config.js"></script><script src="js/modes.js"></script><script src="js/audio.js"></script><script src="js/cosmetics.js"></script><script src="js/gunskins.js"></script><script src="js/events.js"></script><script src="js/touch.js"></script><script src="js/pad.js"></script><script src="js/weapons.js"></script><script src="js/game.js"></script><script src="js/main.js"></script><script src="js/passes.js"></script><script src="js/lobby2.js"></script><script src="js/admin.js"></script></body></html>

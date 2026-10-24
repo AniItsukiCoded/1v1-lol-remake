@@ -144,3 +144,20 @@ body.touch .mcard::after,body.touch #mhint i{animation:none}
  #lob>#lleft{top:92px!important}
  #msheet{padding-left:12px;padding-right:12px}
 }
+
+/* ---------- ADMIN button + panel (main menu only) ---------- */
+#lside .sq.admq{background:linear-gradient(180deg,#ffffff22,transparent 55%),linear-gradient(180deg,#b3202e,#4a0f2a);border-color:#ffd23f99}
+#admin .panel{max-height:92vh;overflow:auto}
+#admin .admr{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+#admin .admr .mini.on,#admin .admp.on{outline:3px solid #ffd23f;outline-offset:-1px}
+#admlist{display:flex;flex-direction:column;gap:6px;max-height:190px;overflow:auto;margin:10px 0;padding-right:2px}
+#admlist .sub{margin:6px 0;text-align:center}
+.admp{display:flex;justify-content:space-between;align-items:center;gap:10px;border:0;border-radius:12px;padding:10px 14px;background:#ffffff14;color:#fff;font-weight:800;font-size:15px;cursor:pointer;text-align:left}
+.admp:hover{background:#ffffff26}.admp b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800}.admp small{opacity:.6;font-weight:800;flex:none}
+.admg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0 4px}
+.admg small{display:block;font-size:11px;letter-spacing:.12em;font-weight:900;opacity:.75}
+.admg input{margin:4px 0 0}
+#admin .row .adn{width:92px;margin:0;flex:none;text-align:center}
+#admsend:disabled{filter:grayscale(.8) brightness(.7)}
+@media(max-width:480px){.admg{grid-template-columns:1fr}}
+#admsend+.sub{margin-top:16px}

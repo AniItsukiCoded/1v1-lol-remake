@@ -13,7 +13,7 @@ const saveCfg=()=>{try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}cloudDirty
 const SK=()=>CFG.skin+GUN.pack(CFG.gs||[0,0,0]); /* what other players see: outfit + equipped gun skins */
 const auth=firebase.auth(),db=firebase.database(),$=s=>document.querySelector(s);
 let mode='in',user=null,qStop=null,qBot=null,off=0,online=0,conn=false,presOff=null;
-const now=()=>Date.now()+off,show=id=>{document.querySelectorAll('.screen').forEach(e=>e.classList.toggle('on',e.id==id));$('#net').style.display=id=='menu'?'':'none'};
+const now=()=>Date.now()+off,show=id=>{if(id!='menu'){const a=document.querySelector('#admin');a&&a.classList.remove('on')}document.querySelectorAll('.screen').forEach(e=>e.classList.toggle('on',e.id==id));$('#net').style.display=id=='menu'?'':'none'};
 const nm=()=>user.displayName||('Guest '+user.uid.slice(-4).toUpperCase());
 const err=e=>$('#err').textContent=(e.message||e).replace('Firebase: ','').replace(/\s*\(auth.*\)\.?/,'');
 // ---- connection + presence ("online" indicator)
@@ -24,22 +24,23 @@ function present(){if(presOff)presOff();const r=db.ref('presence/'+user.uid),c=d
 r.onDisconnect().remove().then(()=>r.set(true));c.on('value',s=>{online=s.numChildren();net()});presOff=()=>{c.off();r.remove();presOff=null}}
 // ---- auth: guest by default
 auth.onAuthStateChanged(async u=>{
-while(typeof EV=='undefined'||typeof LB2=='undefined')await new Promise(r=>setTimeout(r,25)); /* passes.js (EV) is the last script: never run the menu before it has loaded */
+while(typeof EV=='undefined'||typeof LB2=='undefined'||typeof ADM=='undefined')await new Promise(r=>setTimeout(r,25)); /* passes.js (EV) is the last script: never run the menu before it has loaded */
 if(!u){user=null;presOff&&presOff();try{await auth.signInAnonymously()}catch(e){$('.spin').style.display='none';$('#bt').textContent='Could not start';
 $('#berr').textContent=(e.code=='auth/operation-not-allowed'||e.code=='auth/admin-restricted-operation')?'Enable the Anonymous provider in Firebase console > Authentication > Sign-in method (and make sure sign-ups are allowed under Settings > User actions), then reload.':e.code=='auth/unauthorized-domain'?'Add this site ('+location.hostname+') to Firebase Authentication > Settings > Authorized domains, or open the game from your .web.app / .firebaseapp.com link.':e.message}return}
 if(u.isAnonymous&&!u.displayName)await u.updateProfile({displayName:'Guest '+(1000+Math.random()*9000|0)});
-user=u;await cloudAttach();conn&&present();menu()});
+user=u;await sess();conn&&present();menu()});
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{SFX.click();mode=t.dataset.m;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x==t));$('#name').style.display=mode=='up'?'block':'none';$('#go').textContent=mode=='up'?'Create account':'Sign in';$('#err').textContent=''});
 $('#go').onclick=async()=>{SFX.resume();SFX.click();try{const e=$('#email').value.trim(),p=$('#pass').value;
 if(mode=='in'&&user&&user.isAnonymous&&(CFG.xp>0||CFG.coins>0)&&!confirm("Signing in loads your account's saved progress and replaces this guest's progress (if your account has a save). Continue?"))return;
 if(mode=='up'){const n=$('#name').value.trim();if(n.length<2)return err('Pick a username (2+ chars)');
 if(user&&user.isAnonymous)await user.linkWithCredential(firebase.auth.EmailAuthProvider.credential(e,p));else await auth.createUserWithEmailAndPassword(e,p);
-await auth.currentUser.updateProfile({displayName:n});user=auth.currentUser;await cloudAttach();menu()}else await auth.signInWithEmailAndPassword(e,p)}catch(x){err(x)}};
+await auth.currentUser.updateProfile({displayName:n});user=auth.currentUser;await sess();menu()}else await auth.signInWithEmailAndPassword(e,p)}catch(x){err(x)}};
 $('#back').onclick=()=>{SFX.click();menu()};
 $('#acct').onclick=async()=>{SFX.click();if(user.isAnonymous){$('#err').textContent='';show('auth')}else{presOff&&presOff();await cloudPush();cloud.ready=false;cloud.uid=cloud.p=null;wipe();await auth.signOut()}};
 async function menu(){show('menu');ui();LB2.modeShow();if(!menu.j){menu.j=1;const c=new URLSearchParams(location.search).get('party');if(c){strip();joinParty(c)}}partyRefresh();Game.lobby(true,CFG.skin);EV.welcome();$('#av').style.background=hx(CFG.skin);bustBg($('#av'),CFG.skin);$('#gbtn').style.display=user.isAnonymous?'block':'none';$('#who').textContent=nm().slice(0,14);$('#acct').textContent=user.isAnonymous?'Email sign in / up':'Sign out';
 let s=(await db.ref('users/'+user.uid).once('value').catch(()=>null))?.val()||{};
 if(s.v!==DATA_VER){s={name:nm(),wins:0,losses:0,v:DATA_VER};db.ref('users/'+user.uid).set(s).catch(()=>{})} /* data reset: win/loss record starts over, the account stays */
+else if(s.name!==nm())db.ref('users/'+user.uid+'/name').set(nm()).catch(()=>{});
 $('#stats').textContent=`Wins ${s.wins||0} · Losses ${s.losses||0}`}
 $('#play').onclick=()=>{SFX.resume();SFX.click();window.touchEnter&&touchEnter();go()};
 $('#cancel').onclick=()=>{SFX.click();qStop&&qStop();menu()};
@@ -91,7 +92,7 @@ $('#qbot').onclick=()=>{SFX.click();qBot&&qBot()};
 // ---- lobby extras
 $('#gbtn').onclick=async()=>{SFX.click();const p=new firebase.auth.GoogleAuthProvider();try{
 if(user.isAnonymous){try{await user.linkWithPopup(p)}catch(e){if(e.code=='auth/credential-already-in-use'&&e.credential)await auth.signInWithCredential(e.credential);else throw e}}else await auth.signInWithPopup(p);
-user=auth.currentUser;const g=user.providerData.find(x=>x.providerId=='google.com');if(g&&g.displayName&&user.displayName!=g.displayName)await user.updateProfile({displayName:g.displayName});await cloudAttach();menu()}catch(e){if(e.code!='auth/popup-closed-by-user')alert((e.message||e).replace('Firebase: ',''))}};
+user=auth.currentUser;const g=user.providerData.find(x=>x.providerId=='google.com');if(g&&g.displayName&&user.displayName!=g.displayName)await user.updateProfile({displayName:g.displayName});await sess();menu()}catch(e){if(e.code!='auth/popup-closed-by-user')alert((e.message||e).replace('Firebase: ',''))}};
 $('#edit').onclick=async()=>{SFX.click();const n=prompt('New username',nm());if(n&&n.trim().length>=2){await user.updateProfile({displayName:n.trim().slice(0,14)});menu()}};
 $('#gear').onclick=()=>{SFX.click();$('#settings').classList.add('on')};
 document.querySelectorAll('.modal .close').forEach(b=>b.onclick=()=>{SFX.click();document.querySelectorAll('.modal').forEach(x=>x.classList.remove('on'))});
@@ -117,6 +118,8 @@ setInterval(()=>{if(!user||!conn)return;const t=performance.now();db.ref('presen
 // ---- account cloud save: only for logged-in accounts (guests keep their progress on this device). One JSON string per user at saves/<uid>.
 const cloud={ready:false,uid:null,tm:0,p:null};
 const wipe=()=>{PK.forEach(k=>delete CFG[k]);Object.assign(CFG,fresh());CFG.own='';try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}EV.reload();CTL.refresh()}; /* local progress back to a new-player state */
+/* what happens after every login: is this account on the backend admin list? -> load its cloud save (owner perks apply on top) -> start the gift inbox */
+async function sess(){await ADM.check(user);await cloudAttach();ADM.listen(user)}
 function cloudDirty(){if(!cloud.ready)return;clearTimeout(cloud.tm);cloud.tm=setTimeout(cloudPush,2500)}
 function cloudPush(){clearTimeout(cloud.tm);cloud.tm=0;if(!cloud.ready||!user||user.isAnonymous||user.uid!==cloud.uid)return Promise.resolve();
 const o={};PK.forEach(k=>o[k]=CFG[k]);return db.ref('saves/'+cloud.uid).set({ver:DATA_VER,t:firebase.database.ServerValue.TIMESTAMP,d:JSON.stringify(o)}).catch(e=>console.warn('cloud save failed',e&&e.message))}

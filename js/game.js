@@ -434,7 +434,7 @@ if(tl<1e9)return{t:tl,z:'legs'};return null}
    - hold the fire button to turbo-build; pieces pop in over ~0.4s (blueprint -> solid, HP ramps up). Out of the chosen material -> auto-switches to one you still have.
    EDIT (G): aim at a wall/floor of yours (or hold a wall/floor to PRE-EDIT the next one), click or drag cells to cut them, G again confirms (or hold G and release),
    right-click resets (twice = back to how it was). Pieces are textured per material, flash when hit and crumble into debris. */
-const BRANGE=16,REACH=20,GRID=5,LVL=3.6,ROW=LVL/3,COST=10,CELL=GRID/3,BUILD_T=380,BM=.32,NST=10,MAXP=90,ROTY=[Math.PI,Math.PI/2,0,-Math.PI/2],DIRS=[[0,-1],[1,0],[0,1],[-1,0]];
+const BRANGE=8,REACH=10,GRID=5,LVL=3.6,ROW=LVL/3,COST=10,CELL=GRID/3,BUILD_T=380,BM=.32,NST=10,MAXP=90,ROTY=[Math.PI,Math.PI/2,0,-Math.PI/2],DIRS=[[0,-1],[1,0],[0,1],[-1,0]];
 const MT=[{n:'WOOD',c:0xc98f55,hp:150,ic:'🪵'},{n:'BRICK',c:0xc4584b,hp:300,ic:'🧱'},{n:'METAL',c:0x9db3c9,hp:450,ic:'🔩'}];
 const BPIECE={wall:{f:1,n:'WALL'},floor:{f:.93,n:'FLOOR'},ramp:{f:1,n:'STAIRS'},roof:{f:.8,n:'ROOF'}};
 const BLD={},SLOT={},RPL=[],TW=[];let BG,GH,GGRID,bseq=0,bcool=0,buildT=null,lastPiece='wall',PRE=null,mat=[500,300,200],msel=0,visY=0,EDIT=null,EG=null,shSm=.9,camDs=4.2,bLast=0;
@@ -549,7 +549,7 @@ if(t=='floor'||t=='roof'){if(!rp&&pitch>.75)return[{x:s.cx,y:(Ls+1)*LVL,z:s.cz,r
 const a0=aimHit(),a=a0.hit&&a0.L>BRANGE?Object.assign({},a0,{hit:false,n:null}):a0; /* aiming past the build range: the piece lands at the edge of the range along the crosshair instead of far away */
 let px,py,pz;
 if(a.hit){const nn=a.n||[0,1,0];px=a.h.x+nn[0]*.3;py=a.h.y+nn[1]*.3;pz=a.h.z+nn[2]*.3}
-else{const k=a0.hit?BRANGE:8;px=a.o.x+a.d.x*k;py=a.o.y+a.d.y*k;pz=a.o.z+a.d.z*k}
+else{const k=Math.min(8,BRANGE);px=a.o.x+a.d.x*k;py=a.o.y+a.d.y*k;pz=a.o.z+a.d.z*k}
 if(t=='wall'){const lv=Math.max(Math.max(0,Ls-1),Math.min(Ls+1,Math.floor((py+.02)/LVL))),yb=lv*LVL;
 const ex=Math.round((px-GRID/2)/GRID)*GRID+GRID/2,ez=Math.round((pz-GRID/2)/GRID)*GRID+GRID/2,cx=Math.round(px/GRID)*GRID,cz=Math.round(pz/GRID)*GRID;
 return[Math.abs(px-ex)<=Math.abs(pz-ez)?{x:ex,y:yb,z:cz,r:1}:{x:cx,y:yb,z:ez,r:0}]}
