@@ -31,7 +31,7 @@ button{font-family:inherit}
     radial-gradient(70vmax 70vmax at 50% 120%,#8f78ff55,transparent 60%),
     linear-gradient(160deg,#1a0b4a,#0d0a2e 55%,#1b0a38);
   background-size:auto;animation:none;overflow:hidden}
-.screen:not(#menu):not(#end):not(#queue)::before{
+.screen:not(#menu):not(#end):not(#queue):not(#afk)::before{
   content:"";position:absolute;inset:-20%;pointer-events:none;opacity:.55;
   background:repeating-linear-gradient(115deg,transparent 0 46px,#ffffff08 46px 92px);
   animation:drift 40s linear infinite}
@@ -338,6 +338,41 @@ body.touch *{transition-duration:.1s!important}
 /* scrolling lists: keep each scroller on its own layer, and stop scroll chaining into the game */
 body.touch .panel,body.touch #evc,body.touch .ptrack{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 body.touch #evc,body.touch #sw,body.touch .ptrack{contain:content}
+
+/* =====================================================================
+   LITE MODE (Chromebooks / weak devices / Anti-Lag + Low graphics)
+   Same flat, cheap look the touch devices get: no backdrop blur on top of the
+   WebGL canvas, no endless background animations. Toggled in js/config.js + game.js (body.lite).
+   ===================================================================== */
+body.lite *,body.lite *::before,body.lite *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.lite .modal,body.lite #pause{background:#0a0526eb}
+body.lite #queue{background:#10082bf2}
+body.lite #end{background:#10082bf2}
+body.lite .card,body.lite .panel,body.lite .rv{box-shadow:0 10px 24px #000a,inset 0 1px 0 #ffffff33}
+body.lite .screen::before,body.lite #menu.on::before{animation:none}
+body.lite #menu.on::before{background:linear-gradient(180deg,#10082b88,transparent 20%,transparent 75%,#10082bbb)}
+body.lite #play,body.lite #play::after,body.lite #lob s,body.lite #evban,body.lite .pkh,body.lite .qb.rd,body.lite .rw.ready,body.lite .tbox.rdy,body.lite #rot b{animation:none!important}
+body.lite #play{box-shadow:0 6px 0 #a85d00}
+body.lite #lside .sq,body.lite #modebox,body.lite #lpass,body.lite #prof,body.lite .sm,body.lite #coins{box-shadow:0 3px 0 #0d0630}
+body.lite #lside .sq .ic,body.lite .pv.ch img,body.lite .hti,body.lite .pkh{filter:none!important}
+body.lite #hud .tb{box-shadow:0 3px 0 #0007}
+body.lite #score,body.lite #rnd,body.lite .ws,body.lite .bs,body.lite #mate{box-shadow:none}
+body.lite #msg,body.lite #cd{text-shadow:0 3px 0 #0008;-webkit-text-stroke:1.5px #10082b}
+body.lite .bar{box-shadow:none}
+body.lite .btn{box-shadow:0 4px 0 #a85d00}body.lite .btn.alt{box-shadow:0 4px 0 #261a68}
+body.lite .btn::after{display:none}
+body.lite *{transition-duration:.1s!important}
+/* scrolling lists: keep each scroller on its own layer, and stop scroll chaining into the game */
+body.lite .panel,body.lite #evc,body.lite .ptrack{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+body.lite #evc,body.lite #sw,body.lite .ptrack{contain:content}
+body.lite .screen{animation:none!important}
+body.lite .afkc{background:linear-gradient(180deg,#2e1b72f5,#1a1050f8)}
+body.lite #msheet{background:linear-gradient(180deg,#0f0838fa,#0a0626fc)}
+body.lite #score{box-shadow:none}
+/* a blur over a canvas that changes every frame is re-computed every frame: the in-match HUD never needs it */
+#score,#pause{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+#pause{background:#060a22d9}
+
 
 /* =====================================================================
    HALLOWEEN EVENT HUB (revamp)

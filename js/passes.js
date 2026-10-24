@@ -23,9 +23,17 @@ const TGIF='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTA
 const swHtml=(col,ico,big,v)=>{const gun=String(ico).slice(0,4)=='<svg',ch=v!=null&&!gun,st=`--c:${col==null?'#ffc400':hx(col)}`;
 if(ch){const u=Game.thumbCached(v);return`<div class="pv ch${big?' big':''}" style="${st}"><img alt="" draggable="false" data-sv="${v}" data-ico="${ico||''}" ${u?'data-done="1" ':''}src="${u||TGIF}"></div>`}
 return`<div class="pv${big?' big':''}${gun?' gun':''}" style="${st}"><span class="pe">${ico}</span></div>`};
-let thBusy=0;function thFill(){if(thBusy)return;thBusy=1;const go=()=>{const im=document.querySelector('img[data-sv]:not([data-done])');if(!im){thBusy=0;return}const v=im.dataset.sv,u=Game.thumb(v);
-document.querySelectorAll('img[data-sv="'+v+'"]:not([data-done])').forEach(x=>{if(u){x.src=u;x.dataset.done=1}else{const e=document.createElement('span');e.className='pe';e.textContent=x.dataset.ico||'';x.parentNode.classList.remove('ch');x.replaceWith(e)}});setTimeout(go,16)};setTimeout(go,0)}
-new MutationObserver(()=>{if(document.querySelector('img[data-sv]:not([data-done])'))thFill()}).observe(document.body,{childList:true,subtree:true});
+/* portrait thumbnails: each one builds a character and encodes a PNG on the main thread, so they are made one at a time, only in idle time,
+   visible ones first, never during a match and never in a hidden tab (rendering them back-to-back used to freeze weak devices whenever a shop / pass opened) */
+let thBusy=0;const thIdle=window.requestIdleCallback?f=>requestIdleCallback(f,{timeout:500}):f=>setTimeout(f,30),thGame=()=>window.Game&&Game.busy&&Game.busy();
+function thFill(){if(thBusy)return;thBusy=1;const go=()=>{if(document.hidden||thGame()){thBusy=0;setTimeout(thFill,1500);return}
+const all=document.querySelectorAll('img[data-sv]:not([data-done])');if(!all.length){thBusy=0;return}
+let im=null;for(const x of all)if(x.offsetParent){im=x;break}
+const vis=!!im;if(!im)im=all[0];const v=im.dataset.sv,u=Game.thumb(v);
+document.querySelectorAll('img[data-sv="'+v+'"]:not([data-done])').forEach(x=>{if(u){x.src=u;x.dataset.done=1}else{const e=document.createElement('span');e.className='pe';e.textContent=x.dataset.ico||'';x.parentNode.classList.remove('ch');x.replaceWith(e)}});
+setTimeout(()=>thIdle(go),vis?40:250)};setTimeout(()=>thIdle(go),0)}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)thFill()});
+new MutationObserver(()=>{if(!thBusy&&document.querySelector('img[data-sv]:not([data-done])'))thFill()}).observe(document.body,{childList:true,subtree:true});
 const WS=['Shotgun','Rifle','Pickaxe'],icn=it=>it.k=='gun'?Game.gunIcon(it.w,it.g.c,0,it.g):it.ico,icol=it=>it.k=='gun'?it.col:it.v%16777216,ival=it=>it.k=='gun'?null:it.v,swI=(it,big)=>swHtml(icol(it),icn(it),big,ival(it)),inm=it=>it.k=='gun'?it.n+' '+WS[it.w]:it.n,
  kindOf=it=>it.k=='gun'?'NEW GUN SKIN':it.k=='skin'?'NEW SKIN':'NEW COLOR',eq=it=>it.k=='gun'?CFG.gs[it.w]==it.gn:CFG.skin==it.v;
 function equip(it){if(it.k=='gun')CFG.gs[it.w]=CFG.gs[it.w]==it.gn?0:it.gn;else CFG.skin=it.v;saveCfg()}
@@ -173,6 +181,8 @@ document.addEventListener('wheel',e=>{const tk=e.target.closest&&e.target.closes
 
 /* ---------- match hooks ---------- */
 function candy(v,gold){if(!on())return;if(E.dl.k!=utcKey())E.dl={k:utcKey(),c:0};E.dl.c+=v;E.candy+=v;E.tot+=v;matchCandy+=v;if(gold)bump('gold',1);saveCfg();syncLB();const e=$('#cdm');e.textContent=fmt(matchCandy);e.parentNode.classList.remove('bump');void e.offsetWidth;e.parentNode.classList.add('bump')}
+/* AFK zone payout: spendable candy only while the event is live. Goes into the ranked total / daily board only if AFK.candyRank is true (modes.js). */
+function afkCandy(n){if(!on()||!(n>0))return 0;E.candy+=n;if(window.AFK&&AFK.candyRank){if(E.dl.k!=utcKey())E.dl={k:utcKey(),c:0};E.dl.c+=n;E.tot+=n;syncLB()}return n}
 function matchStart(){matchCandy=0;matchPass=0;$('#cdm').textContent=0;return on()}
 /* LOL Pass XP comes from ROUNDS: called by the game at the end of every round */
 function round(win){const t0=bpTier(),x=win?PASSXP.win:PASSXP.loss;CFG.bp.xp+=x;matchPass+=x;saveCfg();const a=bpTier();toast(a>t0?'⭐ LOL Pass tier '+a+' unlocked!  (+'+x+' pass XP)':'⭐ +'+x+' LOL Pass XP')}
@@ -189,4 +199,4 @@ $('#evbt').textContent=on()?'HALLOWEEN EVENT':'EVENT ENDED';$('#evbl').textConte
 $('#lpass').onclick=$('#bpb').onclick=()=>{SFX.click();renderBp()};$('#hpass').onclick=()=>{SFX.click();openEvent('pass')};$('#evb').onclick=$('#evban').onclick=()=>{SFX.click();openEvent('home')};
 setInterval(()=>{if(user)refresh()},30000);
 function welcome(){if(on()&&!E.seen){E.seen=1;saveCfg();reveal({kind:'🎃 EVENT STARTED',ico:'🎃',col:0xa030ff,name:EVT.title,rar:'mythic',sub:'Collect 🍬 · Quests · Spooky Pass · Boxes',btn:'SEE EVENT',go:'ev'})}}
-return{on,ui:refresh,locker,candy,round,matchStart,matchDone,welcome,openEvent,sync:()=>syncLB(1),reload:()=>{norm();rollDay();refresh()}}})();
+return{on,ui:refresh,locker,candy,afkCandy,round,matchStart,matchDone,welcome,openEvent,sync:()=>syncLB(1),reload:()=>{norm();rollDay();refresh()}}})();

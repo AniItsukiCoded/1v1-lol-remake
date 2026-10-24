@@ -10,7 +10,7 @@ const ACT=[ /* id, label, group, [primary, alt] defaults */
 ['w1','Shotgun','Weapons',['Digit1','']],['w2','Assault rifle','Weapons',['Digit2','']],['pick','Pickaxe','Weapons',['KeyF','']],
 ['wall','Build wall','Building',['KeyZ','']],['floor','Build floor','Building',['KeyX','']],['ramp','Build stairs','Building',['KeyC','']],['roof','Build roof','Building',['KeyV','']],
 ['build','Build mode (on / off)','Building',['KeyQ','']],['edit','Edit mode','Building',['KeyG','']],['mat','Cycle material','Building',['KeyT','Mouse1']],['mw','Wood','Building',['Digit4','']],['mb','Brick','Building',['Digit5','']],['mm','Metal','Building',['Digit6','']],
-['view','First / third person','Other',['KeyB','']],['music','Toggle music','Other',['KeyM','']]];
+['view','First / third person','Other',['KeyB','']],['music','Toggle music','Other',['KeyM','']],['map','Map (Zone Wars)','Other',['KeyN','']],['specN','Spectate: next player','Other',['ArrowRight','']],['specP','Spectate: previous player','Other',['ArrowLeft','']]];
 const DEF={};ACT.forEach(a=>DEF[a[0]]=a[3]);
 const OK=/^(Mouse[0-6]|[A-Za-z][A-Za-z0-9]{1,19})$/,NONE=[];
 const NAMES={Space:'Space',ShiftLeft:'L-Shift',ShiftRight:'R-Shift',ControlLeft:'L-Ctrl',ControlRight:'R-Ctrl',AltLeft:'L-Alt',AltRight:'R-Alt',ArrowUp:'↑',ArrowDown:'↓',ArrowLeft:'←',ArrowRight:'→',Backquote:'`',Minus:'-',Equal:'=',BracketLeft:'[',BracketRight:']',Semicolon:';',Quote:"'",Comma:',',Period:'.',Slash:'/',Backslash:'\\',CapsLock:'Caps',Tab:'Tab',Enter:'Enter',Backspace:'⌫'};
@@ -26,7 +26,7 @@ function set(a,slot,code){let from=null;
 if(code)ACT.forEach(([b,lab])=>{const g=get(b);[0,1].forEach(i=>{if(g[i]===code&&!(b===a&&i===slot)){g[i]='';put(b,g);from=from||lab}})});
 const g=get(a);g[slot]=code;put(a,g);sig=null;saveCfg();return from}
 function reset(){CFG.kb={};sig=null;saveCfg();render()}
-const first=a=>{const g=get(a);return label(g[0]||g[1])||'—'};
+const first=a=>{if(window.INPUT&&INPUT.dev==='pad'){const l=INPUT.label(a);if(l)return l}const g=get(a);return label(g[0]||g[1])||'—'};
 function stop(){L=null;busy=false;removeEventListener('keydown',kd,true);removeEventListener('mousedown',md,true);clearTimeout(cmT);cmT=setTimeout(()=>removeEventListener('contextmenu',cm,true),400)}
 function assign(code){if(!L)return;const{a,i}=L,from=set(a,i,code);stop();render();
 if(window.toast){const me=ACT.find(x=>x[0]===a)[1];toast(code?me+' → '+label(code)+(from?' ('+from+' unbound)':''):me+' unbound')}}
