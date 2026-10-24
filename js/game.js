@@ -434,7 +434,7 @@ if(tl<1e9)return{t:tl,z:'legs'};return null}
    - hold the fire button to turbo-build; pieces pop in over ~0.4s (blueprint -> solid, HP ramps up). Out of the chosen material -> auto-switches to one you still have.
    EDIT (G): aim at a wall/floor of yours (or hold a wall/floor to PRE-EDIT the next one), click or drag cells to cut them, G again confirms (or hold G and release),
    right-click resets (twice = back to how it was). Pieces are textured per material, flash when hit and crumble into debris. */
-const BRANGE=8,REACH=10,GRID=5,LVL=3.6,ROW=LVL/3,COST=10,CELL=GRID/3,BUILD_T=380,BM=.32,NST=10,MAXP=90,ROTY=[Math.PI,Math.PI/2,0,-Math.PI/2],DIRS=[[0,-1],[1,0],[0,1],[-1,0]];
+const BRANGE=8,REACH=12,GRID=5,LVL=3.6,ROW=LVL/3,COST=10,CELL=GRID/3,BUILD_T=380,BM=.32,NST=10,MAXP=90,ROTY=[Math.PI,Math.PI/2,0,-Math.PI/2],DIRS=[[0,-1],[1,0],[0,1],[-1,0]];
 const MT=[{n:'WOOD',c:0xc98f55,hp:150,ic:'🪵'},{n:'BRICK',c:0xc4584b,hp:300,ic:'🧱'},{n:'METAL',c:0x9db3c9,hp:450,ic:'🔩'}];
 const BPIECE={wall:{f:1,n:'WALL'},floor:{f:.93,n:'FLOOR'},ramp:{f:1,n:'STAIRS'},roof:{f:.8,n:'ROOF'}};
 const BLD={},SLOT={},RPL=[],TW=[];let BG,GH,GGRID,bseq=0,bcool=0,buildT=null,lastPiece='wall',PRE=null,mat=[500,300,200],msel=0,visY=0,EDIT=null,EG=null,shSm=.9,camDs=4.2,bLast=0;
@@ -543,21 +543,17 @@ function snapLv(cx,cz,lv,floors){let best=lv,bd=9;const tryL=l=>{const dd=Math.a
 for(const r of RPL)if(Math.round(r.x+r.dx*GRID)===cx&&Math.round(r.z+r.dz*GRID)===cz)tryL(Math.round((r.y0+LVL)/LVL));
 for(const k in BLD){const b=BLD[k];if(b.t!='floor')continue;if(Math.abs(Math.abs(b.x-cx)+Math.abs(b.z-cz)-GRID)<.1)tryL(Math.round(b.y/LVL))}
 return Math.max(floors?1:0,best)}
-function spotCands(t){const s=stand(),di=dirIdx(),Ls=Math.round(s.yb/LVL),rp=s.rp;
-/* boxing: look steeply up = ceiling over you, steeply down = floor under your feet */
+function spotCands(t){const s=stand(),di=dirIdx(),Ls=Math.round(s.yb/LVL),rp=s.rp,dx=DIRS[di][0],dz=DIRS[di][1];
+/* boxing (like Fortnite): look steeply UP = ceiling over you, steeply DOWN = floor under your feet */
 if(t=='floor'||t=='roof'){if(!rp&&pitch>.75)return[{x:s.cx,y:(Ls+1)*LVL,z:s.cz,r:0,own:1}];if(!rp&&pitch<-.7&&Ls>=1&&P.y>=s.yb-.3)return[{x:s.cx,y:s.yb,z:s.cz,r:0,own:1}]}
-const a0=aimHit(),a=a0.hit&&a0.L>BRANGE?Object.assign({},a0,{hit:false,n:null}):a0; /* aiming past the build range: the piece lands at the edge of the range along the crosshair instead of far away */
-let px,py,pz;
-if(a.hit){const nn=a.n||[0,1,0];px=a.h.x+nn[0]*.3;py=a.h.y+nn[1]*.3;pz=a.h.z+nn[2]*.3}
-else{const k=Math.min(8,BRANGE);px=a.o.x+a.d.x*k;py=a.o.y+a.d.y*k;pz=a.o.z+a.d.z*k}
-if(t=='wall'){const lv=Math.max(Math.max(0,Ls-1),Math.min(Ls+1,Math.floor((py+.02)/LVL))),yb=lv*LVL;
-const ex=Math.round((px-GRID/2)/GRID)*GRID+GRID/2,ez=Math.round((pz-GRID/2)/GRID)*GRID+GRID/2,cx=Math.round(px/GRID)*GRID,cz=Math.round(pz/GRID)*GRID;
-return[Math.abs(px-ex)<=Math.abs(pz-ez)?{x:ex,y:yb,z:cz,r:1}:{x:cx,y:yb,z:ez,r:0}]}
-const cx=Math.round(px/GRID)*GRID,cz=Math.round(pz/GRID)*GRID,top=a.hit&&a.n&&a.n[1]>.5;
-if(t=='ramp'){let lv=top?Math.round(a.h.y/LVL):Ls;lv=snapLv(cx,cz,Math.max(0,Math.min(Ls+1,lv)),false);return[{x:cx,y:lv*LVL,z:cz,r:di}]}
-/* floor / roof: your own level, the top of what you aim at, or one level up if you aim high */
-let lv=Math.max(Ls,top?Math.round(a.h.y/LVL):0);if(py>(Ls+1)*LVL-.4&&!top)lv=Ls+1;lv=snapLv(cx,cz,Math.max(1,Math.min(Ls+2,lv)),true);
-return[{x:cx,y:lv*LVL,z:cz,r:0}]}
+/* FORTNITE-STYLE PLACEMENT: nothing is placed where the crosshair lands. Every piece snaps to the build grid right around YOU, in the direction you face
+   (4 directions): walls on the edge of your tile in front of you, floors / stairs / roofs in the tile in front of you. Stand on the stairs you just built and
+   place again to keep climbing (stair-stacking); the piece is the same no matter how far or near you aim. */
+const ax=s.cx+dx*GRID,az=s.cz+dz*GRID,up=rp&&rp.dx===dx&&rp.dz===dz?Math.round(rp.y0/LVL)+1:null; /* up = facing up the stairs you stand on -> next piece continues one level higher */
+if(t=='wall')return[dx?{x:s.cx+dx*GRID/2,y:Ls*LVL,z:s.cz,r:1}:{x:s.cx,y:Ls*LVL,z:s.cz+dz*GRID/2,r:0}];
+if(t=='ramp'){const lv=snapLv(ax,az,Math.max(0,Math.min(Ls+1,up==null?Ls:up)),false);return[{x:ax,y:lv*LVL,z:az,r:di}]}
+/* floor / roof: floor = your level (or the landing at the top of your stairs), roof = one level up (ceiling height) */
+const lv=snapLv(ax,az,Math.max(1,Math.min(Ls+2,t=='roof'?Ls+1:(up==null?Ls:up))),true);return[{x:ax,y:lv*LVL,z:az,r:0}]}
 function decor(sp,t){sp.key=slotKey(t,sp.x,sp.y,sp.z,sp.r);const bx=pieceBoxes(t,sp.x,sp.y,sp.z,sp.r,0);sp.dup=!!SLOT[sp.key];sp.oob=bx.some(b=>Math.abs(b.x)+b.w/2>LIM+2||Math.abs(b.z)+b.d/2>LIM+2)||sp.y>LVL*(MD.map=='box'?3:14);sp.far=Math.hypot(sp.x-P.x,sp.z-P.z)>REACH||Math.abs(sp.y-P.y)>LVL*3.2;sp.bad=sp.dup||sp.oob||sp.far;return sp}
 function findSpot(t){const c=spotCands(t).map(s=>decor(s,t));return c.find(s=>!s.bad)||c[0]}
 function place(t){const n=performance.now();if(phase!='live'||S.dead||n<bcool)return;bcool=n+70;
