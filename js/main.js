@@ -127,7 +127,15 @@ function grid(shop){EV.locker(shop)}
 $('#lock').onclick=()=>{SFX.click();grid(0)};$('#shop').onclick=()=>{SFX.click();grid(1)};$('#plus').onclick=()=>$('#shop').click();$('#tL').onclick=()=>{SFX.click();grid(0)};$('#tS').onclick=()=>{SFX.click();grid(1)};
 $('#daily').onclick=()=>{SFX.click();if(Date.now()-CFG.dly<864e5)return toast('Come back later for your next daily reward');CFG.dly=Date.now();CFG.coins+=50;saveCfg();ui();toast('Daily reward: +50 🪙')};
 const sv=()=>{$('#sensv').textContent=CFG.sens.toFixed(1)+'x';$('#volv').textContent=Math.round(CFG.vol*100)+'%'};sv();$('#sens').addEventListener('input',sv);$('#vol').addEventListener('input',sv);
-$('#fpv').checked=!!CFG.fp;$('#fpv').onchange=e=>{CFG.fp=e.target.checked;saveCfg()};const fpfShow=()=>{$('#fpfv').textContent=Math.round(CFG.fpfov||90)+'°'};$('#fpf').value=CFG.fpfov||90;fpfShow();$('#fpf').oninput=e=>{CFG.fpfov=+e.target.value;saveCfg();fpfShow()};
+/* ---- first-person settings (all saved in this browser) ---- */
+const FPS=[['fpf','fpfv','fpfov',90,v=>Math.round(v)+'°'],['fpsw','fpswv','fpsw',100,v=>Math.round(v)+'%'],['fpbo','fpbov','fpbob',100,v=>Math.round(v)+'%'],
+['fpgx','fpgxv','fpgx',0,v=>(v>0?'+':'')+v],['fpgy','fpgyv','fpgy',0,v=>(v>0?'+':'')+v],['fpgz','fpgzv','fpgz',0,v=>(v>0?'+':'')+v]];
+const fpNum=(k,d)=>CFG[k]!=null&&Number.isFinite(+CFG[k])?+CFG[k]:d;
+function fpSync(){$('#fpv').checked=!!CFG.fp;$('#fpar').checked=fpNum('fparms',1)!==0;FPS.forEach(([i,o,k,d,f])=>{const v=fpNum(k,d);$('#'+i).value=v;$('#'+o).textContent=f(v)})}
+$('#fpv').onchange=e=>{CFG.fp=e.target.checked;saveCfg()};$('#fpar').onchange=e=>{CFG.fparms=e.target.checked?1:0;saveCfg()};
+FPS.forEach(([i,o,k,d,f])=>{$('#'+i).oninput=e=>{CFG[k]=+e.target.value;saveCfg();$('#'+o).textContent=f(+e.target.value)}});
+$('#fpreset').onclick=()=>{SFX.click();CFG.fpfov=90;CFG.fpsw=100;CFG.fpbob=100;CFG.fparms=1;CFG.fpgx=CFG.fpgy=CFG.fpgz=0;saveCfg();fpSync();toast('First-person settings reset')};
+fpSync();
 $('#sfp').checked=CFG.hud!==false;$('#sfp').onchange=e=>{CFG.hud=e.target.checked;saveCfg();ui()};$('#fs2').onclick=()=>$('#fs').click();
 // ---- party (invite a friend for a private 1v1 / to be teammates in 2v2)
 let party=null,pOff=null;

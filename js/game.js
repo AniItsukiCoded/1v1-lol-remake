@@ -6,6 +6,12 @@ const PMAX=1.5;let yaw=0,pitch=.2,recoil=0,shake=0,sp=0,stepT=0,ph=0,wph=0,corne
 let mvf=1,landT=0,onLeave=null,clk=Date.now,BOTM=0,startT=0,rT0=0,firstTg=0,onGhost=null;
 const NR={set(){return Promise.resolve()},push(){},on(){},off(){},remove(){return Promise.resolve()},update(){return Promise.resolve()},child(){return NR},onDisconnect(){return{remove(){},cancel(){},set(){}}}}; /* stand-in for Firebase refs in bot matches */
 let fpCur=false,phase='live',frz=0,rd=1,cdN=-1,ads=0,camD=4.2,deadK=0;
+/* ---- first person viewmodel: a second copy of the character (arms + gun only) that is glued to the camera and drawn in its own pass on top of the world, so it
+   always follows where you look, never pokes into walls and keeps the same look at any field of view. The real body (hidden in first person) still casts your shadow. ---- */
+let vm=null,vsc,vRoot,vSway,vHL,vDL,fpArmsCur=true,celT0=0,cutV=-1,vYaw=null,vPit=0,swY=0,swP=0,fpRoll=0;
+const cfp=(k,d)=>{const v=window.CFG&&CFG[k];return v==null||!Number.isFinite(+v)?d:+v}; /* numeric first-person setting with a default */
+/* black flash used to hide the camera cut to / from the victory shot */
+function setCut(o){o=Math.round(o*50)/50;if(o===cutV)return;cutV=o;const e=$('#cut');if(e)e.style.opacity=o}
 /* geometry shared by every effect (never disposed): per-shot BoxGeometry/SphereGeometry used to leak GPU buffers and cause hitches */
 const UBOX=new T.BoxGeometry(1,1,1),SPG=new T.BoxGeometry(.1,.1,.1),CPG=new T.SphereGeometry(.06,5,4),PLG=new T.PlaneGeometry(1,1),SHG=new T.BoxGeometry(.05,.03,.09);[UBOX,SPG,CPG,PLG,SHG].forEach(x=>x.userData.keep=1);
 /* ================= GRAPHICS QUALITY: 0 Anti-Lag · 1 Low · 2 Normal (the original look) · 3 Higher =================
@@ -73,7 +79,8 @@ const pumpOf=(t0,now,w)=>{if(!t0||!w||w.id!='shotgun')return 0;const u=(now-t0-1
 function refreshKeys(){const wb=$('#wbar');if(wb)[...wb.children].forEach((d,i)=>{const e=d.querySelector('i');if(e)e.textContent=CTL.first(['w1','w2','pick'][i])});
 const bq=$('#bq');if(bq)bq.querySelectorAll('.bs').forEach(d=>{const e=d.querySelector('i');if(e)e.textContent=CTL.first(d.dataset.t)})}
 function init(){if(R)return;Qs=QT(QL());aaOn=Qs.aa;R=new T.WebGLRenderer({canvas:$('#c'),antialias:aaOn,powerPreference:'high-performance'});
-sc=new T.Scene();cam=new T.PerspectiveCamera(75,1,.1,200);HL=new T.HemisphereLight(0xaaaaff,0x443355,.8);sc.add(HL);DL=new T.DirectionalLight(0xffd0a0,1);DL.position.set(30,40,20);DL.castShadow=true;DL.shadow.bias=-.0006;DL.shadow.normalBias=.05;DL.shadow.mapSize.set(2048,2048);Object.assign(DL.shadow.camera,{left:-40,right:40,top:40,bottom:-40});sc.add(DL);
+sc=new T.Scene();cam=new T.PerspectiveCamera(75,1,.1,200);
+vsc=new T.Scene();vRoot=new T.Group();vSway=new T.Group();vRoot.add(vSway);vsc.add(vRoot);vHL=new T.HemisphereLight(0xffffff,0x9a96b0,.9);vDL=new T.DirectionalLight(0xfff1dc,1.1);vDL.position.set(-.8,1.4,1.2);vDL.target.position.set(0,-.3,-1);vRoot.add(vHL,vDL,vDL.target);HL=new T.HemisphereLight(0xaaaaff,0x443355,.8);sc.add(HL);DL=new T.DirectionalLight(0xffd0a0,1);DL.position.set(30,40,20);DL.castShadow=true;DL.shadow.bias=-.0006;DL.shadow.normalBias=.05;DL.shadow.mapSize.set(2048,2048);Object.assign(DL.shadow.camera,{left:-40,right:40,top:40,bottom:-40});sc.add(DL);
 addEventListener('resize',rs);applyQ(1);rs();
 const wb=$('#wbar');if(wb&&!wb.children.length)WEAPONS.forEach((w,i)=>{const d=document.createElement('div');d.className='ws';d.innerHTML=`<i>${w.key}</i>${gunIcon(w)}<b>${w.n}</b>`;d.onclick=()=>run&&selectW(i);wb.appendChild(d)});
 const bq=$('#bq');if(bq&&!bq.children.length){[['Z','wall','▮'],['X','floor','▬'],['C','ramp','⟋'],['V','roof','▲'],['G','edit','✎']].forEach(([k,t,ic])=>{const d=document.createElement('div');d.className='bs';d.dataset.t=t;d.innerHTML=`<i>${k}</i><span>${ic}</span><b>${t=='edit'?'EDIT':BPIECE[t].n}</b>`;d.onclick=()=>run&&(t=='edit'?(EDIT?confirmEdit():startEdit()):setBuild(t,1));bq.appendChild(d)});const m=document.createElement('div');m.id='mats';m.onclick=e=>{const sp=e.target.closest&&e.target.closest('span[data-i]');if(sp)pickMat(+sp.dataset.i);else cycleMat()};bq.appendChild(m)}
@@ -143,15 +150,15 @@ const ix=ge.index.array,ai=[];for(let i=0;i<ix.length;i+=3)if(isA[ix[i]]&&isA[ix
 const arm=new T.BufferGeometry();['position','normal','skinIndex','skinWeight'].forEach(n=>arm.setAttribute(n,ge.getAttribute(n)));arm.setIndex(ai);arm.userData.keep=1;
 return SKG={ge,arm,ibm:F('ibm',Float32Array),used,clip:new T.AnimationClip('kick',D.dur,tracks)}}
 
-function rig(col){const D=window.SKIN,G=skinData();if(!G)return null;const cid=window.COS?COS.id(col):0,gp=w=>window.GUN?GUN.get(w,GUN.pick(col,w)):null;col=col%16777216;
+function rig(col,vmode){const D=window.SKIN,G=skinData();if(!G)return null;const cid=window.COS?COS.id(col):0,gks=WEAPONS.map((_,i)=>window.GUN?GUN.get(i,GUN.pick(col,i)):null);col=col%16777216; /* gun skins live in the high bits of the skin number: read them BEFORE the colour is stripped, or every gun comes out stock */
 const J=new Set(D.joints),mat=new T.MeshStandardMaterial({color:col,roughness:.48,metalness:.08,emissive:col,emissiveIntensity:.1,skinning:true,side:T.DoubleSide}),root=new T.Group();
 const os=D.nodes.map((n,i)=>{const o=i==D.mesh?new T.SkinnedMesh(G.ge,mat):J.has(i)?new T.Bone():new T.Object3D();o.name='n'+i;o.userData.nm=n.n;
 if(n.m)new T.Matrix4().fromArray(n.m).decompose(o.position,o.quaternion,o.scale);else{n.t&&o.position.fromArray(n.t);n.r&&o.quaternion.fromArray(n.r);n.s&&o.scale.fromArray(n.s)}return o});
 D.nodes.forEach((n,i)=>(n.p<0?root:os[n.p]).add(os[i]));
-const mesh=os[D.mesh];mesh.frustumCulled=false;mesh.castShadow=true;root.updateMatrixWorld(true);
+const mesh=os[D.mesh];mesh.frustumCulled=false;mesh.castShadow=!vmode;root.updateMatrixWorld(true);
 mesh.bind(new T.Skeleton(D.joints.map(j=>os[j]),D.joints.map((_,j)=>new T.Matrix4().fromArray(G.ibm,j*16))),mesh.matrixWorld);
 const armMesh=new T.SkinnedMesh(G.arm,mat);armMesh.position.copy(mesh.position);armMesh.quaternion.copy(mesh.quaternion);armMesh.scale.copy(mesh.scale);armMesh.frustumCulled=false;armMesh.visible=false;mesh.parent.add(armMesh);armMesh.bind(mesh.skeleton,mesh.bindMatrix);
-const hidMat=new T.MeshBasicMaterial({colorWrite:false,depthWrite:false,skinning:true});let fpOn=false;
+const hidMat=new T.MeshBasicMaterial({colorWrite:false,depthWrite:false,skinning:true});let fpOn=false,fpArms=true,fpGun=true;
 /* rebuild the rest pose from the inverse bind matrices so "no pose" == T-pose with zero skin distortion */
 const BN={},ALL=[],tv=new T.Vector3(),ts=new T.Vector3();
 D.joints.forEach((ni,jj)=>{if(!G.used.has(jj))return;const b=os[ni],M=new T.Matrix4().fromArray(G.ibm,jj*16).invert();
@@ -160,12 +167,12 @@ const wq=new T.Quaternion();M.decompose(tv,wq,ts);const r={b,nm:D.nodes[ni].n.re
 const bb=G.ge.boundingBox,k2=1.9/(bb.max.y-bb.min.y),inn=new T.Group();inn.rotation.y=Math.PI;inn.add(root);root.scale.setScalar(k2);root.position.set(0,-bb.min.y*k2,0);
 const g=new T.Group();g.rotation.order='YXZ';g.add(inn);
 /* cosmetic accessories ride on the head / spine / hip bones; each holder cancels the bone's rest rotation+scale so parts are authored in plain character space (see js/cosmetics.js) */
-const cs=cid&&window.COS?COS.make(cid,mat):null;let cT=0;
+const cs=cid&&window.COS&&!vmode?COS.make(cid,mat):null;let cT=0;
 if(cs){g.updateMatrixWorld(true);const hold=(nm,x,y,z,arr)=>{if(!arr||!BN[nm])return;const b=BN[nm].b,h=new T.Group(),ws=b.getWorldScale(new T.Vector3());h.quaternion.copy(b.getWorldQuaternion(new T.Quaternion())).invert();h.scale.set(1/ws.x,1/ws.y,1/ws.z);h.position.copy(b.worldToLocal(new T.Vector3(x,y,z)));b.add(h);arr.forEach(o=>h.add(o))};
 hold('Head_05',0,1.75,0,cs.head);hold('Spine2_03',0,1.5,.12,cs.back);hold('Spine2_03',0,1.5,0,cs.chest);hold('Hips_01',0,.96,.1,cs.hip)}
 /* gun mounted on the right hand (gun +Z -> hand +Y, gun up -> -hand Z) */
 const mount=new T.Group();mount.rotation.x=-Math.PI/2;mount.position.set(0,.07,0);mount.scale.setScalar(1/(100*k2));BN.RightHand_026.b.add(mount);
-const guns=WEAPONS.map((w,i)=>buildGun(w,gp(i)));let gi=-1,flT=0;
+const guns=WEAPONS.map((w,i)=>buildGun(w,gks[i]));let gi=-1,flT=0;
 const mx=new T.AnimationMixer(root),ac=mx.clipAction(G.clip);ac.setLoop(T.LoopOnce,1);ac.clampWhenFinished=true;let kT=0;
 const q=new T.Quaternion(),acc=new T.Quaternion(),ax=new T.Vector3(),X=AX.x,Y=AX.y,Z=AX.z;
 const rot=(n,list)=>{const r=BN[n];acc.identity();for(const[a,v]of list){if(!v)continue;ax.copy(a).applyQuaternion(r.bwi);q.setFromAxisAngle(ax,v);acc.premultiply(q)}r.b.quaternion.copy(r.bq).multiply(acc)};
@@ -265,16 +272,19 @@ ALL.forEach((r,i)=>{if(st.init)sq[i].slerp(r.b.quaternion,a);else sq[i].copy(r.b
 const hb=BN.Hips_01.b;st.hy=st.init?st.hy+(hb.position.y-st.hy)*a:hb.position.y;hb.position.y=st.hy;st.init=1;if(IKL&&st.ikw>.002)ikRun(st.ikw,IKL)}
 function flashUpd(dt){const cur=gi>=0?guns[gi]:null,f=cur&&cur.userData.fl;if(cur&&cur.userData.glow){const tt=performance.now()/1000;cur.userData.glow.forEach(q=>{q.m.emissiveIntensity=q.b*(1-q.a+q.a*(.5+.5*Math.sin(tt*q.s+q.p)))})}guns.forEach(x=>{const y=x.userData.fl;if(y&&y!==f)y.visible=false});if(!f)return;if(flT>0){flT-=dt;f.visible=true;f.rotation.z=Math.random()*6.283;const s=.75+Math.random()*.5;f.scale.set(s,s,s)}else f.visible=false}
 /* first person: hide the body + head accessories (the body still casts its shadow), show only the arms and the gun */
-function setFP(on){if(on===fpOn)return;fpOn=on;armMesh.visible=on;mesh.material=on?hidMat:mat;if(cs)['head','back','chest','hip'].forEach(k=>(cs[k]||[]).forEach(o=>{o.visible=!on}))}
-return{g,mat,pose,setGun,setFP,flash(){if(FLASH)flT=.055},
-kick(){ac.reset();ac.paused=false;ac.play();kT=G.clip.duration},kicking:()=>kT>0,
+/* on = first person. The body is never drawn in first person (hidMat), but a normal rig still casts its shadow. arms / gun say whether this rig also shows the viewmodel parts.
+   vmode rigs (the camera-attached viewmodel) have no use for the body at all, so it is switched off completely. */
+function setFP(on,arms,gun){if(arms===undefined)arms=true;if(gun===undefined)gun=true;if(on===fpOn&&arms===fpArms&&gun===fpGun)return;fpOn=on;fpArms=arms;fpGun=gun;armMesh.visible=on&&arms;mount.visible=!on||gun;mesh.material=on?hidMat:mat;if(vmode)mesh.visible=!on;if(cs)['head','back','chest','hip'].forEach(k=>(cs[k]||[]).forEach(o=>{o.visible=!on}))}
+
+return{g,mat,pose,setGun,setFP,isRig:1,flash(){if(FLASH)flT=.055},
+kick(){ac.reset();ac.paused=false;ac.play();kT=G.clip.duration},kicking:()=>kT>0,kickLeft:()=>Math.max(0,kT),stopKick(){if(kT>0){kT=0;ac.stop();st.init=0}},
 update(dt,o){cT+=dt;flashUpd(dt);cs&&cs.upd&&cs.upd(cT,dt,o||{});if(kT>0){kT-=dt;mx.update(dt);st.init=0;if(kT<=0){ac.stop()}return}pose(o,dt)},
 muzzle(v){g.updateMatrixWorld(true);return guns[Math.max(0,gi)].userData.mz.getWorldPosition(v||new T.Vector3())}}}
 
 /* minimal stand-in only used if js/skin.js failed to load */
 function fallbackRig(col){col=col%16777216;const g=new T.Group();g.rotation.order='YXZ';const m=new T.MeshStandardMaterial({color:col,roughness:.6});
 const b=new T.Mesh(new T.BoxGeometry(.6,1.5,.4),m);b.position.y=.95;b.castShadow=true;g.add(b);
-return{g,mat:m,pose(){},setGun(){},setFP(){},flash(){},kick(){},kicking:()=>false,update(){},muzzle(v){return(v||new T.Vector3()).set(g.position.x,g.position.y+1.4,g.position.z)}}}
+return{g,mat:m,pose(){},setGun(){},setFP(){},flash(){},kick(){},kicking:()=>false,kickLeft:()=>0,stopKick(){},update(){},muzzle(v){return(v||new T.Vector3()).set(g.position.x,g.position.y+1.4,g.position.z)}}}
 function char(col){return rig(col)||fallbackRig(col)}
 function rs(){R.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
 function tag(t,col){const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');x.font='bold 36px sans-serif';x.textAlign='center';x.fillStyle=col||'#fff';x.strokeStyle='#000';x.lineWidth=6;x.strokeText(t,128,44);x.fillText(t,128,44);
@@ -363,9 +373,13 @@ for(let i=0;i<p.count;i++){const ax=Math.abs(n.getX(i)),ay=Math.abs(n.getY(i)),a
 g.setAttribute('uv',new T.BufferAttribute(uv,2));return g}
 let RG,SG;
 const roofGeo=()=>RG||(RG=(()=>{const g=new T.ConeGeometry(GRID*.7071,1.8,4);g.rotateY(Math.PI/4);g.translate(0,.9,0);triUV(g,GRID/2);g.userData.keep=1;return g})());
-/* stairs = ONE solid mesh (stepped profile extruded across the tile). Local frame: rises toward +Z, centred on x/z, base at y=0. */
-const stairGeo=()=>SG||(SG=(()=>{const h=LVL/NST,L=GRID/NST,s=new T.Shape();s.moveTo(-GRID/2,0);s.lineTo(GRID/2,0);s.lineTo(GRID/2,LVL);
-for(let k=NST-1;k>=0;k--){const z0=-GRID/2+k*L;s.lineTo(z0,(k+1)*h);if(k>0)s.lineTo(z0,k*h)}
+/* stairs = ONE mesh: a thin straight run of steps on a sloped slab (like Fortnite), open underneath instead of a solid wedge.
+   Profile (run x, rise y) is extruded across the tile. Each tread's nose sits on the walking slope; the underside is a straight slope SLB below the noses.
+   Local frame: rises toward +Z, centred on x/z, base at y=0. */
+const SLB=.5;
+const stairGeo=()=>SG||(SG=(()=>{const h=LVL/NST,L=GRID/NST,s=new T.Shape(),x0=-GRID/2+SLB/LVL*GRID;
+s.moveTo(-GRID/2,0);for(let k=0;k<NST;k++){const z0=-GRID/2+k*L;s.lineTo(z0,(k+1)*h);s.lineTo(z0+L,(k+1)*h)}
+s.lineTo(GRID/2,LVL-SLB);s.lineTo(x0,0);s.lineTo(-GRID/2,0);
 const g=new T.ExtrudeGeometry(s,{depth:GRID,bevelEnabled:false});g.rotateY(-Math.PI/2);g.translate(GRID/2,0,0);triUV(g,GRID/2);g.userData.keep=1;return g})());
 const GC={},gb=(w,h,d)=>{const k=[w,h,d].map(v=>Math.round(v*1000)).join('|');if(!GC[k]){const q=new T.BoxGeometry(w,h,d);triUV(q,GRID/2);q.userData.keep=1;GC[k]=q}return GC[k]};
 const edgesOf=q=>q.userData.eg||(q.userData.eg=(()=>{const e=new T.EdgesGeometry(q,25);e.userData.keep=1;return e})());
@@ -378,7 +392,7 @@ if(t=='floor'){if(!mask)return[{x,z,w:GRID,d:GRID,y0:y-.3,h:y}];const o=[];
 for(let k=0;k<3;k++)for(let i=0;i<3;i++){if(mask>>(k*3+i)&1)continue;o.push({x:x+(i-1)*CELL,z:z+(k-1)*CELL,w:CELL,d:CELL,y0:y-.3,h:y})}return o}
 if(t=='roof')return[[GRID,.6],[GRID*.66,1.2],[GRID*.33,1.8]].map(([w,h])=>({x,z,w,d:w,y0:y,h:y+h}));
 /* stairs: solid blocks, one per step (bullets / line of sight only; walking uses the sloped surface in RPL) */
-const dx=DIRS[r][0],dz=DIRS[r][1],L=GRID/NST,out=[];for(let k=0;k<NST;k++){const o=-GRID/2+L/2+k*L,top=y+(k+1)*LVL/NST;out.push({x:x+dx*o,z:z+dz*o,w:dx?L:GRID,d:dx?GRID:L,y0:y,h:top,ray:1})}return out}
+const dx=DIRS[r][0],dz=DIRS[r][1],L=GRID/NST,out=[];for(let k=0;k<NST;k++){const o=-GRID/2+L/2+k*L,top=y+(k+1)*LVL/NST;out.push({x:x+dx*o,z:z+dz*o,w:dx?L:GRID,d:dx?GRID:L,y0:y+Math.max(0,k*LVL/NST-SLB),h:top,ray:1})}return out}
 function makePiece(b){const{t,x,y,z,r}=b,boxes=pieceBoxes(t,x,y,z,r,b.mask);boxes.forEach(bx=>{bx.bid=b.id;B.push(bx)});b.boxes=boxes;
 const g=new T.Group(),c=centerOf(t,x,y,z),lm=new T.LineBasicMaterial({color:b.ally?0x1d3f9a:0x9a1d1d});g.position.set(c[0],c[1],c[2]);
 const add=(geo,px,py,pz)=>{const m=new T.Mesh(geo,b.mat);m.position.set(px,py,pz);m.castShadow=true;m.add(new T.LineSegments(edgesOf(geo),lm));g.add(m)};
@@ -507,15 +521,15 @@ if(!w.auto&&S.lat)return;
 if(!w.melee&&st.mag<=0){SFX.empty();S.nextShot=n+250;reload();return}
 if(!w.melee)st.mag--;S.nextShot=n+w.rate;S.lat=1;recoil=Math.min(1.2,recoil+w.rec);shake+=w.shk;fireK=Math.min(1,fireK+(w.kk||0));S.pumpT=n;if(w.melee)S.swingT=n;
 const d=dirv(),rt=new T.Vector3(Math.cos(yaw),0,-Math.sin(yaw)),up=new T.Vector3().crossVectors(rt,d).normalize();
-const o=camP.clone().addScaledVector(d,camD+.3),mu=w.melee?o:me.muzzle(),spr=w.spread*(1+(sp>3?.9:0)+(S.g?0:1.5))*(1-ads*.65),D=[],L=[],bd={},HT={},mx=w.melee?w.range:110;let harv=0;
+const o=camP.clone().addScaledVector(d,camD+.3),mu=w.melee?o:me.muzzle(),muL=!w.melee&&fpCur&&vm&&vm.g.visible?vm.muzzle():mu,spr=w.spread*(1+(sp>3?.9:0)+(S.g?0:1.5))*(1-ads*.65),D=[],L=[],bd={},HT={},mx=w.melee?w.range:110;let harv=0;
 for(let i=0;i<w.pel;i++){const a=Math.random()*6.283,r=(w.pel>1?Math.sqrt(Math.random()):Math.random())*spr,v=d.clone().addScaledVector(rt,Math.cos(a)*r).addScaledVector(up,Math.sin(a)*r).normalize(),c=castRay(o,v,mx);let l=c.L,ht=null,hq=null;
 for(const q of RP){if(q.mate||q.dead||q.left)continue;const h=hitZone(o,v,q.g.position,q.r);if(h&&h.t<=Math.min(l,mx)+.05&&(!ht||h.t<ht.t)){ht=h;hq=q}}
 if(ht){const f=w.fall,m=1-(1-f[2])*Math.max(0,Math.min(1,(ht.t-f[0])/(f[1]-f[0]))),e=HT[hq.u]||(HT[hq.u]={r:hq,dm:0,hd:0,p:null});e.dm+=w.dmg*m*(ht.z=='head'?w.hs:ht.z=='legs'?.8:1);if(ht.z=='head')e.hd=1;e.p=o.clone().addScaledVector(v,ht.t);l=ht.t}
 if(!ht&&c.id&&l<mx)bd[c.id]=(bd[c.id]||0)+w.bdmg;else if(!ht&&w.melee&&l<mx&&!harv){harv=1;mat[msel]=Math.min(999,mat[msel]+25);SFX.hit();hud()}
-D.push(r3(v.x),r3(v.y),r3(v.z));L.push(Math.round(l*10)/10);if(!w.melee)tracer(mu,o.clone().addScaledVector(v,l),0xfff2a0,w.pel>1?.025:.04)}
+D.push(r3(v.x),r3(v.y),r3(v.z));L.push(Math.round(l*10)/10);if(!w.melee)tracer(muL,o.clone().addScaledVector(v,l),0xfff2a0,w.pel>1?.025:.04)}
 const bda=Object.keys(bd).map(k=>[k,bd[k]]);bda.forEach(([id,dm])=>damageBuild(id,dm));
 const claims=[];for(const k in HT){const e=HT[k],dm=Math.round(e.dm*10)/10;e.r.hitT=n;e.r.rc=Math.min(1.2,(e.r.rc||0)+.3);if(e.r.bot)botHit(e.r,dm,e.hd,e.p);else{claims.push({u:k,dm,hd:e.hd});hitFx(e.p,e.hd)}}
-if(!w.melee&&w.id=='ar')casing(mu.clone().addScaledVector(d,-.5),rt);if(!w.melee)flash(me);SFX.gun(w.id);$('#cross').classList.add('f');setTimeout(()=>$('#cross').classList.remove('f'),90);
+if(!w.melee&&w.id=='ar')casing(muL.clone().addScaledVector(d,-.5),rt);if(!w.melee){flash(me);vm&&flash(vm)}SFX.gun(w.id);$('#cross').classList.add('f');setTimeout(()=>$('#cross').classList.remove('f'),90);
 shRef.push({by:uid,rd,h:claims,w:S.w,o:[r3(o.x),r3(o.y),r3(o.z)],m:[r3(mu.x),r3(mu.y),r3(mu.z)],D,L,bd:bda,pk:Math.round(P.y*10)/10});hud();
 if(!w.melee&&st.mag<=0&&st.res>0)setTimeout(()=>{if(run&&!S.rl&&S.w==WEAPONS.indexOf(w)&&curS().mag<=0)reload()},w.rate+150)}
 function flash(c){c.flash&&c.flash()}
@@ -569,7 +583,7 @@ msg(mo&&eo?'DOUBLE KO':eo?(MODE2?'ROUND WON':'ELIMINATED '+en.name.toUpperCase()
 function finalizeRound(){if(!run)return;const mo=teamOut(myT),eo=teamOut(1-myT);if(!mo&&!eo){phase='live';return}
 if(mo)W[1-myT]++;if(eo)W[myT]++;hud();roundCb&&roundCb(eo&&!mo);
 clearTimeout(pt);pt=setTimeout(()=>{if(!run)return;if(W[0]>=WIN||W[1]>=WIN)finish();else newRound()},Math.max(300,rT0+2900-clk()))}
-function newRound(){clearBuilds();exitEdit();exitBuild();mat=[500,300,200];msel=0;S.swingT=0;rd++;phase='freeze';{const tg=rd==1?firstTg:(rT0?rT0+5900:0);frz=performance.now()+(tg?Math.max(1200,Math.min(9000,tg-clk())):3000)}cdN=-1;
+function newRound(){me.stopKick&&me.stopKick();celT0=0;setCut(0);clearBuilds();exitEdit();exitBuild();mat=[500,300,200];msel=0;S.swingT=0;rd++;phase='freeze';{const tg=rd==1?firstTg:(rT0?rT0+5900:0);frz=performance.now()+(tg?Math.max(1200,Math.min(9000,tg-clk())):3000)}cdN=-1;
 P.set(sp0[0],0,sp0[1]);visY=0;yaw=yawAt(sp0);pitch=.12;S.vy=0;S.g=1;S.hp=100;S.dead=0;S.dts=0;S.killer=null;S.rl=0;sp=0;recoil=0;fireK=0;hist=[];
 WS=WEAPONS.map(w=>({mag:w.mag,res:w.res}));S.nextShot=0;S.lat=0;
 RP.forEach(r=>{if(r.left)return;r.buf=[];r.dts=0;if(r.bot)botSpawn(r);r.hp=100;r.dead=0;r.fk=0;r.g.position.set(r.c[0],0,r.c[1]);r.tg.copy(r.g.position);r.opv.copy(r.g.position);r.odk=0;r.ads=0;r.rlOn=0});
@@ -658,24 +672,33 @@ sp+=(Math.hypot(vx,vz)-sp)*Math.min(1,dt*10);stepT-=dt;if(sp>3&&S.g&&stepT<0){SF
 unstick();if(live&&K.shoot&&!EDIT){if(buildT)place(buildT);else shoot()}}
 hist.push({t:now,x:P.x,y:P.y,z:P.z});while(hist.length&&now-hist[0].t>300)hist.shift();
 const w=curW();wph+=dt*sp*1.6*mvf;landT=Math.max(0,landT-dt);const k=Math.min(1,sp/6.5);recoil*=Math.pow(.001,dt*1.1);
-const fpOn=!!(window.CFG&&CFG.fp)&&!S.dead;if(fpOn!==fpCur){fpCur=fpOn;me.setFP(fpOn);cam.near=fpOn?.04:.1}
+const wantFP=!!(window.CFG&&CFG.fp)&&!S.dead;
+/* victory cutaway: your character plays the drop-kick, which you can't see from the eyes (the body is hidden, only the arms would flail around the camera).
+   So when the round ends on your kill the camera cuts to the third-person view for the length of the kick, then cuts back (hidden by a quick black flash). */
+const kRem=me.kickLeft?me.kickLeft():0,celeb=wantFP&&phase=='over'&&kRem>0;if(celeb){if(!celT0)celT0=now}else celT0=0;
+const cEl=celeb?(now-celT0)/1000:0,cutTP=celeb&&cEl>.11&&kRem>.26;let cutO=0;
+if(celeb){if(cEl<.11)cutO=cEl/.11;else if(cEl<.38)cutO=1-(cEl-.11)/.27;if(kRem<.38)cutO=Math.max(cutO,kRem>.26?(.38-kRem)/.12:kRem/.26)}setCut(cutO);
+const fpOn=wantFP&&!cutTP,useVM=fpOn&&!!vm,showArms=cfp('fparms',1)!==0;
+if(fpOn!==fpCur||showArms!==fpArmsCur){fpCur=fpOn;fpArmsCur=showArms;me.setFP(fpOn,!vm,!vm);if(vm)vm.setFP(true,showArms,true);cam.near=fpOn?.04:.1}
 /* aim down sights / scope */
 const adsT=(K.aim&&live&&!S.dead&&!S.rl&&!w.melee)?1:0;ads+=(adsT-ads)*Math.min(1,dt*11);const sc1=w.scope&&ads>.75;
-me.g.visible=!sc1;$('#scope').classList.toggle('on',!!sc1);
+me.g.visible=!sc1;if(vm)vm.g.visible=useVM&&!sc1;$('#scope').classList.toggle('on',!!sc1);
 deadK+=((S.dead?1:0)-deadK)*Math.min(1,dt*7);
 if(Math.abs(P.y-visY)>2.5)visY=P.y;visY=S.g?visY+(P.y-visY)*Math.min(1,dt*24):P.y;me.g.position.set(P.x,visY+deadK*.12,P.z);me.g.rotation.set(deadK*1.45,yaw,0);
 fireK*=Math.exp(-dt*(w.kd||10));const rlp=S.rl?Math.min(.999,(now-(S.rlT0||now))/Math.max(1,w.rl)):-1,drw=S.eq>now?1-(S.eq-now)/260:1;
-me.update(dt,{fp:fpOn?1:0,k,w:wph,pitch,rec:recoil,air:!S.g,vy:S.vy,land:landT/.3,gun:buildT?-1:S.w,swing:S.swingT&&now-S.swingT<380?(now-S.swingT)/380:-1,t:ph,ads,fire:fireK,pump:pumpOf(S.pumpT,now,w),rl:rlp,draw:drw,spr:(K.sprint&&!K.aim&&!K.shoot&&sp>6&&S.g)?1:0});
+const po={fp:0,k,w:wph,pitch,rec:recoil,air:!S.g,vy:S.vy,land:landT/.3,gun:buildT?-1:S.w,swing:S.swingT&&now-S.swingT<380?(now-S.swingT)/380:-1,t:ph,ads,fire:fireK,pump:pumpOf(S.pumpT,now,w),rl:rlp,draw:drw,spr:(K.sprint&&!K.aim&&!K.shoot&&sp>6&&S.g)?1:0};me.update(dt,po);
 const d=dirv(),rt=new T.Vector3(Math.cos(yaw),0,-Math.sin(yaw)),head=new T.Vector3(P.x,visY+1.7,P.z);
-if(fpOn){/* FIRST PERSON: camera sits at the eyes, no shoulder offset, body hidden, a little head-bob and landing dip */
-camP.set(P.x-Math.sin(yaw)*.1,visY+1.68+Math.abs(Math.sin(wph))*.03*k*(S.g?1:0)-Math.min(.14,landT*.45),P.z-Math.cos(yaw)*.1);camD=0}
+if(fpOn){/* FIRST PERSON: camera sits at the eyes, no shoulder offset, body hidden. Head-bob, side sway, breathing, strafe roll and a landing dip (all scaled by the Camera bob setting) */
+const bs=cfp('fpbob',100)/100*(1-ads*.6),gr=S.g?1:0,bsn=Math.sin(wph),stf=live?Math.max(-1,Math.min(1,(K.right?1:0)-(K.left?1:0)+(K.ax||0))):0;
+fpRoll+=((-stf*.012+bsn*.003*k)*bs-fpRoll)*Math.min(1,dt*8);
+camP.set(P.x-Math.sin(yaw)*.1,visY+1.68+Math.abs(bsn)*.03*k*bs*gr+Math.sin(ph*1.9)*.003*(1-k)*bs-Math.min(.14,landT*.45),P.z-Math.cos(yaw)*.1).addScaledVector(rt,Math.cos(wph)*.012*k*bs*gr);camD=0}
 else{
 const wantD=w.scope?.2:2.7,wantS=w.scope?0:.42,dTar=4.2+(wantD-4.2)*ads;shSm+=((.9+(wantS-.9)*ads)-shSm)*Math.min(1,dt*10);
 const des=head.clone().addScaledVector(d,-dTar).addScaledVector(rt,shSm),dv=des.clone().sub(head),dl=dv.length();dv.multiplyScalar(1/dl);
 let allow=dl;for(const off of[0,.35,-.35]){const o2=head.clone();o2.y+=off;allow=Math.min(allow,castRay(o2,dv,dl,1).L-.4)}
 const camTgt=Math.max(.3,Math.min(dl,allow));camDs+=(camTgt-camDs)*Math.min(1,dt*(camTgt<camDs?28:4));camD=camDs*(dTar/dl);
 camP.copy(head).addScaledVector(dv,camDs);camP.y-=Math.min(.14,landT*.45);if(camP.y<.3)camP.y=.3} /* little camera dip on landing */
-cam.position.copy(camP).add(new T.Vector3((Math.random()-.5)*shake,(Math.random()-.5)*shake,0));shake*=Math.pow(.003,dt);cam.lookAt(fpOn?camP.clone().add(d).add(new T.Vector3(0,recoil*.03,0)):camP.clone().add(d));
+cam.position.copy(camP).add(new T.Vector3((Math.random()-.5)*shake,(Math.random()-.5)*shake,0));shake*=Math.pow(.003,dt);cam.lookAt(fpOn?camP.clone().add(d).add(new T.Vector3(0,recoil*.03,0)):camP.clone().add(d));if(fpOn)cam.rotateZ(fpRoll);
 const bf=fpOn?Math.max(60,Math.min(120,+CFG.fpfov||90)):75,fv=(K.sprint&&sp>6&&!K.aim?bf+7:bf)-fireK*(w.kk>.5?2.2:.6),zf=bf/(w.zoom||1);cam.fov+=((fv+(zf-fv)*ads)-cam.fov)*Math.min(1,dt*10);cam.updateProjectionMatrix();
 const cr=$('#cross'),bo=buildT?.25:1,cs=Math.round((1+w.spread*30+(sp>3?.4:0)+(S.g?0:.5)+recoil*.5)*(1-ads*.5)*40)/40;if(bo!==xhB){xhB=bo;cr.style.setProperty('--bo',bo)}if(cs!==xhS){xhS=cs;cr.style.setProperty('--s',cs)}
 /* other players */
@@ -684,7 +707,14 @@ halUpdate(dt);ghostUpdate();editUpdate();buildUpdate();for(let i=TW.length-1;i>=
 for(let i=FX.length-1;i>=0;i--){const f=FX[i];if(f.ring){f.ring.rotation.y+=dt*f.ring.userData.s;continue}f.life-=dt;if(f.v){if(f.g)f.v.y-=18*dt;f.m.position.addScaledVector(f.v,dt);if(f.floor&&f.m.position.y<.03){f.m.position.y=.03;f.v.set(0,0,0)}}f.m.material.opacity=Math.max(0,f.life*(f.fade?8:1.6));if(f.sh){const q=Math.max(.15,Math.min(1,f.life*3));if(!f.fade)f.m.scale.setScalar(q)}if(f.spin&&f.m.position.y>.04)f.m.rotation.x+=f.spin*dt;if(f.life<=0){fxFree(f.m);FX.splice(i,1)}}
 if(!document.hidden)for(const r of RP)if(r.t&&!r.left&&now-r.t>12000)playerLeft(r);
 if(!BOTM&&onGhost&&!document.hidden&&now-startT>16000&&RP.filter(r=>!r.mate).every(r=>!r.seen)){const g=onGhost;onGhost=null;ghost(g);return}
-R.render(sc,cam)}
+/* viewmodel: follow the camera exactly (plus a little weapon sway that lags behind fast turns), light it like the world, draw it last on a cleared depth buffer */
+if(useVM){if(vYaw==null){vYaw=yaw;vPit=pitch}const dyw=Math.atan2(Math.sin(yaw-vYaw),Math.cos(yaw-vYaw)),dpt=pitch-vPit,sw=cfp('fpsw',100)/100,lim=.09*Math.max(.3,sw),dc=Math.exp(-dt*9);vYaw=yaw;vPit=pitch;
+swY=Math.max(-lim,Math.min(lim,swY-dyw*.22*sw))*dc;swP=Math.max(-lim,Math.min(lim,swP-dpt*.22*sw))*dc;vSway.rotation.set(swP,swY,0);
+vm.g.position.set(cfp('fpgx',0)*.01,-1.68+cfp('fpgy',0)*.01,.1+cfp('fpgz',0)*.01); /* feet 1.68 under the eyes, body axis 0.1 behind them: the exact spot the arms always had relative to the camera */
+vm.update(dt,Object.assign({},po,{fp:1,pitch:0,k:k*cfp('fpbob',100)/100}));
+vRoot.position.copy(cam.position);vRoot.quaternion.copy(cam.quaternion);vRoot.updateMatrixWorld(true);
+vHL.color.copy(HL.color);vHL.groundColor.copy(HL.groundColor);vHL.intensity=Math.min(1.7,HL.intensity*1.05+.3);vDL.color.copy(DL.color);vDL.intensity=Math.min(2.2,DL.intensity*1.05+.1)}else vYaw=null;
+R.autoClear=false;try{R.clear();R.render(sc,cam);if(useVM){R.clearDepth();R.render(vsc,cam)}}finally{R.autoClear=true}}
 
 /* ================= HALLOWEEN EVENT: spooky arena dressing + candy pickups ================= */
 let HAL=0,HAN=[],CG=null,CN=[],candyCb=null,roundCb=null,HH=0,gTex=null;
@@ -728,17 +758,19 @@ let WARMG=null;
 function warm(){try{if(!WARMG){WARMG=new T.Group();const add=m=>{const x=new T.Mesh(UBOX,m);x.castShadow=true;WARMG.add(x)};
 add(new T.MeshStandardMaterial({color:0x888888,roughness:.85,flatShading:true,transparent:true,opacity:.5,emissive:0xff3b3b,emissiveIntensity:.5}));
 add(new T.MeshStandardMaterial({color:0x888888,roughness:.5,metalness:.3}));add(new T.MeshStandardMaterial({color:0xc98f55,map:matTex(0),roughness:.85,flatShading:true,transparent:true,opacity:.5,emissive:0x2a6bff,emissiveIntensity:.5}));add(new T.MeshStandardMaterial({color:0xc98f55,map:matTex(1),roughness:.85,flatShading:true}));add(new T.MeshBasicMaterial({color:0xfff2a0,transparent:true}));add(flashMat());add(new T.MeshBasicMaterial({color:0x66b3ff,transparent:true,opacity:.42,depthWrite:false}))}
-sc.add(WARMG);R.compile(sc,cam);sc.remove(WARMG)}catch(e){}}
+sc.add(WARMG);R.compile(sc,cam);sc.remove(WARMG);if(vm)R.compile(vsc,cam)}catch(e){}}
 function start(o){init();cancelAnimationFrame(lraf);BOTM=!!o.bot;clk=o.clock||Date.now;onGhost=o.onGhost||null;rT0=0;startT=performance.now();db=BOTM?{ref:()=>NR}:o.db;uid=o.uid;mid=o.mid;onEnd=o.onEnd;onLeave=o.onLeave;clearBuilds();
 for(let i=FX.length-1;i>=0;i--)if(!FX[i].ring){fxFree(FX[i].m);FX.splice(i,1)}
-if(me){sc.remove(me.g);disposeTree(me.g)}RP.forEach(r=>{sc.remove(r.g);disposeTree(r.g);if(r.bar)r.bar.remove()});RP=[];oRefs=[];
+if(vm){vSway.remove(vm.g);disposeTree(vm.g);vm=null}if(me){sc.remove(me.g);disposeTree(me.g)}RP.forEach(r=>{sc.remove(r.g);disposeTree(r.g);if(r.bar)r.bar.remove()});RP=[];oRefs=[];
 /* roster: 1v1 = two players (lower uid is team 0); 2v2 = four players from the matchmaker, team 0 first */
 const ros=o.ros||(uid<o.opp?[{u:uid,n:o.name,s:o.skin,t:0},{u:o.opp,n:o.oppName,s:o.oppSkin,t:1}]:[{u:o.opp,n:o.oppName,s:o.oppSkin,t:0},{u:uid,n:o.name,s:o.skin,t:1}]);
 MODE2=ros.length>2?1:0;names={};ros.forEach(p=>names[p.u]=p.n);const mp=ros.find(p=>p.u===uid);myT=mp.t;W=[0,0];
 let hh=0;for(const ch of mid)hh=(hh*31+ch.charCodeAt(0))>>>0;buildMap(hh%MAPS.length);HH=hh;HAL=o.halloween?1:0;candyCb=o.onCandy||null;roundCb=o.onRound||null;DL.intensity=1;clearCandy();if(HAL)halDecor(hwLvl());$('#candy').style.display=HAL?'block':'none';feed('Map: '+MAPS[hh%MAPS.length].n+(HAL?' · 🎃 Halloween':'')+(MODE2?' · 2v2':''));
 /* spawn corners: team 0 on the west side, team 1 on the east side */
 corners=[[-24,-24],[24,24],[-24,24],[24,-24]];const cnt=[0,0];ros.forEach(p=>{p.c=corners[p.t?[1,3][cnt[1]++]:[0,2][cnt[0]++]]});sp0=mp.c;
-const mc=Number.isFinite(o.skin)?o.skin:0x2f9bff;me=char(mc);fpCur=false;cam.near=.1;cam.updateProjectionMatrix();
+const mc=Number.isFinite(o.skin)?o.skin:0x2f9bff;me=char(mc);vm=null;if(me.isRig){try{vm=rig(mc,true)}catch(e){vm=null}}
+if(vm){vSway.add(vm.g);vm.g.visible=false;vm.setFP(true,true,true);const sg0=me.setGun;me.setGun=i=>{sg0(i);vm&&vm.setGun(i)}}
+fpCur=false;fpArmsCur=true;celT0=0;vYaw=null;swY=swP=fpRoll=0;setCut(0);cam.near=.1;cam.updateProjectionMatrix();
 ros.forEach(p=>{if(p.u===uid)return;const mate=p.t===myT,col=mate?0x38f5c8:0xff4d4d;let sk=Number.isFinite(p.s)&&p.s>0?p.s:col;if(sk===mc)sk=COS.pack(col,COS.id(mc))+(sk-GUN.base(sk));
 const r=char(sk);Object.assign(r,{u:p.u,name:p.n,team:p.t,mate,c:p.c,tg:new T.Vector3(),opv:new T.Vector3(),wi:1,hp:100,dead:0,odk:0,dc:0,seen:p.u==='BOT'?1:0,bot:p.u==='BOT'?1:0,left:0,t:0,fk:0,rc:0,wp:0,lt:0,pa:false,ads:0,pt:0,r:yawAt(p.c)});r.setGun(1);r.g.rotation.y=r.r;r.g.position.set(p.c[0],0,p.c[1]);r.tg.copy(r.g.position);r.opv.copy(r.g.position);
 r.g.add(tag(p.n,MODE2?(mate?'#7dffb0':'#ff9a9a'):'#fff'));sc.add(r.g);
