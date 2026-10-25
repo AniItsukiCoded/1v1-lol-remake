@@ -35,6 +35,7 @@ btn('tjump','⤒','jump',()=>G()&&G().down('jump'),()=>G()&&G().up('jump'));
 btn('taim','◎','aim',()=>G()&&G().tapAim());
 btn('trl','↻','rl',()=>G()&&G().down('reload'),()=>G()&&G().up('reload'));
 btn('tbld','🧱','bld',()=>document.body.classList.toggle('bq'));
+btn('tsb','🏆','sb',()=>G()&&G().down('score'),()=>G()&&G().up('score'));
 btn('tpause','❚❚','pz',()=>G()&&G().pause());
 /* page-level: no pinch/double-tap zoom, no scroll bounce, no long-press menu while playing */
 addEventListener('contextmenu',e=>e.preventDefault());

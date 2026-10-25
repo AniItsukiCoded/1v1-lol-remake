@@ -10,7 +10,7 @@ const ACT=[ /* id, label, group, [primary, alt] defaults */
 ['w1','Shotgun','Weapons',['Digit1','']],['w2','Assault rifle','Weapons',['Digit2','']],['pick','Pickaxe','Weapons',['KeyF','']],
 ['wall','Build wall','Building',['KeyZ','']],['floor','Build floor','Building',['KeyX','']],['ramp','Build stairs','Building',['KeyC','']],['roof','Build roof','Building',['KeyV','']],
 ['build','Build mode (on / off)','Building',['KeyQ','']],['edit','Edit mode','Building',['KeyG','']],['mat','Cycle material','Building',['KeyT','Mouse1']],['mw','Wood','Building',['Digit4','']],['mb','Brick','Building',['Digit5','']],['mm','Metal','Building',['Digit6','']],
-['view','First / third person','Other',['KeyB','']],['music','Toggle music','Other',['KeyM','']],['map','Map (Zone Wars)','Other',['KeyN','']],['specN','Spectate: next player','Other',['ArrowRight','']],['specP','Spectate: previous player','Other',['ArrowLeft','']]];
+['view','First / third person','Other',['KeyB','']],['music','Toggle music','Other',['KeyM','']],['map','Map (Zone Wars)','Other',['KeyN','']],['score','Scoreboard (kills / damage / K-D)','Other',['Tab','']],['specN','Spectate: next player','Other',['ArrowRight','']],['specP','Spectate: previous player','Other',['ArrowLeft','']]];
 const DEF={};ACT.forEach(a=>DEF[a[0]]=a[3]);
 const OK=/^(Mouse[0-6]|[A-Za-z][A-Za-z0-9]{1,19})$/,NONE=[];
 const NAMES={Space:'Space',ShiftLeft:'L-Shift',ShiftRight:'R-Shift',ControlLeft:'L-Ctrl',ControlRight:'R-Ctrl',AltLeft:'L-Alt',AltRight:'R-Alt',ArrowUp:'↑',ArrowDown:'↓',ArrowLeft:'←',ArrowRight:'→',Backquote:'`',Minus:'-',Equal:'=',BracketLeft:'[',BracketRight:']',Semicolon:';',Quote:"'",Comma:',',Period:'.',Slash:'/',Backslash:'\\',CapsLock:'Caps',Tab:'Tab',Enter:'Enter',Backspace:'⌫'};

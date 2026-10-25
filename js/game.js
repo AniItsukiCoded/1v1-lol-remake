@@ -4,15 +4,16 @@ const T=THREE,DOM={},$=s=>DOM[s]||(DOM[s]=document.querySelector(s)); /* cached 
 let R,sc,cam,me,db,mid,uid,names,run=false,raf,last=0,pRef,shRef,onEnd,tick,pt,RP=[],oRefs=[],myT=0,W=[0,0],MODE2=0,fireK=0,fcnt=0,aaOn=true,shMode='';
 const B=[],K={},FX=[],S={},P=new T.Vector3(),camP=new T.Vector3();
 const PMAX=1.5;let yaw=0,pitch=.2,recoil=0,shake=0,sp=0,stepT=0,ph=0,wph=0,corners,sp0,hist=[];
-let mvf=1,landT=0,onLeave=null,clk=Date.now,BOTM=0,startT=0,rT0=0,firstTg=0,onGhost=null;
+let gone=[],sbOn=0,sbT=0,sbKey='',mvf=1,landT=0,onLeave=null,clk=Date.now,BOTM=0,startT=0,rT0=0,firstTg=0,onGhost=null;
 const NR={set(){return Promise.resolve()},push(){},on(){},off(){},remove(){return Promise.resolve()},update(){return Promise.resolve()},child(){return NR},onDisconnect(){return{remove(){},cancel(){},set(){}}}}; /* stand-in for Firebase refs in bot matches */
-let fpCur=false,phase='live',frz=0,rd=1,cdN=-1,ads=0,camD=4.2,deadK=0;
+let fpCur=false,phase='live',slowK=1,frz=0,rd=1,cdN=-1,ads=0,camD=4.2,deadK=0;
 let RM=0,RS=null,RSref=null,PALL=null,rmInt=null,roomCtl=null,rsDone=0,pendS=[],boardOn=0,boardKey='',lastTxt='',lastBn='',mySkin=0,ROUNDS=100,RSEC=120,SHD=0;const FZ=5000,BOARD_MS=12000; /* RM = open room (Box Fights / Zone Wars): see OPEN ROOMS below */
 let lateB=[],PQB=[],lateSynced=0;const LATE_MS=9000; /* joined this long after the match was created = round 1 is already running */
 let specT=null,specLast=null,lastDead=0,padSprint=0,specHp='',specNm='',aimCache=null;
 /* ---- first person viewmodel: a second copy of the character (arms + gun only) that is glued to the camera and drawn in its own pass on top of the world, so it
    always follows where you look, never pokes into walls and keeps the same look at any field of view. The real body (hidden in first person) still casts your shadow. ---- */
-let vm=null,vsc,vRoot,vSway,vHL,vDL,fpArmsCur=true,celT0=0,cutV=-1,vYaw=null,vPit=0,swY=0,swP=0,fpRoll=0;
+let vmJ=0,vmSpr=0,vmRl=0,vRim,vm=null,vsc,vRoot,vSway,vHL,vDL,fpArmsCur=true,celT0=0,cutV=-1,vYaw=null,vPit=0,swY=0,swP=0,fpRoll=0,vcam=null,vPL=null,vmSx=0,vmSf=0,vmLk=0,vmDr=1,vkP=0,vkV=0,vkR=0,vkRV=0,vkY=0,vkYV=0,vLS=0,vAir=0;
+const ease=x=>x*x*(3-2*x); /* smoothstep for the viewmodel reload / draw motion (the rig has its own private copy; this one is for the frame loop: it was missing, which threw an error every frame while reloading and froze the picture) */
 const cfp=(k,d)=>{const v=window.CFG&&CFG[k];return v==null||!Number.isFinite(+v)?d:+v}; /* numeric first-person setting with a default */
 /* black flash used to hide the camera cut to / from the victory shot */
 function setCut(o){o=Math.round(o*50)/50;if(o===cutV)return;cutV=o;const e=$('#cut');if(e)e.style.opacity=o}
@@ -78,24 +79,24 @@ const TCH=()=>!!window.TOUCH,PADM=()=>!!window.INPUT&&INPUT.dev==='pad',FREE=()=
 const hold=()=>run&&R&&(FREE()?!paused():document.pointerLockElement===R.domElement);
 const lock=()=>{if(!(run&&R))return;if(FREE()){S.hadLock=1;$('#resume').style.display='none';$('#pause').classList.remove('on');for(const k in K)K[k]=0}else R.domElement.requestPointerLock()};
 function trig(a,rep){switch(a){case 'map':if(!rep)toggleMap();break;case 'wnext':if(!rep&&!S.dead)selectW((S.w+1)%WEAPONS.length);break;case 'reload':reload();break;case 'music':if(!rep)SFX.music();break;case 'wall':case 'floor':case 'ramp':case 'roof':if(!rep)setBuild(a);break;case 'build':if(!rep){if(buildT)exitBuild();else setBuild(lastPiece)}break;case 'mat':if(!rep)cycleMat();break;case 'view':if(!rep&&window.CFG){CFG.fp=!CFG.fp;if(typeof saveCfg=='function')saveCfg();const e=document.getElementById('fpv');if(e)e.checked=!!CFG.fp;feed(CFG.fp?'First-person view':'Third-person view')}break;case 'mw':case 'mb':case 'mm':if(!rep)pickMat({mw:0,mb:1,mm:2}[a]);break;
-case 'edit':if(!rep){if(EDIT)confirmEdit();else startEdit()}break;case 'pick':selectW(PICK);break;case 'w1':selectW(0);break;case 'w2':selectW(1);break}}
+case 'edit':if(!rep){if(EDIT)confirmEdit();else startEdit()}break;case 'score':if(!rep&&sbOk()){if(sbToggle())sbSet(!sbOn);else sbSet(1)}break;case 'pick':selectW(PICK);break;case 'w1':selectW(0);break;case 'w2':selectW(1);break}}
 function specKey(a,rep){if(phase=='ended')return false;if(a=='shoot'||a=='right'||a=='specN'){if(!rep&&hold())specStep(1);return true}if(a=='aim'||a=='left'||a=='specP'){if(!rep&&hold())specStep(-1);return true}return false}
 function down(a,rep){if(S.dead&&run&&specKey(a,rep))return;if(a=='shoot'){if(hold())K.shoot=1;return}
 if(a=='aim'){if(rep||!hold())return;if(EDIT)EDIT.mask=EDIT.mask?0:EDIT.orig;else if(buildT)cycleMat();else K.aim=1;return}
 K[a]=1;if(run)trig(a,rep)}
-function up(a){if(a=='shoot'){K.shoot=0;S.lat=0}else K[a]=0;if(a=='edit'&&EDIT&&performance.now()-EDIT.t0>280)confirmEdit()} /* hold the edit key, release = confirm */
+function up(a){if(a=='shoot'){K.shoot=0;S.lat=0}else K[a]=0;if(a=='score'&&!sbToggle())sbSet(0);if(a=='edit'&&EDIT&&performance.now()-EDIT.t0>280)confirmEdit()} /* hold the edit key, release = confirm */
 const pumpOf=(t0,now,w)=>{if(!t0||!w||w.id!='shotgun')return 0;const u=(now-t0-180)/450;return u>0&&u<1?Math.sin(u*Math.PI):0};
 /* HUD key labels follow the player's bindings */
 function refreshKeys(){const wb=$('#wbar');if(wb)[...wb.children].forEach((d,i)=>{const e=d.querySelector('i');if(e)e.textContent=CTL.first(['w1','w2','pick'][i])});
 const bq=$('#bq');if(bq)bq.querySelectorAll('.bs').forEach(d=>{const e=d.querySelector('i');if(e)e.textContent=CTL.first(d.dataset.t)})}
 /* ---- controller: reads the sticks every frame and turns button edges (from js/pad.js) into the same actions the keyboard uses ---- */
 function padCurve(x,y,dz){const m=Math.hypot(x,y);if(m<dz)return[0,0];const k=Math.pow(Math.min(1,(m-dz)/(1-dz)),1.45)/m;return[x*k,y*k]}
-function padBtn(i,d){if(S.dead&&phase!='ended'){if(!d)return;if(i==4||i==14||i==6)specStep(-1);else if(i==5||i==15||i==7)specStep(1);else if(i==8)toggleMap();else if(i==9)input.pause();return}
+function padBtn(i,d){if(S.dead&&phase!='ended'){if(!d){if(i==8&&MD.map!='zone')up('score');return}if(i==4||i==14||i==6)specStep(-1);else if(i==5||i==15||i==7)specStep(1);else if(i==8){if(MD.map=='zone')toggleMap();else down('score')}else if(i==9)input.pause();return}
 const B=!!buildT;switch(i){
 case 7:d?down('shoot'):up('shoot');break;case 6:d?down('aim'):up('aim');break;case 0:d?down('jump'):up('jump');break;
 case 2:d?down('reload'):up('reload');break;case 1:if(d)down('build');break;case 3:if(d)down('wnext');break;
 case 10:if(d)padSprint=padSprint?0:1;break;case 11:if(d)down('view');break;case 5:d?down('edit'):up('edit');break;case 4:if(d)down('mat');break;
-case 8:if(d)down('map');break;case 9:if(d)input.pause();break;
+case 8:if(MD.map=='zone'){if(d)down('map')}else d?down('score'):up('score');break;case 9:if(d)input.pause();break;
 case 12:if(d)down(B?'wall':'w1');break;case 15:if(d)down(B?'floor':'w2');break;case 13:if(d)down(B?'ramp':'pick');break;case 14:if(d)down(B?'roof':'build');break}}
 function padFrame(dt){if(!window.PAD||!PAD.connected)return;for(const e of PAD.drain())padBtn(e.i,e.d);const A=PAD.axes,dz=cfp('pdz',.18);
 if(S.dead||phase=='ended'){K.ax=K.ay=0}else{const[mx,my]=padCurve(A.lx,A.ly,Math.max(.12,dz+.04));K.ax=mx;K.ay=-my;if(Math.hypot(mx,my)<.1)padSprint=0;K.sprint=padSprint&&my<-.2?1:0}
@@ -103,12 +104,12 @@ const[rx,ry]=padCurve(A.rx,A.ry,dz);if(rx||ry){const sp=914*cfp('psens',1)*dt/Ma
 function devChanged(d){if(!run)return;for(const k in K)K[k]=0;padSprint=0;if(d==='kbm'){if(document.pointerLockElement!==R.domElement){$('#resume').style.display='grid'}}else{S.hadLock=1;$('#resume').style.display='none'}refreshKeys();hud()}
 function init(){if(R)return;Qs=QT(QL());if(window.INPUT)INPUT.on(devChanged);aaOn=Qs.aa;R=new T.WebGLRenderer({canvas:$('#c'),antialias:aaOn,powerPreference:'high-performance'});
 sc=new T.Scene();cam=new T.PerspectiveCamera(75,1,.1,200);
-vsc=new T.Scene();vRoot=new T.Group();vSway=new T.Group();vRoot.add(vSway);vsc.add(vRoot);vHL=new T.HemisphereLight(0xffffff,0x9a96b0,.9);vDL=new T.DirectionalLight(0xfff1dc,1.1);vDL.position.set(-.8,1.4,1.2);vDL.target.position.set(0,-.3,-1);vRoot.add(vHL,vDL,vDL.target);HL=new T.HemisphereLight(0xaaaaff,0x443355,.8);sc.add(HL);DL=new T.DirectionalLight(0xffd0a0,1);DL.position.set(30,40,20);DL.castShadow=true;DL.shadow.bias=-.0006;DL.shadow.normalBias=.05;DL.shadow.mapSize.set(2048,2048);Object.assign(DL.shadow.camera,{left:-40,right:40,top:40,bottom:-40});sc.add(DL);sc.add(DL.target);
+vsc=new T.Scene();vRoot=new T.Group();vSway=new T.Group();vRoot.add(vSway);vsc.add(vRoot);vHL=new T.HemisphereLight(0xffffff,0x9a96b0,.9);vDL=new T.DirectionalLight(0xfff1dc,1.1);vDL.position.set(-.8,1.4,1.2);vDL.target.position.set(0,-.3,-1);vRim=new T.DirectionalLight(0x9ad0ff,.55);vRim.position.set(.9,.5,-1);vRim.target.position.set(0,0,-1);vRoot.add(vHL,vDL,vDL.target,vRim,vRim.target);vPL=new T.PointLight(0xffb866,0,4,2);vPL.position.set(.2,-.14,-.75);vRoot.add(vPL); /* muzzle flash light: lights the gun + arms for a split second on every shot */HL=new T.HemisphereLight(0xaaaaff,0x443355,.8);sc.add(HL);DL=new T.DirectionalLight(0xffd0a0,1);DL.position.set(30,40,20);DL.castShadow=true;DL.shadow.bias=-.0006;DL.shadow.normalBias=.05;DL.shadow.mapSize.set(2048,2048);Object.assign(DL.shadow.camera,{left:-40,right:40,top:40,bottom:-40});sc.add(DL);sc.add(DL.target);
 addEventListener('resize',rs);applyQ(1);rs();
 const wb=$('#wbar');if(wb&&!wb.children.length)WEAPONS.forEach((w,i)=>{const d=document.createElement('div');d.className='ws';d.innerHTML=`<i>${w.key}</i>${gunIcon(w)}<b>${w.n}</b>`;d.onclick=()=>run&&selectW(i);wb.appendChild(d)});
 const bq=$('#bq');if(bq&&!bq.children.length){[['Z','wall','▮'],['X','floor','▬'],['C','ramp','⟋'],['V','roof','▲'],['G','edit','✎']].forEach(([k,t,ic])=>{const d=document.createElement('div');d.className='bs';d.dataset.t=t;d.innerHTML=`<i>${k}</i><span>${ic}</span><b>${t=='edit'?'EDIT':BPIECE[t].n}</b>`;d.onclick=()=>run&&(t=='edit'?(EDIT?confirmEdit():startEdit()):setBuild(t,1));bq.appendChild(d)});const m=document.createElement('div');m.id='mats';m.onclick=e=>{const sp=e.target.closest&&e.target.closest('span[data-i]');if(sp)pickMat(+sp.dataset.i);else cycleMat()};bq.appendChild(m)}
-addEventListener('keydown',e=>{if(CTL.busy)return;for(const a of CTL.acts(e.code))down(a,e.repeat)});addEventListener('keyup',e=>{for(const a of CTL.acts(e.code))up(a)});
-addEventListener('blur',()=>{for(const k in K)K[k]=0;S.lat=0});
+addEventListener('keydown',e=>{if(CTL.busy)return;for(const a of CTL.acts(e.code)){if(a=='score'){if(!sbOk())continue;e.preventDefault()}down(a,e.repeat)}});addEventListener('keyup',e=>{for(const a of CTL.acts(e.code)){if(a=='score'&&run)e.preventDefault();up(a)}});
+addEventListener('blur',()=>{for(const k in K)K[k]=0;S.lat=0;if(!sbToggle())sbSet(0)});
 addEventListener('wheel',e=>{if(TCH()||!run||document.pointerLockElement!=R.domElement)return;selectW((S.w+(e.deltaY>0?1:-1)+WEAPONS.length)%WEAPONS.length)},{passive:true});
 addEventListener('contextmenu',e=>{if(run)e.preventDefault()});
 addEventListener('mousemove',e=>{if(TCH()||!run||document.pointerLockElement!=R.domElement)return;if(Math.abs(e.movementX)>350||Math.abs(e.movementY)>350)return;const k=.0024*(window.CFG?CFG.sens:1)*(cam.fov/75);yaw-=e.movementX*k;pitch=Math.max(-PMAX,Math.min(PMAX,pitch-e.movementY*k))});
@@ -116,7 +117,7 @@ addEventListener('mousedown',e=>{if(TCH()||!run||CTL.busy)return;if(e.target.clo
 const as=CTL.acts('Mouse'+e.button);if(as.length&&(e.button===1||e.button>2))e.preventDefault();as.forEach(a=>down(a,false))});
 addEventListener('mouseup',e=>{for(const a of CTL.acts('Mouse'+e.button))up(a)});
 document.addEventListener('pointerlockchange',()=>{if(!run)return;const l=!!document.pointerLockElement;if(l){S.hadLock=1;$('#resume').style.display='none';$('#pause').classList.remove('on')}
-else{for(const k in K)K[k]=0;if(FREE())return;if(S.hadLock&&phase!='ended'){$('#pause').classList.add('on');$('#pconf').style.display='none';$('#pbtns').style.display='block'}else $('#resume').style.display='grid'}});
+else{for(const k in K)K[k]=0;if(!sbToggle())sbSet(0);if(FREE())return;if(S.hadLock&&phase!='ended'){$('#pause').classList.add('on');$('#pconf').style.display='none';$('#pbtns').style.display='block'}else $('#resume').style.display='grid'}});
 document.addEventListener('pointerlockerror',()=>{if(run&&!FREE()&&!document.pointerLockElement&&S.hadLock)setTimeout(()=>{if(run&&!document.pointerLockElement)R.domElement.requestPointerLock()},500)});
 document.addEventListener('visibilitychange',()=>{const n=performance.now();RP.forEach(r=>{if(r.t)r.t=n})});
 $('#resume').onclick=lock;$('#mm').onclick=toggleMap;$('#bigmap').onclick=toggleMap;$('#specp').onclick=()=>specStep(-1);$('#specn').onclick=()=>specStep(1);
@@ -142,7 +143,7 @@ const boxSpot=(i,n)=>{const a=i/n*6.283185-1.5708,R=BXR(n);return[Math.round(Mat
 let BXN=2;
 /* the room grows with the number of players: a closed warehouse with a ceiling 4 floors up, and one pre-built metal box per player on a ring */
 const boxMap=n=>{const h=Math.ceil(BXR(n)+11),c=14.4,w=0x9fb4dc;return{n:'Box Fight',size:h*2+8,lim:h-3,sky:['#3d9bff','#8fd0ff','#e2f4ff'],fog:0xbfe3ff,fd:[70,190],gc:[0x4f86e8,0x467bdc],far:0x2f5fc0,hl:[0xffffff,0x9ab4e0,1.05],dl:0xfff4d8,mt:0x2a4a9a,k:9,
-p(b,s,bb){b(0,-h,h*2+2,2,c,w);b(0,h,h*2+2,2,c,w);b(-h,0,2,h*2-2,c,w);b(h,0,2,h*2-2,c,w);B.push({x:0,z:0,w:h*2+2,d:h*2+2,h:c+1,y0:c})}}}; /* the build ceiling is an INVISIBLE collision slab: open sky like Fortnite, but nobody can build out of the arena */
+p(b,s,bb){b(0,-h,h*2+2,2,c,w);b(0,h,h*2+2,2,c,w);b(-h,0,2,h*2-2,c,w);b(h,0,2,h*2-2,c,w);B.push({x:0,z:0,w:h*2+2,d:h*2+2,h:c+1,y0:c,ceil:1})}}}; /* the build ceiling is an INVISIBLE collision slab: open sky like Fortnite, but nobody can build out of the arena */
 function boxBuild(ps){const n=ps?Math.max(2,ps.length):BXN;for(let ti=0;ti<n;ti++){const[cx,cz]=boxSpot(ti,n),mine=ps?ps[ti]===uid:ti===myT;
 [['wall',cx-2.5,0,cz,1],['wall',cx+2.5,0,cz,1],['wall',cx,0,cz-2.5,0],['wall',cx,0,cz+2.5,0],['floor',cx,LVL,cz,0]].forEach(([t,x,y,z,r],k)=>{const id='bx'+ti+'_'+rd+'_'+k;if(addBuild(id,t,x,y,z,r,mine,2,0,mine)&&BLD[id])BLD[id].born-=BUILD_T+50})}}
 /* ---- ZONE WARS map: 300x300, towns of enterable houses, containers, rocks and a forest. Everything is generated from the match id, so every player gets the same map. ---- */
@@ -265,16 +266,17 @@ m1.makeBasis(tD1,tB,tC3);m2.multiplyMatrices(m1,c.mu);qU.setFromRotationMatrix(m
 c.qS.copy(qP).invert().multiply(qU);c.qE.copy(c.E.bq).multiply(qA.setFromAxisAngle(c.hf,c.sd*phi));qF.copy(qU).multiply(c.qE);c.qH.copy(qF).invert().multiply(Qh)}
 /* IKP = gun-hold parameters from poseT: P gun pitch, ox/oy/oz grip offset from the mid-shoulder point (character space), lx/ly/lz left palm on the gun */
 let IKP=null,IKL=null;
-function ikRun(w,IKq){const P=IKq.P,cP=Math.cos(P),sP=Math.sin(P);g.updateMatrixWorld(true);g.getWorldQuaternion(qG);
+const qRl=new T.Quaternion(),qRr=new T.Quaternion(),qMt=new T.Quaternion(),qMx=new T.Quaternion().setFromAxisAngle(new T.Vector3(1,0,0),-Math.PI/2);
+function ikRun(w,IKq){let RO=0;const P=IKq.P,cP=Math.cos(P),sP=Math.sin(P);g.updateMatrixWorld(true);g.getWorldQuaternion(qG);
 IK[0].S.b.getWorldPosition(tC);IK[1].S.b.getWorldPosition(tC2);tC.add(tC2).multiplyScalar(.5);
 tFw.set(0,sP,-cP).applyQuaternion(qG);tUp.set(0,cP,sP).applyQuaternion(qG);tGx.crossVectors(tUp,tFw);
 tGrip.set(IKq.ox,IKq.oy*cP-IKq.oz*sP,IKq.oy*sP+IKq.oz*cP).applyQuaternion(qG).add(tC);
-tPoleR.set(.5,-1,.3).applyQuaternion(qG);tPoleL.set(-.5,-1,.3).applyQuaternion(qG);
-/* right hand: hand x -> gun x, y -> forward, z -> -up */
-tNg.copy(tUp).negate();m1.makeBasis(tGx,tFw,tNg);qHd.setFromRotationMatrix(m1);tWr.set(0,.07*hsc,0).applyQuaternion(qHd).negate().add(tGrip);solveArm(IK[0],tWr,tPoleR,qHd);
+tPoleR.set(IKq.pr==null?.5:IKq.pr,-1,.3).applyQuaternion(qG);tPoleL.set(IKq.pl==null?-.5:IKq.pl,-1,.3).applyQuaternion(qG);
+/* right hand: hand x -> gun x, y -> forward, z -> -up. Un-rolled, the fingers curl DOWN (palm to the ground, hand lying on top of the gun); IKq.rr rolls the hand around its fingers so they wrap the pistol grip, and the gun mount is counter-rolled so the gun stays on the aim line */
+tNg.copy(tUp).negate();m1.makeBasis(tGx,tFw,tNg);qHd.setFromRotationMatrix(m1);if(IKq.rr){qRr.setFromAxisAngle(AX.y,IKq.rr);qHd.multiply(qRr);if(gi>=0&&gi!=PICK){qMt.setFromAxisAngle(AX.y,-IKq.rr).multiply(qMx);mount.quaternion.copy(qMt);RO=IKq.ro||0;tNg.copy(tGx).multiplyScalar(RO/hsc).applyQuaternion(qRr.copy(qHd).invert());mount.position.set(tNg.x,.07+tNg.y,tNg.z)}}tWr.set(0,.07*hsc,0).applyQuaternion(qHd).negate().add(tGrip).addScaledVector(tGx,-RO);solveArm(IK[0],tWr,tPoleR,qHd);
 /* left hand: palm on the hand-guard, fingers forward, palm up */
 tPal.copy(tGrip).addScaledVector(tGx,IKq.lx).addScaledVector(tUp,IKq.ly).addScaledVector(tFw,IKq.lz);
-tNg.copy(tFw).negate();m1.makeBasis(tNg.crossVectors(tFw,tUp),tFw,tUp);qHd.setFromRotationMatrix(m1);tWr.set(0,.07*hsc,0).applyQuaternion(qHd).negate().add(tPal);solveArm(IK[1],tWr,tPoleL,qHd);
+tNg.copy(tFw).negate();m1.makeBasis(tNg.crossVectors(tFw,tUp),tFw,tUp);qHd.setFromRotationMatrix(m1);if(IKq.lr){qRl.setFromAxisAngle(tFw,IKq.lr);qHd.premultiply(qRl)} /* roll the left hand around its fingers (0 = palm cups the hand-guard from below) */tWr.set(0,.07*hsc,0).applyQuaternion(qHd).negate().add(tPal);solveArm(IK[1],tWr,tPoleL,qHd);
 for(const c of IK)for(const r of[c.S,c.E,c.H]){sq[r.i].slerp(c.qS===undefined?r.b.quaternion:(r===c.S?c.qS:r===c.E?c.qE:c.qH),w);r.b.quaternion.copy(sq[r.i])}}
 function setGun(i){gi=i;if(i==PICK){mount.quaternion.set(.0898,.7847,.0953,.6058);mount.position.set(0,.065,.02)}else{mount.rotation.set(-Math.PI/2,0,0);mount.position.set(0,.07,0)}guns.forEach(x=>{if(x.parent)x.parent.remove(x)});if(i>=0)mount.add(guns[i])}
 /* o: k walk 0..1, w walk phase, pitch aim, rec recoil, air 0..1 + u jump velocity -1..1 (smoothed), land 0..1, gun weapon index (-1 = builder), swing 0..1 (pickaxe), t time, idle (lobby) */
@@ -327,9 +329,9 @@ curl('Right',1.15);curl('Left',.5);return}
 const ap=-(p+rc*.2)-fk*(sg?.3:.075)+SPR*.85+DW*.85+RE*(sg?.5:.6)+Math.sin(t*1.7)*.005*(1-A);
 const bump=RP>0?Math.exp(-Math.pow((RP-(sg?.45:.58))/.07,2)):0,ins=sg&&RP>0?.5-.5*Math.cos(RP*Math.PI*10):0,lap=ap+RE*(sg?.1:.5)-bump*.35+ins*RE*.35;
 /* IK targets for the gun hold (see ikRun): aim pitch + muzzle climb + sprint/draw/reload lowering; ADS brings the gun up and in; the left palm slides for pump / reload */
-{const Ae=A*A*(3-2*A),bob=(1-A)*k*(1-air),FP=o.fp||0,BB=[-.09,.05,-.3],fx=FP*(.08*(1-Ae)+BB[0]*Ae),fy=FP*(-.08*(1-Ae)+BB[1]*Ae),fz=FP*(-.12*(1-Ae)+BB[2]*Ae);IKP={P:p+rc*.1+fk*(sg?.3:.075)-SPR*.7-DW*.85-RE*(sg?.35:.45)+Math.sin(t*1.7)*.004*(1-A),
-ox:.15-.03*Ae+SPR*.02+c*.01*bob+fx,oy:-.18+.09*Ae-SPR*.12-DW*.15-RE*.03+Math.abs(s)*.012*bob+fy,oz:-(.17+.05*Ae-fk*(sg?.07:.035)-SPR*.05)+fz,
-lx:0,ly:-.035-RE*(sg?.05:.19)-ins*RE*.06,lz:.32-RE*(sg?.2:.18)-PM*.17-bump*.04};IKL=IKP}
+{const Ae=A*A*(3-2*A),bob=(1-A)*k*(1-air),FP=o.fp||0,BB=[-.09,.05,-.3],fx=FP*(.08*(1-Ae)+BB[0]*Ae),fy=FP*(-.08*(1-Ae)+BB[1]*Ae),fz=FP*(-.12*(1-Ae)+BB[2]*Ae);IKP={ro:cfp('hro',4)*.01,rr:(FP?cfp('fprr',90):cfp('tprr',90))*.017453,lr:FP*(cfp('fplr',0)*.017453),pr:.5-.08*FP,pl:-.5+.08*FP,P:p+rc*.1+fk*(sg?.3:.075)-SPR*.7-DW*.85-RE*(sg?.35:.45)+Math.sin(t*1.7)*.004*(1-A),
+ox:.15-.03*Ae-.015*FP+SPR*.02+c*.01*bob+fx,oy:-.18+.09*Ae-SPR*.12-DW*.15-RE*.03+Math.abs(s)*.012*bob+fy,oz:-(.17+.05*Ae-fk*(sg?.07:.035)-SPR*.05)+fz+.09*FP,
+lx:cfp('fplx',0)*.005*FP,ly:-.035+cfp('fply',0)*.005*FP-RE*(sg?.05:.19)-ins*RE*.06,lz:.32+cfp('fplz',0)*.005*FP-RE*(sg?.2:.18)-PM*.17-bump*.04};IKL=IKP}
 
 rot('RightArm_024',[[Y,Math.PI/2*.97],[X,ap]]);rot('RightForeArm_025',[[Y,.38+A*.26+fk*.1+SPR*.3]]);rot('RightHand_026',[[Y,.12]]);
 rot('LeftArm_08',[[Y,-Math.PI/2*.97],[X,lap]]);rot('LeftForeArm_09',[[Y,-1.05-A*.1-PM*.38-RE*(sg?.2:.5)-DW*.25+SPR*.25]]);rot('LeftHand_010',[[Y,-.2]]);curl('Right',.8);curl('Left',.8)}
@@ -339,10 +341,10 @@ function pose(o,dt){const sa=1-Math.exp(-dt*14);st.air+=((o.air?1:0)-st.air)*sa;
 st.fk+=((o.fire||0)-st.fk)*(1-Math.exp(-dt*((o.fire||0)>st.fk?45:14)));st.ikw+=((IKP?1:0)-st.ikw)*(1-Math.exp(-dt*12));
 const lt=o.land||0;st.ld+=(lt-st.ld)*(1-Math.exp(-dt*(lt>st.ld?30:8)));
 st.ads+=((o.ads||0)-st.ads)*(1-Math.exp(-dt*13));st.spr+=((o.spr||0)-st.spr)*(1-Math.exp(-dt*9));
-const rp=o.rl==null?-1:o.rl,re=rp<0?0:Math.min(1,rp/.12)*Math.min(1,(1-rp)/.12);st.rle+=(re-st.rle)*(1-Math.exp(-dt*(re>st.rle?18:10)));
+const rp=o.rl==null?-1:o.rl,re=rp<0?0:ease(Math.min(1,rp/.15))*ease(Math.min(1,(1-rp)/.2));if(vmode)st.rle=re;else st.rle+=(re-st.rle)*(1-Math.exp(-dt*(re>st.rle?18:10))); /* first-person: the envelope is already smooth, extra smoothing only made the start and the end of a reload lag behind */
 {const gu=guns[o.gun==null?1:o.gun],pg=gu&&gu.userData.pump;if(pg)pg.position.z=-(o.pump||0)*.17}
 poseT(Object.assign({},o,{air:o.idle?0:st.air,u:st.u,land:st.ld,ads:st.ads,spr:st.spr,rle:st.rle,rlp:rp,fire:st.fk,dw:o.draw==null?0:1-ease(Math.max(0,Math.min(1,o.draw)))}));
-const a=st.init?1-Math.exp(-dt*((o.swing||-1)>=0||(o.fire||0)>.04?40:24)):1;
+const a=vmode?1:st.init?1-Math.exp(-dt*((o.swing||-1)>=0||(o.fire||0)>.04?40:24)):1;
 ALL.forEach((r,i)=>{if(st.init)sq[i].slerp(r.b.quaternion,a);else sq[i].copy(r.b.quaternion);r.b.quaternion.copy(sq[i])});
 const hb=BN.Hips_01.b;st.hy=st.init?st.hy+(hb.position.y-st.hy)*a:hb.position.y;hb.position.y=st.hy;st.init=1;if(IKL&&st.ikw>.002)ikRun(st.ikw,IKL)}
 function flashUpd(dt){const cur=gi>=0?guns[gi]:null,f=cur&&cur.userData.fl;if(cur&&cur.userData.glow){const tt=performance.now()/1000;cur.userData.glow.forEach(q=>{q.m.emissiveIntensity=q.b*(1-q.a+q.a*(.5+.5*Math.sin(tt*q.s+q.p)))})}guns.forEach(x=>{const y=x.userData.fl;if(y&&y!==f)y.visible=false});if(!f)return;if(flT>0){flT-=dt;f.visible=true;f.rotation.z=Math.random()*6.283;const s=.75+Math.random()*.5;f.scale.set(s,s,s)}else f.visible=false}
@@ -410,7 +412,7 @@ function sparks(p,col=0xff4d6d,n=10){n=Qs.fx>0?Math.max(2,Math.round(n*Qs.fx)):0
 /* ejected shell casing (rt = unit vector pointing out of the gun's right side) */
 function casing(o,rt){if(!Qs.cas)return;const m=fxMk(SHG,0xd9a43b);m.position.copy(o);m.rotation.set(Math.random()*6,Math.random()*6,0);sc.add(m);
 FX.push({m,v:new T.Vector3(rt.x*(1.6+Math.random()),2+Math.random()*1.5,rt.z*(1.6+Math.random())),life:.9,g:1,floor:1,spin:(Math.random()-.5)*18})}
-function msg(t,cls){const e=$('#msg');e.classList.toggle('low',!!cls);e.textContent=t;e.classList.remove('on');void e.offsetWidth;e.classList.add('on')}
+function msg(t,cls){const e=$('#msg');e.classList.toggle('low',!!cls&&cls!=='top');e.classList.toggle('top',cls==='top');e.textContent=t;e.classList.remove('on');void e.offsetWidth;e.classList.add('on')}
 function feed(t){const d=document.createElement('div');d.textContent=t;$('#feed').appendChild(d);setTimeout(()=>d.remove(),4000)}
 
 /* ================= HITBOXES (feet position p; matches the 1.9u tall model) ================= */
@@ -499,7 +501,7 @@ function sharedMat(mt){return SHM[mt]||(SHM[mt]=new T.MeshStandardMaterial({colo
 function matRule(b){if(!b.ms)return;const m=b.done&&b.dmg<=0?sharedMat(b.mt):b.mat;for(const x of b.ms)if(x.material!==m)x.material=m}
 /* a piece that has finished popping in never moves again: stop recomputing its matrices every frame */
 function freezePiece(g){g.scale.setScalar(1);g.traverse(o=>{o.updateMatrix();o.matrixAutoUpdate=false})}
-function makePiece(b){const{t,x,y,z,r}=b,boxes=pieceBoxes(t,x,y,z,r,b.mask);boxes.forEach(bx=>{bx.bid=b.id;B.push(bx);gAdd(bx)});b.boxes=boxes;
+function makePiece(b){const{t,x,y,z,r}=b,boxes=pieceBoxes(t,x,y,z,r,b.mask);boxes.forEach(bx=>{bx.bid=b.id;B.push(bx);gAdd(bx)});b.boxes=boxes;SUP.dirty=1;
 const g=new T.Group(),c=centerOf(t,x,y,z);g.position.set(c[0],c[1],c[2]);
 const geo=t=='ramp'?stairGeo():t=='roof'?roofGeo():pieceGeo(t,r,b.mask),m=new T.Mesh(geo,b.mat);m.castShadow=true;m.add(new T.LineSegments(edgesOf(geo),b.ally?LM_ALLY:LM_FOE));g.add(m);
 if(t=='ramp')g.rotation.y=ROTY[r];
@@ -516,12 +518,12 @@ b.g.scale.setScalar(.82);TW.push({m:b.g,t:0});if(t=='ramp'){b.rp={id,x,z,dx:DIRS
 function debris(b){const n=Qs.fx>0?Math.max(4,Math.round(10*Qs.fx)):0,c=centerOf(b.t,b.x,b.y,b.z),wide=b.t=='wall'?(b.r?.4:GRID):GRID,deep=b.t=='wall'?(b.r?GRID:.4):GRID;
 for(let i=0;i<n;i++){const m=fxMk(SPG,b.col);m.scale.setScalar(2+Math.random()*3);m.position.set(c[0]+(Math.random()-.5)*wide*.8,c[1]+(Math.random()-.3)*(b.t=='wall'?LVL*.8:.5),c[2]+(Math.random()-.5)*deep*.8);sc.add(m);
 FX.push({m,v:new T.Vector3((Math.random()-.5)*5,1+Math.random()*3.5,(Math.random()-.5)*5),life:.95,g:1,floor:1,spin:(Math.random()-.5)*14})}}
-function removeBuild(id,quiet){const b=BLD[id];if(!b)return;dropParts(b);if(b.rp){const i=RPL.indexOf(b.rp);if(i>=0)RPL.splice(i,1)}const i=TW.findIndex(x=>x.m===b.g);if(i>=0)TW.splice(i,1);
+function removeBuild(id,quiet){const b=BLD[id];if(!b)return;SUP.dirty=1;dropParts(b);if(b.rp){const i=RPL.indexOf(b.rp);if(i>=0)RPL.splice(i,1)}const i=TW.findIndex(x=>x.m===b.g);if(i>=0)TW.splice(i,1);
 delete BLD[id];if(SLOT[b.key]===id)delete SLOT[b.key];
 if(!quiet){debris(b);sparks(new T.Vector3(b.x,b.y+1.2,b.z),b.ally?0x7cc0ff:0xff9a9a,8);if(P.distanceTo(new T.Vector3(b.x,b.y,b.z))<35)SFX.crumble()}}
-function clearBuilds(){for(const id in BLD)removeBuild(id,true);PRE=null}
+function clearBuilds(){for(const id in BLD)removeBuild(id,true);PRE=null;SUP.dirty=1;cellClear()}
 function damageBuild(id,d){const b=BLD[id];if(!b)return;b.dmg+=d;const h=hpNow(b);if(h<=0){removeBuild(id);return}matRule(b);b.mat.color.setHex(b.col);b.mat.color.multiplyScalar(.5+.5*Math.max(0,h)/b.max);b.fl=1;if(b.done){b.mat.emissive.setHex(0xffffff);b.mat.emissiveIntensity=.5}}
-function buildUpdate(){const n=performance.now(),dt=Math.min(.1,(n-(bLast||n))/1000);bLast=n;for(const id in BLD){const b=BLD[id];
+function buildUpdate(){const n=performance.now(),dt=Math.min(.1,(n-(bLast||n))/1000);bLast=n;supStep(n);for(const id in BLD){const b=BLD[id];
 if(!b.done){const p=prog(b);b.mat.opacity=.4+.6*p;b.mat.emissiveIntensity=Math.max(.9*(1-p),b.fl?.5*b.fl:0);if(b.fl>0)b.fl=Math.max(0,b.fl-dt*5);
 if(p>=1){b.done=1;b.mat.transparent=false;b.mat.opacity=1;b.mat.emissiveIntensity=0;b.mat.emissive.setHex(0xffffff);b.mat.needsUpdate=true;matRule(b)}}
 else if(b.fl>0){b.fl=Math.max(0,b.fl-dt*5);b.mat.emissiveIntensity=.5*b.fl}}}
@@ -546,28 +548,32 @@ for(const k in BLD){const b=BLD[k];if(b.t!='floor')continue;if(Math.abs(Math.abs
 return Math.max(floors?1:0,best)}
 function spotCands(t){const s=stand(),di=dirIdx(),Ls=Math.round(s.yb/LVL),rp=s.rp,dx=DIRS[di][0],dz=DIRS[di][1];
 /* boxing (like Fortnite): look steeply UP = ceiling over you, steeply DOWN = floor under your feet */
-if(t=='floor'||t=='roof'){if(!rp&&pitch>.75)return[{x:s.cx,y:(Ls+1)*LVL,z:s.cz,r:0,own:1}];if(!rp&&pitch<-.7&&Ls>=1&&P.y>=s.yb-.3)return[{x:s.cx,y:s.yb,z:s.cz,r:0,own:1}]}
+if(t=='floor'||t=='roof'){if(!rp&&pitch>.75)return[{x:s.cx,y:(Ls+1)*LVL,z:s.cz,r:0,own:1}];if(t=='floor'&&!rp&&pitch<-.7&&P.y>=s.yb-.3)return[{x:s.cx,y:s.yb,z:s.cz,r:0,own:1}]}
+if(t=='ramp'&&!rp&&pitch<-.7&&P.y>=s.yb-.3)return[{x:s.cx,y:s.yb,z:s.cz,r:di,own:1}]; /* look down = build on the tile you are standing on (ground floor, stairs under you) */
 /* FORTNITE-STYLE PLACEMENT: nothing is placed where the crosshair lands. Every piece snaps to the build grid right around YOU, in the direction you face
    (4 directions): walls on the edge of your tile in front of you, floors / stairs / roofs in the tile in front of you. Stand on the stairs you just built and
    place again to keep climbing (stair-stacking); the piece is the same no matter how far or near you aim. */
-const ax=s.cx+dx*GRID,az=s.cz+dz*GRID,up=rp&&rp.dx===dx&&rp.dz===dz?Math.round(rp.y0/LVL)+1:null; /* up = facing up the stairs you stand on -> next piece continues one level higher */
+const ax=s.cx+dx*GRID,az=s.cz+dz*GRID,up=rp&&!(rp.dx===-dx&&rp.dz===-dz)?Math.round(rp.y0/LVL)+1:null; /* up = facing up the stairs you stand on -> next piece continues one level higher */
 if(t=='wall')return[dx?{x:s.cx+dx*GRID/2,y:Ls*LVL,z:s.cz,r:1}:{x:s.cx,y:Ls*LVL,z:s.cz+dz*GRID/2,r:0}];
 if(t=='ramp'){const lv=snapLv(ax,az,Math.max(0,Math.min(Ls+1,up==null?Ls:up)),false);return[{x:ax,y:lv*LVL,z:az,r:di}]}
 /* floor / roof: floor = your level (or the landing at the top of your stairs), roof = one level up (ceiling height) */
 const lv=snapLv(ax,az,Math.max(1,Math.min(Ls+2,t=='roof'?Ls+1:(up==null?Ls:up))),true);return[{x:ax,y:lv*LVL,z:az,r:0}]}
-function decor(sp,t){sp.key=slotKey(t,sp.x,sp.y,sp.z,sp.r);const bx=pieceBoxes(t,sp.x,sp.y,sp.z,sp.r,0);sp.dup=!!SLOT[sp.key];sp.oob=bx.some(b=>Math.abs(b.x)+b.w/2>LIM+2||Math.abs(b.z)+b.d/2>LIM+2)||sp.y>LVL*(MD.map=='box'?3:14);sp.far=Math.hypot(sp.x-P.x,sp.z-P.z)>REACH||Math.abs(sp.y-P.y)>LVL*3.2;sp.bad=sp.dup||sp.oob||sp.far;return sp}
+function decor(sp,t){sp.key=slotKey(t,sp.x,sp.y,sp.z,sp.r);const bx=pieceBoxes(t,sp.x,sp.y,sp.z,sp.r,0);sp.dup=!!SLOT[sp.key];sp.oob=bx.some(b=>Math.abs(b.x)+b.w/2>LIM+2||Math.abs(b.z)+b.d/2>LIM+2)||sp.y>LVL*(MD.map=='box'?(t=='wall'||t=='ramp'?2:3):14);sp.far=Math.hypot(sp.x-P.x,sp.z-P.z)>REACH||Math.abs(sp.y-P.y)>LVL*3.2;
+/* Fortnite rules: a piece must touch the ground, the map or a piece that is itself held up; it can't cut into solid map objects; and you can't build through an enemy wall */
+const ab=abOf(bx);sp.sup=ab[2]<=.15||anchored(ab)||touchSup(ab);sp.thru=false; /* builds may sit inside map blocks now (the arena barrier is still enforced by sp.oob) */sp.los=!sp.dup&&!sp.far&&losBad(centerOf(t,sp.x,sp.y,sp.z));
+sp.bad=sp.dup||sp.oob||sp.far||!sp.sup||sp.thru||sp.los;return sp}
 function findSpot(t){const c=spotCands(t).map(s=>decor(s,t));return c.find(s=>!s.bad)||c[0]}
-function place(t){const n=performance.now();if(phase!='live'||S.dead||n<bcool)return;bcool=n+70;
+function place(t){const n=performance.now();if(phase!='live'||S.dead||n<bcool)return;bcool=n+42;
 if(mat[msel]<COST){const alt=[1,2].map(k=>(msel+k)%3).find(i=>mat[i]>=COST);if(alt==null){SFX.empty();shake+=.04;if(!S.noMat||n-S.noMat>1500){S.noMat=n;feed('Out of materials — hit things with the pickaxe to harvest more')}return}
 msel=alt;feed('Switched to '+MT[msel].n.toLowerCase());hud()}
-const sp1=findSpot(t);if(sp1.bad){if(!sp1.dup)SFX.empty();return}
+const sp1=findSpot(t);if(sp1.bad){if(!sp1.dup)SFX.empty();if((!sp1.sup||sp1.los||sp1.thru)&&!sp1.dup&&(!S.noSup||n-S.noSup>1200)){S.noSup=n;feed(!sp1.sup?"Can't build in mid-air: connect it to the ground or another piece":'Something solid is in the way')}return}
 const mk=PRE&&PRE.t==t?PRE.mask:0;
 const mine=Object.keys(BLD).filter(k=>BLD[k].own&&k.slice(0,2)!='bx');if(mine.length>=MAXP){removeBuild(mine[0],true);shRef.push({by:uid,k:'r',id:mine[0],rd,ts:clk()})} /* the other players must lose that piece too, or they keep a ghost wall you can't see */
 const id=uid.slice(-4)+'_'+rd+'_'+(bseq++);if(!addBuild(id,t,sp1.x,sp1.y,sp1.z,sp1.r,true,msel,mk))return;if(MD.map!='box')mat[msel]-=COST;if(mk){PRE=null}SFX.build(msel);hud();
 shRef.push({by:uid,k:'b',id,t,x:r3(sp1.x),y:r3(sp1.y),z:r3(sp1.z),r:sp1.r,m:msel,mk,rd,ts:clk()})}
 function pickMat(i){if(!run||i==msel)return;msel=i;SFX.tick();hud()}
 function cycleMat(){if(!run)return;msel=(msel+1)%3;SFX.tick();hud()}
-function setBuild(t,tog){if(S.dead||phase=='over'||phase=='ended')return;if(EDIT)exitEdit();if(buildT==t){if(tog)exitBuild();return}clearTimeout(S.rlT);S.rl=0;if(PRE&&PRE.t!=t)PRE=null;buildT=lastPiece=t;S.lat=0;me.setGun(-1);SFX.swap();ghostShow();hud();send()}
+function setBuild(t,tog){if(S.dead||phase=='ended')return;if(EDIT)exitEdit();if(buildT==t){if(tog)exitBuild();return}clearTimeout(S.rlT);S.rl=0;if(PRE&&PRE.t!=t)PRE=null;buildT=lastPiece=t;S.lat=0;me.setGun(-1);SFX.swap();ghostShow();hud();send()}
 function exitBuild(){if(!buildT)return;buildT=null;PRE=null;if(GH)GH.visible=false;if(!EDIT)me.setGun(S.w);hud();send()}
 /* ---- ghost preview: translucent piece + outline + a faint build grid around your tile ---- */
 const GHM={};
@@ -595,7 +601,7 @@ function editInit(){if(EG)return;EG=new T.Group();EG.visible=false;sc.add(EG);EG
 function editLayout(b){EG.userData.cells.forEach((m,idx)=>{const i=idx%3,j=Math.floor(idx/3);
 if(b.t=='wall'){const off=(i-1)*CELL;m.position.set(b.r?b.x:b.x+off,b.y+(j+.5)*ROW,b.r?b.z+off:b.z);m.scale.set(b.r?.55:CELL*.94,ROW*.94,b.r?CELL*.94:.55)}
 else{m.position.set(b.x+(i-1)*CELL,b.y-.15,b.z+(j-1)*CELL);m.scale.set(CELL*.94,.55,CELL*.94)}})}
-function startEdit(){if(EDIT||S.dead||phase!='live')return;const d=dirv(),o=camP.clone().addScaledVector(d,camD+.3),c=castRay(o,d,10),b=c.id&&BLD[c.id];let tgt=null,pre=0;
+function startEdit(){if(EDIT||S.dead||(phase!='live'&&phase!='over'))return;const d=dirv(),o=camP.clone().addScaledVector(d,camD+.3),c=castRay(o,d,10),b=c.id&&BLD[c.id];let tgt=null,pre=0;
 if(b&&b.own&&(b.t=='wall'||b.t=='floor')&&prog(b)>=1)tgt=b;
 else if(buildT=='wall'||buildT=='floor'){const sp1=findSpot(buildT);if(sp1.dup){feed('There is already a piece there');return}tgt={id:'pre',t:buildT,x:sp1.x,y:sp1.y,z:sp1.z,r:sp1.r,mask:PRE&&PRE.t==buildT?PRE.mask:0};pre=1}
 if(!tgt){feed('Aim at one of your walls or floors to edit (or hold a wall / floor to pre-edit)');return}
@@ -612,7 +618,7 @@ if(b.t=='wall'){if(!b.r){if(Math.abs(d.z)<1e-4)return-1;t=(b.z-camP.z)/d.z}else{
 if(t<=0||t>16)return-1;hx=camP.x+d.x*t;hy=camP.y+d.y*t;hz=camP.z+d.z*t;
 if(b.t=='wall'){const u=b.r?hz-b.z:hx-b.x,v=hy-b.y;if(Math.abs(u)>=GRID/2||v<0||v>=LVL)return-1;return Math.floor(v/ROW)*3+Math.floor((u+GRID/2)/CELL)}
 const u=hx-b.x,w=hz-b.z;if(Math.abs(u)>=GRID/2||Math.abs(w)>=GRID/2)return-1;return Math.floor((w+GRID/2)/CELL)*3+Math.floor((u+GRID/2)/CELL)}
-function editUpdate(){if(!EDIT)return;if((!EDIT.pre&&!BLD[EDIT.b.id])||phase!='live'||S.dead){exitEdit();return}
+function editUpdate(){if(!EDIT)return;if((!EDIT.pre&&!BLD[EDIT.b.id])||(phase!='live'&&phase!='over')||S.dead){exitEdit();return}
 EDIT.hover=editPick(EDIT.b);
 if(K.shoot){if(EDIT.hover>=0&&EDIT.hover!=EDIT.last){if(EDIT.paint===null)EDIT.paint=(EDIT.mask>>EDIT.hover&1)?0:1;EDIT.mask=EDIT.paint?EDIT.mask|1<<EDIT.hover:EDIT.mask&~(1<<EDIT.hover);EDIT.last=EDIT.hover;SFX.tick()}}else{EDIT.paint=null;EDIT.last=-1}
 EG.userData.cells.forEach((m,i)=>{const rem=EDIT.mask>>i&1,hv=i==EDIT.hover;m.material.color.setHex(rem?0xff5c5c:hv?0xffffff:0x66b3ff);m.material.opacity=rem?.6:hv?.5:.22})}
@@ -624,7 +630,7 @@ for(let h=.4;h<=7;h+=.4){P.set(bx,by+h,bz);if(!hits(P)){S.vy=0;return}}P.set(bx,
 /* ================= WEAPON STATE ================= */
 let WS=[];
 const curW=()=>WEAPONS[S.w],curS=()=>WS[S.w];
-function selectW(i){if(S.dead||phase=='over'||phase=='ended')return;if(EDIT){exitEdit();if(i==S.w)return}if(buildT){exitBuild();if(i==S.w)return}if(i==S.w)return;clearTimeout(S.rlT);S.rl=0;S.w=i;S.eq=performance.now()+260;S.lat=0;me.setGun(i);SFX.swap();hud()}
+function selectW(i){if(S.dead||phase=='ended')return;if(EDIT){exitEdit();if(i==S.w)return}if(buildT){exitBuild();if(i==S.w)return}if(i==S.w)return;clearTimeout(S.rlT);S.rl=0;S.w=i;S.eq=performance.now()+260;S.lat=0;me.setGun(i);SFX.swap();hud()}
 let wsN=null,bsN=null,matsK='';
 function hud(){const w=curW(),st=curS();$('#hp').style.width=Math.max(0,S.hp)+'%';$('#hpt').textContent=(S.sh>0?Math.ceil(S.sh)+' · ':'')+Math.max(0,Math.ceil(S.hp));{const sw=$('#shw');if(sw){sw.style.display=SHD?'block':'none';$('#shp').style.width=Math.max(0,S.sh||0)+'%'}}
 const a=$('#ammo');$('#am').textContent=w.melee?'⛏':S.rl?'…':st.mag;$('#amr').textContent=w.melee?'':'/'+st.res;$('#wnm').textContent=w.n;a.className=!w.melee&&st.mag<=Math.ceil(w.mag*.25)?'low':'';
@@ -647,7 +653,7 @@ if(ht){const f=w.fall,m=1-(1-f[2])*Math.max(0,Math.min(1,(ht.t-f[0])/(f[1]-f[0])
 if(!ht&&c.id&&l<mx)bd[c.id]=(bd[c.id]||0)+w.bdmg;else if(!ht&&w.melee&&l<mx&&!harv){harv=1;mat[msel]=Math.min(999,mat[msel]+25);SFX.hit();hud()}
 D.push(r3(v.x),r3(v.y),r3(v.z));L.push(Math.round(l*10)/10);if(!w.melee)tracer(muL,o.clone().addScaledVector(v,l),0xfff2a0,w.pel>1?.025:.04)}
 const bda=Object.keys(bd).map(k=>[k,bd[k]]);bda.forEach(([id,dm])=>damageBuild(id,dm));
-const claims=[];for(const k in HT){const e=HT[k],dm=Math.round(e.dm*10)/10;e.r.hitT=n;e.r.rc=Math.min(1.2,(e.r.rc||0)+.3);if(e.r.bot)botHit(e.r,dm,e.hd,e.p);else{claims.push({u:k,dm,hd:e.hd});hitFx(e.p,e.hd);if(RM)rmDealt(e.r,dm,e.hd)}}
+const claims=[];for(const k in HT){const e=HT[k],dm=Math.round(e.dm*10)/10;e.r.hitT=n;e.r.rc=Math.min(1.2,(e.r.rc||0)+.3);if(e.r.bot)botHit(e.r,dm,e.hd,e.p);else{claims.push({u:k,dm,hd:e.hd});hitFx(e.p,e.hd);rmDealt(e.r,dm,e.hd,e.p)}}
 if(!w.melee&&w.id=='ar')casing(muL.clone().addScaledVector(d,-.5),rt);if(!w.melee){flash(me);vm&&flash(vm)}SFX.gun(w.id);$('#cross').classList.add('f');setTimeout(()=>$('#cross').classList.remove('f'),90);
 shRef.push({by:uid,rd,ts:clk(),h:claims,w:S.w,o:[r3(o.x),r3(o.y),r3(o.z)],m:[r3(mu.x),r3(mu.y),r3(mu.z)],D,L,bd:bda,pk:Math.round(P.y*10)/10});hud();
 if(!w.melee&&st.mag<=0&&st.res>0)setTimeout(()=>{if(run&&!S.rl&&S.w==WEAPONS.indexOf(w)&&curS().mag<=0)reload()},w.rate+150)}
@@ -658,10 +664,26 @@ if(dead&&!a.on){a.on=1;a.t=0;a.ox=a.oz=0;const k=head?4.6:3.2;a.vx=Math.sin(away
 else if(!dead&&a.on){a.on=0;a.t=0;a.ox=a.oz=0;a.vx=a.vz=0}
 if(!a.on)return null;a.t+=dt;const dc=Math.exp(-dt*4.2);a.ox+=a.vx*dt;a.oz+=a.vz*dt;a.vx*=dc;a.vz*=dc;
 const u=Math.min(1,a.t/.62),e=1-Math.pow(1-u,3),bn=u>=1?Math.exp(-(a.t-.62)*7)*Math.sin((a.t-.62)*22)*.07:0;
-return{u:e+bn,t:a.t,ox:a.ox,oz:a.oz,sd:a.sd}}
+const dk=Math.max(0,Math.min(1,(a.t-.95)/.85));return{u:e+bn,t:a.t,ox:a.ox,oz:a.oz,sd:a.sd,dk,rz:dk*dk*.7}}
 function fallXf(g,fs,ya,away){const fx=-Math.sin(ya),fz=-Math.cos(ya),nx=Math.sin(away),nz=Math.cos(away),fd=nx*fx+nz*fz,sd=nx*Math.cos(ya)-nz*Math.sin(ya),th=1.5*fs.u;
 g.rotation.set(-fd*th,ya,-sd*th);const hop=Math.sin(Math.min(1,fs.t/.34)*Math.PI)*.28+Math.min(.14,fs.u*.14);
-g.position.x+=fs.ox;g.position.z+=fs.oz;g.position.y+=hop;g.userData.ofs=[fs.ox,hop,fs.oz]}
+g.position.x+=fs.ox;g.position.z+=fs.oz;g.position.y+=hop+fs.rz;g.userData.ofs=[fs.ox,hop+fs.rz,fs.oz]}
+/* elimination finish (Fortnite style): after the fall the body lights up cyan, floats up and dissolves into sparks, then stays gone until the next round */
+function voxel(x,y,z,col,big){const m=fxMk(UBOX,col),sz=(big?.1:.06)+Math.random()*(big?.12:.08),a=Math.random()*6.283,r=.4+Math.random()*1.2,L=1.1+Math.random()*.9;m.scale.set(sz,sz,sz);m.rotation.set(Math.random()*6,Math.random()*6,0);m.position.set(x,y,z);sc.add(m);
+FX.push({m,life:L,L,sz,v:new T.Vector3(Math.cos(a)*r*.5,1.4+Math.random()*3,Math.sin(a)*r*.5),sw:a,spin:(Math.random()-.5)*10,fn(f,dt){const u=Math.max(0,f.life/f.L);f.sw+=dt*3.2;f.v.x+=Math.cos(f.sw)*dt*2.2;f.v.z+=Math.sin(f.sw)*dt*2.2;f.v.y*=1-dt*.6;f.m.rotation.y+=f.spin*dt*.7;f.m.scale.setScalar(f.sz*(.25+.75*u));f.m.material.opacity=Math.min(1,u*2.2)}})}
+/* a column of light + two shock rings + a cloud of rising cubes where somebody was eliminated */
+function elimFx(p,col){if(Qs.fx<=0)return;const n=Qs.fx<1?Math.round(34*Qs.fx):34;
+const pl=fxMk(UBOX,0xb8f4ff);pl.position.set(p.x,p.y+3.5,p.z);pl.scale.set(.9,7,.9);sc.add(pl);FX.push({m:pl,life:1.0,L:1.0,fn(f){const u=Math.max(0,f.life/f.L),w=.08+.9*u*u;f.m.scale.set(w,7,w);f.m.material.opacity=u*.55}});
+for(let k=0;k<2;k++){const r=fxMk(PLG,k?0xffffff:0x7fe9ff);r.rotation.x=-Math.PI/2;r.position.set(p.x,.08+k*.01,p.z);sc.add(r);FX.push({m:r,life:.7+k*.25,L:.7+k*.25,d:k*.08,fn(f,dt){const u=Math.max(0,f.life/f.L),s=.5+(1-u)*(k?6.5:4.5);f.m.scale.set(s,s,1);f.m.material.opacity=u*.8}})}
+for(let i=0;i<n;i++)voxel(p.x+(Math.random()-.5)*.8,p.y+.1+Math.random()*1.7,p.z+(Math.random()-.5)*.8,[0x7fe9ff,0xffffff,0xb8f4ff,col][i%4],i%5==0)}
+/* elimination finish (Fortnite style): a white flash on impact, then after the fall the body lights up cyan, shrinks into a beam of light and dissolves into rising cubes; it stays gone until the next round */
+function dissolve(c,fs,dt){const m=c.mat;if(!m||!c.g||!m.emissive)return;
+if(!fs){if(c.dsv||c.fl){c.dsv=c.fl=0;m.transparent=false;m.opacity=1;m.emissive.setHex(c.emHex);m.emissiveIntensity=.1;m.needsUpdate=true;c.g.scale.set(1,1,1);c.g.visible=true}return}
+if(!(fs.dk>0)){if(fs.t<.22){if(!c.fl){c.fl=1;c.emHex=m.emissive.getHex()}m.emissive.setHex(0xffffff);m.emissiveIntensity=1.5*(1-fs.t/.22)}else if(c.fl){c.fl=0;m.emissive.setHex(c.emHex);m.emissiveIntensity=.1}return}
+if(!c.dsv){c.dsv=1;if(!c.fl)c.emHex=m.emissive.getHex();c.fl=0;m.transparent=true;m.needsUpdate=true;const p=c.g.position;elimFx(p,c.dCol||0xff4d4d)}
+const k=fs.dk;m.opacity=Math.max(0,1-k*k*k);m.emissive.setHex(0x9ff0ff);m.emissiveIntensity=.2+k*2.2;c.g.scale.set(1-.45*k,1+.12*k,1-.45*k);
+c.dsT=(c.dsT||0)-dt;if(c.dsT<=0&&k<1){c.dsT=.045;const p=c.g.position;for(let i=0;i<2;i++)voxel(p.x+(Math.random()-.5)*.6,p.y+.2+Math.random()*1.6,p.z+(Math.random()-.5)*.6,Math.random()<.5?0x7fe9ff:0xffffff,0)}
+if(k>=1)c.g.visible=false}
 function deathFx(p,col,head){const q=new T.Vector3(p.x,p.y+1.2,p.z);sparks(q,col,head?28:18);sparks(q,0xffffff,8);if(Qs.fx>0){const m=fxMk(PLG,col);m.rotation.x=-Math.PI/2;m.position.set(p.x,.07,p.z);m.scale.set(.6,.6,1);sc.add(m);FX.push({m,life:.45,fade:1,exp:1})}}
 /* ================= OTHER PLAYERS =================
    RP holds every remote player (1v1: one enemy; 2v2: one teammate + two enemies). Each entry is a character rig with extra fields:
@@ -680,11 +702,11 @@ if(w.melee)sh.swingT=now;else{flash(sh);sh.fk=Math.min(1,(sh.fk||0)+(w.kk||0));s
 sh.rc=Math.min(1.2,(sh.rc||0)+w.rec);SFX.gun(w.id,Math.max(.2,1-P.distanceTo(sh.opv)/50));
 /* hits are decided on the SHOOTER's screen (what you see is what you hit); the victim just applies the claimed damage after sanity checks */
 if(S.dead||!run||sh.mate||s.rd!==rd)return;const mh=(s.h||[]).find(x=>x&&x.u===uid);if(!mh)return;
-if(!(phase=='live'||(phase=='freeze'&&frz-now<600)))return; /* the 600ms grace covers the two clients leaving the countdown a hair apart */
+if(!(phase=='live'||phase=='over'||(phase=='freeze'&&frz-now<600)))return; /* the 600ms grace covers the two clients leaving the countdown a hair apart */
 const cap=w.dmg*(w.pel||1)*w.hs*1.02,dm=Math.max(0,Math.min(cap,+mh.dm||0));if(dm<=0)return;takeHit(dm,!!mh.hd,null,s.by)}
-function takeHit(dmg,head,pnt,by){window.PAD&&PAD.rumble(.3,.9,130);recoil=Math.min(1.2,recoil+.25);if(S.sh>0){const ab=Math.min(S.sh,dmg);S.sh-=ab;dmg-=ab}S.hp-=dmg;SFX.hurt();shake=Math.max(shake,.3);const vg=$('#vig');vg.classList.remove('on');void vg.offsetWidth;vg.classList.add('on');sparks(pnt||new T.Vector3(P.x,P.y+1.3,P.z),head?0xffd23f:0xff4d6d,head?16:10);if(S.hp<=0){S.hp=0;die(head,by)}hud();send()}
+function takeHit(dmg,head,pnt,by){{const kb=by&&PLR(by);if(kb&&kb.bot)kb.dm=(kb.dm||0)+Math.min(dmg,Math.max(0,S.hp+(S.sh||0)))}window.PAD&&PAD.rumble(.3,.9,130);recoil=Math.min(1.2,recoil+.25);if(S.sh>0){const ab=Math.min(S.sh,dmg);S.sh-=ab;dmg-=ab}S.hp-=dmg;SFX.hurt();shake=Math.max(shake,.3);const vg=$('#vig');vg.classList.remove('on');void vg.offsetWidth;vg.classList.add('on');sparks(pnt||new T.Vector3(P.x,P.y+1.3,P.z),head?0xffd23f:0xff4d6d,head?16:10);if(S.hp<=0){S.hp=0;die(head,by)}hud();send()}
 function hitFx(p,hd){SFX.hit();const h=$('#hit');h.classList.remove('on');void h.offsetWidth;h.classList.add('on');if(p)sparks(p,hd?0xffd23f:0xff4d6d,hd?16:10)}
-function die(head,by){exitEdit();exitBuild();S.dead=1;S.dts=clk();S.deaths++;S.killer=by||null;S.storm=by?0:(ZN?1:0);S.hdD=head?1:0;const kr=by&&PLR(by);S.away=kr?Math.atan2(P.x-kr.opv.x,P.z-kr.opv.z):Math.random()*6.283;S.dCol=0xff4d4d;K.shoot=0;K.aim=0;
+function die(head,by){exitEdit();exitBuild();S.dead=1;S.dts=clk();S.deaths++;S.killer=by||null;{const kb=by&&PLR(by);if(kb&&kb.bot)kb.k=(kb.k||0)+1}S.storm=by?0:(ZN?1:0);S.hdD=head?1:0;const kr=by&&PLR(by);S.away=kr?Math.atan2(P.x-kr.opv.x,P.z-kr.opv.z):Math.random()*6.283;S.dCol=0xff4d4d;K.shoot=0;K.aim=0;
 S.place=RM?0:teamsLeft().length+1;SFX.death();window.PAD&&PAD.rumble(1,1,380);
 feed(by?(names[by]||'Someone')+(head?' headshot you':' eliminated you'):'The storm eliminated you');specT=null;specUi();hud();send();checkRound()}
 let hbN=0,xhB=-1,xhS=-1;
@@ -692,18 +714,18 @@ function send(){pRef.set({hb:++hbN,ts:clk(),dts:S.dead?(S.dts||0):0,x:+P.x.toFix
 function mateUi(){const ms=RP.filter(r=>r.mate),e=$('#mate');if(!ms.length){e.style.display='none';return}e.style.display='flex';
 if(e.children.length!=ms.length)e.innerHTML=ms.map(()=>'<div class="mrow"><span></span><div class="bar"><u></u></div></div>').join('');
 ms.forEach((m,i)=>{const row=e.children[i],off=!!(m.dead||m.left);row.classList.toggle('dead',off);row.firstChild.textContent=m.name;row.querySelector('u').style.width=(off?0:Math.max(0,m.hp))+'%'})}
-function playerLeft(r){if(r.left)return;r.left=1;r.dead=1;r.g.visible=false;if(r.bar)r.bar.style.display='none';feed(r.name+' left the match');mateUi();if(RM){rmDrop(r);return}if(!RP.some(x=>!x.mate&&!x.left))end(true,'Opponent left');else checkRound()}
+function playerLeft(r){if(r.left)return;if(!r.bot&&((r.k|0)||(r.dm|0)||(r.dc|0)))gone.push({u:r.u,name:r.name,me:0,mate:!!r.mate,k:r.k|0,dm:Math.round(r.dm||0),d:r.dc|0,out:1});r.left=1;r.dead=1;r.g.visible=false;if(r.bar)r.bar.style.display='none';feed(r.name+' left the match');mateUi();if(RM){rmDrop(r);return}if(!RP.some(x=>!x.mate&&!x.left))end(true,'Opponent left');else checkRound()}
 function onOpp(r,v){if(!v){if(r.seen&&phase!='ended'&&!r.left&&(RM||phase!='over'))playerLeft(r);return}
 const n=performance.now();r.seen=1;r.t=n;if(![v.x,v.y,v.z,v.r].every(Number.isFinite))return;
-r.late=!!v.lt;if(!r.left)r.g.visible=!v.lt;if(S.late&&!v.lt&&!RM)lateAdopt(v);if(RM){r.k=v.k|0;r.dm=v.dm|0;r.rk=v.rk|0;r.rdm=v.rdm|0;r.prd=v.rd}
+r.late=!!v.lt;if(!r.left)r.g.visible=!v.lt;if(S.late&&!v.lt&&!RM)lateAdopt(v);r.k=v.k|0;r.dm=v.dm|0;if(RM){r.rk=v.rk|0;r.rdm=v.rdm|0;r.prd=v.rd}
 r.tg.set(v.x,v.y,v.z);r.r=v.r;r.pt=Number.isFinite(v.pt)?Math.max(-PMAX,Math.min(PMAX,v.pt)):0;
 if(v.w!=null&&v.w!==r.wi){r.wi=v.w;r.eqT=n;r.setGun(v.w)}
 r.ads=v.a?1:0;if(v.rl){if(!r.rlOn){r.rlOn=1;r.rlT0=n}}else r.rlOn=0;
 const cur=v.rd===rd;if(cur)pushSample(r,v);
 if(cur&&v.hp<r.hp&&!v.dead&&!r.mate&&n-(r.hitT||0)>700){SFX.hit();const h=$('#hit');h.classList.remove('on');void h.offsetWidth;h.classList.add('on');sparks(new T.Vector3(v.x,v.y+1.3,v.z))}
 if(cur){if(v.hp!==r.hp)r.pend=0;r.hp=v.hp}r.dead=!!(v.dead&&cur);r.dts=r.dead?(v.dts||0):0;
-if(v.d>(r.dc||0)){r.dc=v.d;const k=v.kb||(MODE2||RM?null:uid),kp=k===uid?P:(PLR(k)&&PLR(k).opv);r.dAway=kp?Math.atan2(v.x-kp.x,v.z-kp.z):Math.random()*6.283;r.dHead=0;if(RM&&k===uid&&v.rd===rd&&!S.late)rmKill(r);
-if(k==='STORM')feed(r.name+' was consumed by the storm');else if(!r.mate){SFX.kill();if(k===uid)me.kick();feed(k===uid?'You eliminated '+r.name:(names[k]||'Someone')+' eliminated '+r.name)}else feed(r.name+' was eliminated');hud();mateUi()}
+if(v.d>(r.dc||0)){r.dc=v.d;const k=v.kb||(MODE2||RM?null:uid),kp=k===uid?P:(PLR(k)&&PLR(k).opv);r.dAway=kp?Math.atan2(v.x-kp.x,v.z-kp.z):Math.random()*6.283;r.dHead=0;if(k===uid&&!r.mate&&v.rd===rd&&!S.late){if(RM)rmKill(r);else{S.kills++;S.rk++;elimPop(r.name,1)}}
+if(k==='STORM')feed(r.name+' was consumed by the storm');else if(!r.mate){SFX.kill();feed(k===uid?'You eliminated '+r.name:(names[k]||'Someone')+' eliminated '+r.name)}else feed(r.name+' was eliminated');hud();mateUi()}
 if(r.mate)mateUi();checkRound()}
 
 /* ================= ZONE WARS: STORM + MAPS =================
@@ -742,6 +764,40 @@ if(out!==zOut){zOut=out;$('#hud').classList.toggle('storm',!!out&&!S.dead);if(sc
 const ph=performance.now();if(ph-zmmT>90){zmmT=ph;const zi=$('#zinfo');zi.textContent=(RM&&RS&&RS.st!='round')?'STORM STARTS WHEN THE ROUND BEGINS':z.s=='done'?'THE STORM HAS CLOSED':(z.s=='wait'?(z.i==0?'STORM FORMS IN ':'STORM SHRINKS IN '):'STORM CLOSING · ')+(z.s=='done'?'':mmt(z.left));zi.classList.toggle('hot',z.s!='wait');
 drawMap($('#mm'),z,SPT);if(BIGMAP)drawMap($('#bmc'),z,SPT);if(!RM)$('#rnd').textContent='👥 '+teamsLeft().length+' ALIVE'+(out&&!S.dead?' · IN THE STORM':'')}}
 let ZFOG=0x8fd0f5;
+
+const _vE=new T.Euler(),_vQ=new T.Quaternion(),_vV=new T.Vector3(),VPIV=new T.Vector3(.12,-.3,-.45);
+/* rotate the viewmodel around the GUN (not around the camera: that swings the whole arm in a huge arc) */
+function vmApply(px,py,pz,rx,ry,rz){_vE.set(rx,ry,rz,'YXZ');_vQ.setFromEuler(_vE);_vV.copy(VPIV).applyQuaternion(_vQ);vSway.quaternion.copy(_vQ);vSway.position.set(px+VPIV.x-_vV.x,py+VPIV.y-_vV.y,pz+VPIV.z-_vV.z)}
+/* ================= FORTNITE BOX FIGHT CELLS + STRUCTURAL SUPPORT =================
+   Cells: every player starts inside their own tiny glass cell. When the 5 second countdown ends the glass drops and everybody can leave.
+   Support: a built piece only stands while it is connected (through touching pieces) to the ground or to the map. Place something in mid-air and it is refused;
+   destroy the piece holding a structure up and everything that depended on it collapses a moment later (every client works that out itself, no network messages). */
+let CELLG=null,CELLB=[];
+function cellClear(){if(CELLG){sc.remove(CELLG);disposeTree(CELLG);CELLG=null}for(const bx of CELLB){gDel(bx);const i=B.lastIndexOf(bx);if(i>=0)B.splice(i,1)}CELLB=[]}
+function cellBuild(ps){cellClear();const n=Math.max(2,ps.length),H=7,hw=3.2;CELLG=new T.Group();sc.add(CELLG);
+for(let i=0;i<n;i++){const[cx,cz]=boxSpot(i,n),mine=ps[i]===uid,col=mine?0x38f5c8:0xff6b81;
+const pad=new T.Mesh(new T.BoxGeometry(hw*2,.16,hw*2),new T.MeshBasicMaterial({color:col,transparent:true,opacity:.55}));pad.position.set(cx,.08,cz);CELLG.add(pad);
+[[0,-hw,hw*2+.4,.4],[0,hw,hw*2+.4,.4],[-hw,0,.4,hw*2],[hw,0,.4,hw*2]].forEach(([ox,oz,w,d])=>{const m=new T.Mesh(new T.BoxGeometry(w,H,d),new T.MeshBasicMaterial({color:col,transparent:true,opacity:.22,depthWrite:false,side:T.DoubleSide}));m.position.set(cx+ox,H/2,cz+oz);CELLG.add(m);
+const bx={x:cx+ox,z:cz+oz,w,d,y0:0,h:H,cell:1};B.push(bx);gAdd(bx);CELLB.push(bx)})}}
+function cellDrop(){const g=CELLG;cellClear();if(g)SFX.crumble()}
+const abOf=bs=>{const a=[1e9,-1e9,1e9,-1e9,1e9,-1e9];for(const x of bs){a[0]=Math.min(a[0],x.x-x.w/2);a[1]=Math.max(a[1],x.x+x.w/2);a[2]=Math.min(a[2],x.y0||0);a[3]=Math.max(a[3],x.h);a[4]=Math.min(a[4],x.z-x.d/2);a[5]=Math.max(a[5],x.z+x.d/2)}return a};
+const touchAB=(a,b,e)=>a[0]-e<=b[1]&&b[0]-e<=a[1]&&a[2]-e<=b[3]&&b[2]-e<=a[3]&&a[4]-e<=b[5]&&b[4]-e<=a[5];
+const SUP={dirty:1,map:new Map(),L:[],t:0};
+const supKey=(x,z)=>Math.round(x/GRID)+','+Math.round(z/GRID);
+function mapNear(ab,fn){const xs=[ab[0]-.3,(ab[0]+ab[1])/2,ab[1]+.3],zs=[ab[4]-.3,(ab[4]+ab[5])/2,ab[5]+.3],seen=new Set();for(const x of xs)for(const z of zs){const c=gAt(x,z);if(c)for(const b of c){if(seen.has(b))continue;seen.add(b);if(!b.bid&&!b.cell&&!b.ceil&&!b.ray&&fn(b))return true}}return false}
+const anchored=ab=>mapNear(ab,b=>touchAB(ab,[b.x-b.w/2,b.x+b.w/2,b.y0||0,b.h,b.z-b.d/2,b.z+b.d/2],.25));
+function mapBlocked(bx){for(const q of bx){if(q.ray)continue;const ab=[q.x-q.w/2+.12,q.x+q.w/2-.12,(q.y0||0)+.12,q.h-.12,q.z-q.d/2+.12,q.z+q.d/2-.12];if(mapNear(ab,b=>touchAB(ab,[b.x-b.w/2,b.x+b.w/2,b.y0||0,b.h,b.z-b.d/2,b.z+b.d/2],0)))return true}return false}
+function supRebuild(){SUP.dirty=0;const L=[],m=new Map();for(const id in BLD){const b=BLD[id];if(!b.boxes||!b.boxes.length)continue;b.ab=abOf(b.boxes);b.sup=0;L.push(b);const k=supKey((b.ab[0]+b.ab[1])/2,(b.ab[4]+b.ab[5])/2);let a=m.get(k);if(!a)m.set(k,a=[]);a.push(b)}
+SUP.map=m;SUP.L=L;const q=[];for(const b of L)if(b.ab[2]<=.15||anchored(b.ab)){b.sup=1;q.push(b)}
+while(q.length){const c=q.pop(),cx=Math.round((c.ab[0]+c.ab[1])/2/GRID),cz=Math.round((c.ab[4]+c.ab[5])/2/GRID);
+for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const a=m.get((cx+dx)+','+(cz+dz));if(a)for(const o of a)if(!o.sup&&touchAB(c.ab,o.ab,.25)){o.sup=1;q.push(o)}}}}
+function touchSup(ab){if(SUP.dirty)supRebuild();const cx=Math.round((ab[0]+ab[1])/2/GRID),cz=Math.round((ab[4]+ab[5])/2/GRID);
+for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const a=SUP.map.get((cx+dx)+','+(cz+dz));if(a)for(const o of a)if(o.sup&&touchAB(ab,o.ab,.25))return true}return false}
+function supStep(n){if(SUP.dirty)supRebuild();if(n-SUP.t<120)return;SUP.t=n;let drop=null;
+for(const b of SUP.L){if(b.sup){b.uns=0;continue}if(!b.uns)b.uns=n;else if(n-b.uns>450)(drop||(drop=[])).push(b.id)} /* a short grace: a remote piece may arrive a few ms before the piece that holds it */
+if(drop)for(const id of drop)removeBuild(id,false)}
+function losBad(c){const o=new T.Vector3(P.x,P.y+1.6,P.z),d=new T.Vector3(c[0]-o.x,c[1]-o.y,c[2]-o.z),len=d.length();if(len<2.4)return false;d.multiplyScalar(1/len);let hit=false;
+gRay(o,d,len-1.2,(b,L)=>{if(b.ray||b.ceil||b.cell)return L;if(!b.bid)return L;if(BLD[b.bid]&&BLD[b.bid].own)return L; /* map blocks never stop a build: only enemy pieces do */const t=rayBox(o,d,b);if(t<L){hit=true;return t}return L});return hit}
 /* ================= OPEN ROOMS (Box Fights + Zone Wars) =================
    No bots, no fixed roster. Players come and go whenever they like; every room runs ROUNDS rounds of RSEC seconds.
    The room's round state lives in matches/<mid>/rs = {rd, st, t0, ps}:
@@ -754,7 +810,7 @@ let ZFOG=0x8fd0f5;
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function mkRemote(p,mate){const col=mate?0x38f5c8:0xff4d4d,mc=mySkin;let sk=Number.isFinite(p.s)&&p.s>0?p.s:col;if(sk===mc)sk=COS.pack(col,COS.id(mc))+(sk-GUN.base(sk));
 const r=char(sk);Object.assign(r,{u:p.u,name:p.n,team:p.t,mate,c:p.c,tg:new T.Vector3(),opv:new T.Vector3(),wi:1,hp:100,dead:0,odk:0,dc:0,seen:/^BOT/.test(p.u)?1:0,bot:/^BOT/.test(p.u)?1:0,left:0,t:0,fk:0,rc:0,wp:0,lt:0,pa:false,ads:0,pt:0,r:yawAt(p.c),k:0,dm:0,rk:0,rdm:0,prd:-1,pend:0});r.setGun(1);r.g.rotation.y=r.r;r.g.position.set(p.c[0],0,p.c[1]);r.tg.copy(r.g.position);r.opv.copy(r.g.position);
-r.g.add(tag(p.n,MODE2&&!FFA?(mate?'#7dffb0':'#ff9a9a'):'#fff'));sc.add(r.g);
+const showTg=mate||FFA||RM;r.showTg=showTg;if(showTg)r.g.add(tag(p.n,MODE2&&!FFA?(mate?'#7dffb0':'#ff9a9a'):'#fff'));sc.add(r.g);
 r.bar=document.createElement('div');r.bar.className='eb2'+(mate?' mate':'');r.bar.innerHTML='<u></u>';$('#hud').appendChild(r.bar);RP.push(r);return r}
 /* somebody new showed up in the room */
 function addRemote(u,v){if(!RM||!run||u===uid||RP.some(r=>r.u===u&&!r.left))return;v=v||{};
@@ -837,11 +893,41 @@ function rmTick(){if(!RM||!run||!RS)return;try{const tx=rmTxt();if(tx!==lastTxt)
 rmBanner();if(RS.st==='board'&&clk()>=RS.t0+1800)boardRender();
 const st=$('#rmst');if(st){const t='🎯 '+(S.kills|0)+(S.rk?' (+'+S.rk+')':'')+'   💥 '+Math.round(S.dmg||0).toLocaleString();if(st.textContent!==t)st.textContent=t}
 hostDuty()}catch(e){logE(e)}}
+/* ================= SCOREBOARD (Tab) =================
+   Works in EVERY mode (1v1, 2v2, 3v3, Box Fights, Zone Wars, online or vs bots). Shows everybody in this match, most kills first (then damage):
+   username, kills, damage and K/D for the whole game. Key = the "Scoreboard" binding (Tab by default); CFG.sbm 'hold' (default) or 'toggle'.
+   Numbers: me = S.kills / S.dmg / S.deaths · real players = what they broadcast (k, dm, d) · bots = counted locally (botHit / botDmg / takeHit / die). */
+const sbToggle=()=>!!window.CFG&&CFG.sbm==='toggle',sbOk=()=>!!run&&!paused()&&!document.querySelector('.modal.on');
+function sbRows(){const a=[{u:uid,name:names[uid]||'You',me:1,mate:1,k:S.kills|0,dm:Math.round(S.dmg||0),d:S.deaths|0,dead:!!S.dead}];
+for(const r of RP)if(!r.left)a.push({u:r.u,name:r.name,me:0,mate:!!r.mate,bot:!!r.bot,k:r.k|0,dm:Math.round(r.dm||0),d:r.dc|0,dead:!!r.dead});
+for(const g of gone)if(!a.some(x=>x.u===g.u))a.push(g);
+a.sort((x,y)=>(y.k-x.k)||(y.dm-x.dm)||(x.d-y.d)||String(x.name).localeCompare(String(y.name)));return a}
+function sbRender(){const e=$('#sb');if(!e||!sbOn)return;const rows=sbRows(),team=MODE2&&!FFA,rt=($('#rnd')&&$('#rnd').textContent)||'',sub=MD.n.toUpperCase()+(rt?' · '+rt:''),
+key=sub+'|'+rows.map(x=>x.u+':'+x.k+'/'+x.dm+'/'+x.d+(x.dead?'x':'')+(x.mate?'m':'')).join('|');if(key===sbKey)return;sbKey=key;
+const nf=n=>Math.round(n).toLocaleString();$('#sbs').textContent=sub;
+$('#sbt').innerHTML='<div class="sbr hd"><span>#</span><span>PLAYER</span><span>KILLS</span><span>DAMAGE</span><span>K/D</span></div>'+rows.map((x,i)=>'<div class="sbr'+(x.me?' me':'')+(team?(x.mate?' tm':' en'):'')+(x.dead?' dd':'')+(x.out?' out':'')+'"><span>'+(i+1)+'</span><span class="nm">'+esc(x.name)+(x.bot?'<i>BOT</i>':'')+(x.out?'<i>LEFT</i>':'')+'</span><span><b>'+x.k+'</b></span><span><b>'+nf(x.dm)+'</b></span><span>'+(x.d>0?x.k/x.d:x.k).toFixed(2)+'</span></div>').join('')}
+function sbSet(v){v=v&&run?1:0;sbOn=v;const e=$('#sb');if(e)e.classList.toggle('on',!!v);
+if(v){sbKey='';sbRender();if(!sbT)sbT=setInterval(()=>{if(!run||!sbOn||paused())return sbSet(0);sbRender()},250)}else if(sbT){clearInterval(sbT);sbT=0}}
 /* ---- kills / damage ---- */
 function rmKill(r){S.kills++;S.rk++;elimPop(r.name)}
-function rmDealt(r,dm,hd){const rem=Math.max(0,r.hp*2-(r.pend||0)),real=Math.min(dm,rem);if(real<=0)return;r.pend=(r.pend||0)+real;S.dmg+=real;S.rdm+=real;dmgPop(real,hd)}
-function dmgPop(v,hd){const c=$('#dmgn');if(!c||v<1)return;const e=document.createElement('i');e.textContent=Math.round(v);if(hd)e.className='hs';e.style.setProperty('--dx',(Math.random()*70-35)+'px');c.appendChild(e);setTimeout(()=>e.remove(),900);while(c.children.length>8)c.firstChild.remove()}
-function elimPop(name){const e=$('#elim');if(!e)return;e.textContent='';e.append('ELIMINATED ');const b=document.createElement('b');b.textContent=name;e.appendChild(b);e.classList.remove('on');void e.offsetWidth;e.classList.add('on');SFX.kill()}
+function rmDealt(r,dm,hd,p){const rem=Math.max(0,r.hp*(RM?2:1)-(r.pend||0)),real=Math.min(dm,rem);if(real<=0)return;r.pend=(r.pend||0)+real;S.dmg+=real;S.rdm+=real;dmgPop(real,hd,p)}
+/* ---- floating damage numbers (Fortnite style): 3D sprites in the world, so they sit on the player you hit, keep their place while you move,
+   and are hidden by walls / builds (depth tested). Short pop, a little rise, quick fade. Normal hits red, headshots gold. Setting: CFG.dmgn */
+const DN=[],DNT={};
+function dnTex(txt,hs,big){const k=txt+(hs?'h':big?'b':'n');if(DNT[k])return DNT[k];if(Object.keys(DNT).length>90)for(const q in DNT){DNT[q].dispose();delete DNT[q]}
+const c=document.createElement('canvas');c.width=256;c.height=128;const g=c.getContext('2d');g.font='400 '+(hs?100:88)+'px "Lilita One",Nunito,system-ui,sans-serif';g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';g.lineWidth=16;
+g.strokeStyle=hs?'#5a0a14':'#1d060b';g.strokeText(txt,128,66);g.fillStyle=hs?'#ffd23f':big?'#ff2a3f':'#ff4757';g.fillText(txt,128,66);const t=new T.CanvasTexture(c);DNT[k]=t;return t}
+function dmgPop(v,hd,p){if(!p||!sc||!cam||v<1||(window.CFG&&CFG.dmgn===false))return;const n=Math.round(v),
+m=new T.SpriteMaterial({map:dnTex(String(n),hd,n>=60),transparent:true,depthTest:true,depthWrite:false,fog:false}),sp=new T.Sprite(m);
+const toCam=cam.position.clone().sub(p).normalize().multiplyScalar(.4);sp.position.copy(p).add(toCam).add(new T.Vector3((Math.random()-.5)*.6,.2+Math.random()*.25,(Math.random()-.5)*.6));
+sp.renderOrder=50;sc.add(sp);DN.push({sp,m,t0:performance.now(),y0:sp.position.y,k:hd?1.3:n>=60?1.15:1});while(DN.length>14)dnDrop(DN.shift())}
+function dnDrop(d){sc.remove(d.sp);d.m.dispose()}
+function dnClear(){while(DN.length)dnDrop(DN.pop())}
+function dnTick(){if(!DN.length)return;const now=performance.now();
+for(let i=DN.length-1;i>=0;i--){const d=DN[i],u=(now-d.t0)/600;if(u>=1){dnDrop(d);DN.splice(i,1);continue}
+const pop=u<.14?.35+u/.14*1.0:u<.28?1.35-(u-.14)/.14*.35:1,dist=Math.max(4,Math.min(55,cam.position.distanceTo(d.sp.position))),w=dist*.075*d.k*pop;
+d.sp.scale.set(w*2,w,1);d.sp.position.y=d.y0+(1-Math.pow(1-u,2))*.9;d.m.opacity=u>.6?1-(u-.6)/.4:1}}
+function elimPop(name,quiet){const e=$('#elim');if(!e)return;e.textContent='';e.append('ELIMINATED ');const b=document.createElement('b');b.textContent=name;e.appendChild(b);e.classList.remove('on');void e.offsetWidth;e.classList.add('on');if(!quiet)SFX.kill()}
 /* ================= JOINING LATE =================
    A player who loads in after the round has started spectates until the next round: they publish lt:1 (everybody hides them and ignores them for round logic),
    copy the round number + scores from the live players, build the structures that already stand, and go live when the next round begins. */
@@ -873,16 +959,16 @@ const WO=()=>{let m=0;W.forEach((v,i)=>{if(i!==myT&&v>m)m=v});return m};
 function checkRound(){if(RM||phase!='live')return;if(teamsLeft().length<=1)closeRound()}
 function closeRound(){let T0=Math.max(S.dts||0,...RP.map(r=>r.dts||0));const c0=clk();if(!(T0>0)||c0-T0>3000||T0>c0+500)T0=c0;rT0=T0;phase='over';clearTimeout(S.rlT);S.rl=0;
 const L=teamsLeft(),won=L.length==1&&L[0]==myT,en=RP.find(r=>!r.mate);
-if(!S.late)msg(L.length==0?(NT==2?'DOUBLE KO':'DRAW'):won?(FFA?'VICTORY ROYALE':MODE2?'ROUND WON':'ELIMINATED '+(en?en.name.toUpperCase():'')):(FFA?'MATCH OVER':MODE2?'ROUND LOST':'ELIMINATED'));hud();clearTimeout(pt);pt=setTimeout(finalizeRound,Math.max(250,T0+350-c0))}
+if(!S.late)msg(L.length==0?(NT==2?'DOUBLE KO':'DRAW'):won?'ROUND VICTORY':(FFA?'MATCH OVER':MODE2?'ROUND LOST':'ELIMINATED'),won?'top':0);hud();clearTimeout(pt);pt=setTimeout(finalizeRound,Math.max(250,T0+350-c0))}
 function finalizeRound(){if(!run)return;const L=teamsLeft();if(L.length>1){phase='live';return}
 if(!S.late){if(L.length==1)W[L[0]]++;else if(NT==2){W[0]++;W[1]++}else{let bt=0,bv=-1;for(let t=0;t<NT;t++){const v=Math.max(...memb(t).map(p=>p?(p.dts||0):(S.dts||0)));if(v>bv){bv=v;bt=t}}W[bt]++}} /* while spectating late the scores are copied from the other players (see lateAdopt) */
-hud();clearTimeout(pt);pt=setTimeout(()=>{if(!run)return;try{if(W.some(v=>v>=WIN))finish();else newRound()}catch(e){logE(e);setTimeout(()=>{if(run&&phase=='over'){try{newRound()}catch(e2){logE(e2)}}},400)}},Math.max(300,rT0+2900-clk()));
+hud();clearTimeout(pt);pt=setTimeout(()=>{if(!run)return;try{if(W.some(v=>v>=WIN))finish();else newRound()}catch(e){logE(e);setTimeout(()=>{if(run&&phase=='over'){try{newRound()}catch(e2){logE(e2)}}},400)}},Math.max(300,rT0+3000-clk()));
 if(!S.late&&roundCb){try{roundCb(L.length==1&&L[0]==myT)}catch(e){logE(e)}}}
 function newRound(late,rm){const wasLate=S.late;S.late=late?1:0;if(!late&&!(rm&&rm.wait))S.played=1;me.stopKick&&me.stopKick();celT0=0;setCut(0);clearBuilds();exitEdit();exitBuild();mat=MD.map=='box'?[999,999,999]:[500,300,200];msel=0;S.swingT=0;S.storm=0;S.stormAcc=0;S.place=0;specT=null;if(rm){rd=rm.rd;phase=(rm.wait||late)?'live':'freeze';frz=rm.frz;sp0=rm.sp;S.rk=0;S.rdm=0}else{rd++;phase='freeze';{const tg=rd==1?firstTg:(rT0?rT0+5900:0);frz=performance.now()+(tg?Math.max(1200,Math.min(9000,tg-clk())):3000)}}cdN=-1;
 P.set(sp0[0],0,sp0[1]);visY=0;yaw=yawAt(sp0);pitch=.12;S.vy=0;S.g=1;S.hp=100;S.sh=SHD;S.dead=0;S.dts=0;S.killer=null;S.rl=0;sp=0;recoil=0;fireK=0;hist=[];
 WS=WEAPONS.map(w=>({mag:w.mag,res:w.res}));S.nextShot=0;S.lat=0;
 RP.forEach(r=>{if(r.left)return;r.buf=[];r.dts=0;if(r.bot)botSpawn(r);r.hp=100;r.dead=0;r.fk=0;r.g.position.set(r.c[0],0,r.c[1]);r.tg.copy(r.g.position);r.opv.copy(r.g.position);r.odk=0;r.ads=0;r.rlOn=0});
-deadK=0;spawnCandy();$('#cd').textContent='';if(MD.map=='box')boxBuild(rm?rm.ps:null);if(ZN&&!rm)ZN.t0=late&&firstTg?firstTg:clk()+Math.max(0,frz-performance.now()); /* a late joiner must see the SAME storm as everybody else */
+deadK=0;spawnCandy();$('#cd').textContent='';if(MD.map=='box'){if(rm){cellClear();if(!rm.wait&&!late&&phase=='freeze')cellBuild(rm.ps)}else boxBuild()}if(ZN&&!rm)ZN.t0=late&&firstTg?firstTg:clk()+Math.max(0,frz-performance.now()); /* a late joiner must see the SAME storm as everybody else */
 if(late){S.dead=1;S.dts=0;S.eq=0;phase='live';cdN=-1;$('#cd').textContent='';if(!(rm&&rm.init))feed(rm?'Round '+rd+'/'+ROUNDS+' is already running - you spawn next round':MD.n+' is already in progress - you will play from the next round')}
 {const q=PQB;PQB=[];q.forEach(applyBE)}
 specUi();mateUi();hud();send()}
@@ -897,17 +983,17 @@ function leave(){if(!run)return;run=false;phase='ended';clearInterval(tick);clea
 $('#hud').classList.remove('on','storm');uiOff();$('#pause').classList.remove('on');$('#cd').textContent='';$('#scope').classList.remove('on');
 stopNet();clearBuilds();clearCandy();onLeave&&onLeave({me:W[myT],opp:WO(),room:RM,kills:S.kills|0,dmg:Math.round(S.dmg||0),rounds:S.roundsPlayed|0})}
 function ghost(cb){if(!run)return;run=false;phase='ended';clearInterval(tick);clearTimeout(pt);clearTimeout(S.rlT);cancelAnimationFrame(raf);document.exitPointerLock();$('#hud').classList.remove('on','storm');uiOff();$('#pause').classList.remove('on');$('#cd').textContent='';$('#scope').classList.remove('on');stopNet();clearBuilds();clearCandy();cb&&cb()}
-function uiOff(){document.body.classList.remove('spec','zw','ffa','rm');const rb=$('#rboard');rb&&rb.classList.remove('on');const e=$('#spec');if(e)e.style.display='none';$('#bigmap').classList.remove('on');BIGMAP=0}
+function uiOff(){sbSet(0);dnClear();document.body.classList.remove('spec','zw','ffa','rm');const rb=$('#rboard');rb&&rb.classList.remove('on');const e=$('#spec');if(e)e.style.display='none';$('#bigmap').classList.remove('on');BIGMAP=0}
 function resume(){lock()}
 /* ================= PRACTICE BOT (1v1 when nobody is online) =================
    Runs fully on this client: it walks (collision + jumping over low cover), keeps a preferred range, strafes, needs line of sight to shoot,
    fires in bursts with a reaction delay, and its accuracy drops against a fast-moving player. It adapts a little: if you are ahead it gets sharper. */
 function botSpawn(r){const lead=W[myT]-WO();r.bp=r.bp||new T.Vector3();r.ai={strafe:Math.random()<.5?1:-1,st:0,vy:0,g:1,mag:30,rlUntil:0,burst:0,nextShot:0,react:0,los:false,losT:0,blk:null,blkT:0,stuck:0,jmpT:0,sk:Math.max(.45,Math.min(1,.62+.1*lead+Math.random()*.15)),yaw:r.r||0,hold:0,bnext:0}}
-function botHit(r,dm,hd,p){const a=r.ai;if(r.dead)return;hitFx(p,hd);r.hp-=dm;if(a)a.react=Math.min(a.react||1e12,performance.now()+250);
-if(r.hp<=0){r.hp=0;r.dead=1;r.dts=clk();r.dc=(r.dc||0)+1;r.dAway=Math.atan2(r.tg.x-P.x,r.tg.z-P.z);r.dHead=hd?1:0;SFX.kill();me.kick();feed('You eliminated '+r.name);hud();mateUi();checkRound()}}
+function botHit(r,dm,hd,p){const a=r.ai;if(r.dead)return;hitFx(p,hd);{const real=Math.min(dm,Math.max(0,r.hp));S.dmg+=real;S.rdm+=real;dmgPop(real,hd,p)}r.hp-=dm;if(a)a.react=Math.min(a.react||1e12,performance.now()+250);
+if(r.hp<=0){S.kills++;S.rk++;elimPop(r.name,1);r.hp=0;r.dead=1;r.dts=clk();r.dc=(r.dc||0)+1;r.dAway=Math.atan2(r.tg.x-P.x,r.tg.z-P.z);r.dHead=hd?1:0;SFX.kill();feed('You eliminated '+r.name);hud();mateUi();checkRound()}}
 /* bot-on-bot damage (and the storm): by = shooter bot, or 'STORM' */
-function botDmg(v,dm,hd,by){if(v.dead||v.left)return;v.hp-=dm;if(v.ai)v.ai.react=Math.min(v.ai.react||1e12,performance.now()+250);
-if(v.hp<=0){v.hp=0;v.dead=1;v.dts=clk();v.dc=(v.dc||0)+1;v.dHead=hd?1:0;v.dAway=by&&by.tg?Math.atan2(v.tg.x-by.tg.x,v.tg.z-by.tg.z):Math.random()*6.28;feed(by&&by.name?by.name+' eliminated '+v.name:v.name+' was consumed by the storm');hud();mateUi();checkRound()}}
+function botDmg(v,dm,hd,by){if(v.dead||v.left)return;{const real=Math.min(dm,Math.max(0,v.hp));if(by&&by.name)by.dm=(by.dm||0)+real}v.hp-=dm;if(v.ai)v.ai.react=Math.min(v.ai.react||1e12,performance.now()+250);
+if(v.hp<=0){if(by&&by.name)by.k=(by.k||0)+1;v.hp=0;v.dead=1;v.dts=clk();v.dc=(v.dc||0)+1;v.dHead=hd?1:0;v.dAway=by&&by.tg?Math.atan2(v.tg.x-by.tg.x,v.tg.z-by.tg.z):Math.random()*6.28;feed(by&&by.name?by.name+' eliminated '+v.name:v.name+' was consumed by the storm');hud();mateUi();checkRound()}}
 const ME={me:1};
 function botTarget(r,now){const a=r.ai;if(a.tq&&now<a.tqT&&(a.tq===ME?!S.dead:!a.tq.dead&&!a.tq.left))return a.tq;let best=null,bd=1e9;
 const c=[];if(!S.dead&&r.team!==myT)c.push(ME);for(const q of RP)if(q!==r&&q.team!==r.team&&!q.dead&&!q.left)c.push(q);
@@ -962,25 +1048,25 @@ function updRemote(r,dt,now){const of0=r.g.userData.ofs;if(of0){r.g.position.x-=
 const ovy=(r.g.position.y-pv.y)/Math.max(dt,.001),oair=Math.abs(ovy)>1.2||r.tg.y>r.g.position.y+.15;if(r.pa&&!oair)r.lt=.3;r.pa=oair;r.lt=Math.max(0,(r.lt||0)-dt);
 const ofw=(r.g.position.x-pv.x)*(-Math.sin(r.g.rotation.y))+(r.g.position.z-pv.z)*(-Math.cos(r.g.rotation.y)),osg=spd2>1&&ofw<-.01?-1:1;
 let dr=r.r-r.g.rotation.y;dr=Math.atan2(Math.sin(dr),Math.cos(dr));if(!isFinite(dr)||!isFinite(r.g.rotation.y)){dr=0;r.g.rotation.y=Number.isFinite(r.r)?r.r:0}if(!isFinite(r.g.position.x+r.g.position.y+r.g.position.z))r.g.position.copy(r.tg);r.odk+=((r.dead?1:0)-r.odk)*Math.min(1,dt*7);
-const ny=r.g.rotation.y+dr*Math.min(1,dt*12);r.g.rotation.set(0,ny,0);const fsR=fallStep(r,r.dead,dt,r.dAway||0,r.dHead);if(fsR)fallXf(r.g,fsR,ny,r.dAway||0);
+const ny=r.g.rotation.y+dr*Math.min(1,dt*12);r.g.rotation.set(0,ny,0);const fsR=fallStep(r,r.dead,dt,r.dAway||0,r.dHead);if(fsR)fallXf(r.g,fsR,ny,r.dAway||0);dissolve(r,fsR,dt);
 r.wp=(r.wp||0)+dt*spd2*1.6*osg;r.rc=(r.rc||0)*Math.pow(.001,dt*1.1);const w=WEAPONS[r.wi]||null;r.fk=(r.fk||0)*Math.exp(-dt*((w&&w.kd)||10));
 const rlp=r.rlOn&&w&&w.rl?Math.min(.999,(now-r.rlT0)/w.rl):-1,drw=r.eqT?Math.min(1,(now-r.eqT)/260):1;
 r.ps=r.ps==null?r.pt:r.ps+(r.pt-r.ps)*(1-Math.exp(-dt*16));r.update(dt,{die:fsR?fsR.t:null,dside:fsR?fsR.sd:1,k:Math.min(1,spd2/6.5),w:r.wp,pitch:r.ps,rec:r.rc,air:oair,vy:ovy,land:r.lt/.3,gun:r.wi,swing:r.swingT&&now-r.swingT<380?(now-r.swingT)/380:-1,t:ph,ads:r.ads,fire:r.fk,pump:pumpOf(r.pumpT,now,w),rl:rlp,draw:drw,spr:spd2>8.2&&!oair&&!r.ads?1:0})}
 /* name-tag health bar above a remote player (hidden behind walls) */
 function updBar(r){const b=r.bar;if(!b)return;const tp=r.opv.clone().add(new T.Vector3(0,2.4,0)),dv2=tp.clone().sub(camP),dd2=dv2.length();dv2.multiplyScalar(1/(dd2||1));const occ=wallDist(camP,dv2,dd2)<dd2-.4,sp3=tp.clone().project(cam);
-if(sp3.z<1&&!r.dead&&!r.left&&!r.late&&!occ){if(b.style.display!=='block')b.style.display='block';b.style.transform=`translate3d(calc(${((sp3.x*.5+.5)*innerWidth).toFixed(1)}px - 50%),calc(${((-sp3.y*.5+.5)*innerHeight).toFixed(1)}px - 50%),0)`;const hw=Math.max(0,r.hp)+'%';if(r.hw!==hw){r.hw=hw;b.firstChild.style.width=hw}}else if(b.style.display!=='none')b.style.display='none'}
+if(r.showTg&&sp3.z<1&&!r.dead&&!r.left&&!r.late&&!occ){if(b.style.display!=='block')b.style.display='block';b.style.transform=`translate3d(calc(${((sp3.x*.5+.5)*innerWidth).toFixed(1)}px - 50%),calc(${((-sp3.y*.5+.5)*innerHeight).toFixed(1)}px - 50%),0)`;const hw=Math.max(0,r.hp)+'%';if(r.hw!==hw){r.hw=hw;b.firstChild.style.width=hw}}else if(b.style.display!=='none')b.style.display='none'}
 let ferr=0;const logE=e=>{if(++ferr<=5)console.error('[arena]',e)};
 function frame(t){try{frame0(t)}catch(e){logE(e)}} /* an exception in one frame must not stop the picture (it used to freeze the game until a refresh) */
-function frame0(t){if(!run)return;raf=requestAnimationFrame(frame);const now=performance.now(),dt=Math.min(.05,(t-last)/1000||.016);adapt(t-last,now);last=t;ph+=dt;if(PADM())padFrame(dt);
+function frame0(t){if(!run)return;raf=requestAnimationFrame(frame);const now=performance.now(),dr=Math.min(.05,(t-last)/1000||.016),dt=dr*(slowK+=((phase=='over'?.3:1)-slowK)*Math.min(1,dr*6));adapt(t-last,now);last=t;ph+=dt;if(PADM())padFrame(dt);
 if(Qs.se>1)R.shadowMap.needsUpdate=(++fcnt%Qs.se)==0;
 if(phase=='freeze'){const n=Math.ceil((frz-now)/1000);if(n!=cdN){cdN=n;if(n>0){$('#cd').textContent=n;$('#cd').classList.remove('on');void $('#cd').offsetWidth;$('#cd').classList.add('on');SFX.tick()}}
-if(now>=frz){phase='live';$('#cd').textContent='';msg('FIGHT!');SFX.go();S.eq=0}}
+if(now>=frz){phase='live';$('#cd').textContent='';msg('FIGHT!');SFX.go();S.eq=0;if(CELLG)cellDrop()}}
 const live=phase=='live';if(live)checkRound();
-if(!S.dead){const mv=live,f=mv?Math.max(-1,Math.min(1,(K.fwd?1:0)-(K.back?1:0)+(K.ay||0))):0,r=mv?Math.max(-1,Math.min(1,(K.right?1:0)-(K.left?1:0)+(K.ax||0))):0,l=Math.max(1,Math.hypot(f,r)),spd=(K.sprint&&!K.aim?10:6.5)*(K.aim?.6:1),vx=(-Math.sin(yaw)*f+Math.cos(yaw)*r)/l*spd,vz=(-Math.cos(yaw)*f-Math.sin(yaw)*r)/l*spd;
+if(!S.dead){const mv=live||phase=='over',f=mv?Math.max(-1,Math.min(1,(K.fwd?1:0)-(K.back?1:0)+(K.ay||0))):0,r=mv?Math.max(-1,Math.min(1,(K.right?1:0)-(K.left?1:0)+(K.ax||0))):0,l=Math.max(1,Math.hypot(f,r)),spd=(K.sprint&&!K.aim?10:6.5)*(K.aim?.6:1),vx=(-Math.sin(yaw)*f+Math.cos(yaw)*r)/l*spd,vz=(-Math.cos(yaw)*f-Math.sin(yaw)*r)/l*spd;
 P.x+=vx*dt;if(hits(P))P.x-=vx*dt;P.z+=vz*dt;if(hits(P))P.z-=vz*dt;P.x=Math.max(-LIM,Math.min(LIM,P.x));P.z=Math.max(-LIM,Math.min(LIM,P.z));
 if(f)mvf=f<0?-1:1;if(mv&&K.jump&&S.g){S.vy=9;S.g=0;SFX.jump()}S.vy=Math.max(-32,S.vy-25*dt);if(S.vy>0&&headHit(P,S.vy,dt))S.vy=0;const y0=P.y;P.y+=S.vy*dt;let gh=gnd(P,y0);if(S.g&&S.vy<=0&&P.y>gh&&P.y-gh<.4){P.y=gh}if(P.y<=gh&&S.vy<=0){if(!S.g){if(S.vy<-4)landT=.3;if(S.vy<-8)SFX.land()}P.y=gh;S.vy=0;S.g=1}else if(P.y>gh+.05)S.g=0;
 sp+=(Math.hypot(vx,vz)-sp)*Math.min(1,dt*10);stepT-=dt;if(sp>3&&S.g&&stepT<0){SFX.step();stepT=K.sprint?.28:.4}
-unstick();if(live&&K.shoot&&!EDIT){if(buildT)place(buildT);else shoot()}}
+unstick();if(MD.map=='box'){if(P.y>13){P.y=13;if(S.vy>0)S.vy=0}if(Math.abs(P.x)>LIM+.4||Math.abs(P.z)>LIM+.4){P.x=Math.max(-LIM,Math.min(LIM,P.x));P.z=Math.max(-LIM,Math.min(LIM,P.z))}}if((live||phase=='over')&&K.shoot&&!EDIT){if(buildT)place(buildT);else shoot()}}
 hist.push({t:now,x:P.x,y:P.y,z:P.z});while(hist.length&&now-hist[0].t>300)hist.shift();
 const w=curW();wph+=dt*sp*1.6*mvf;landT=Math.max(0,landT-dt);const k=Math.min(1,sp/6.5);recoil*=Math.pow(.001,dt*1.1);
 const wantFP=!!(window.CFG&&CFG.fp)&&!S.dead;
@@ -995,7 +1081,7 @@ if(fpOn!==fpCur||showArms!==fpArmsCur){fpCur=fpOn;fpArmsCur=showArms;me.setFP(fp
 const adsT=(K.aim&&live&&!S.dead&&!S.rl&&!w.melee)?1:0;ads+=(adsT-ads)*Math.min(1,dt*11);const sc1=w.scope&&ads>.75;
 me.g.visible=!sc1&&!S.late;if(vm)vm.g.visible=useVM&&!sc1;$('#scope').classList.toggle('on',!!sc1);
 deadK+=((S.dead?1:0)-deadK)*Math.min(1,dt*7);
-if(Math.abs(P.y-visY)>2.5)visY=P.y;visY=S.g?visY+(P.y-visY)*Math.min(1,dt*24):P.y;me.g.position.set(P.x,visY,P.z);const fsM=fallStep(me,S.dead,dt,S.away||0,S.hdD);if(fsM)fallXf(me.g,fsM,yaw,S.away||0);else me.g.rotation.set(0,yaw,0);
+if(Math.abs(P.y-visY)>2.5)visY=P.y;visY=S.g?visY+(P.y-visY)*Math.min(1,dt*24):P.y;me.g.position.set(P.x,visY,P.z);const fsM=fallStep(me,S.dead,dt,S.away||0,S.hdD);if(fsM)fallXf(me.g,fsM,yaw,S.away||0);else me.g.rotation.set(0,yaw,0);dissolve(me,fsM,dt);
 fireK*=Math.exp(-dt*(w.kd||10));const rlp=S.rl?Math.min(.999,(now-(S.rlT0||now))/Math.max(1,w.rl)):-1,drw=S.eq>now?1-(S.eq-now)/260:1;
 const po={die:fsM?fsM.t:null,dside:fsM?fsM.sd:1,fp:0,k,w:wph,pitch,rec:recoil,air:!S.g,vy:S.vy,land:landT/.3,gun:buildT?-1:S.w,swing:S.swingT&&now-S.swingT<380?(now-S.swingT)/380:-1,t:ph,ads,fire:fireK,pump:pumpOf(S.pumpT,now,w),rl:rlp,draw:drw,spr:(K.sprint&&!K.aim&&!K.shoot&&sp>6&&S.g)?1:0};me.update(dt,po);
 if(S.dead!==lastDead){lastDead=S.dead;specUi()}
@@ -1019,19 +1105,33 @@ const cr=$('#cross'),bo=buildT?.25:1,cs=Math.round((1+w.spread*30+(sp>3?.4:0)+(S
 /* other players */
 for(const r of RP){if(r.left)continue;try{updRemote(r,dt,now);updBar(r)}catch(e){logE(e)}}
 try{halUpdate(dt);ghostUpdate();editUpdate();buildUpdate()}catch(e){logE(e)}for(let i=TW.length-1;i>=0;i--){const w2=TW[i];w2.t+=dt/.15;const e2=Math.min(1,w2.t);w2.m.scale.setScalar(.82+.18*(1-Math.pow(1-e2,3)));if(e2>=1){TW.splice(i,1);freezePiece(w2.m)}}
-for(let i=FX.length-1;i>=0;i--){const f=FX[i];if(f.ring){f.ring.rotation.y+=dt*f.ring.userData.s;continue}f.life-=dt;if(f.v){if(f.g)f.v.y-=18*dt;f.m.position.addScaledVector(f.v,dt);if(f.floor&&f.m.position.y<.03){f.m.position.y=.03;f.v.set(0,0,0)}}f.m.material.opacity=Math.max(0,f.life*(f.fade?8:1.6));if(f.exp){const s=.6+(.45-f.life)*14;f.m.scale.set(s,s,1)}if(f.sh){const q=Math.max(.15,Math.min(1,f.life*3));if(!f.fade)f.m.scale.setScalar(q)}if(f.spin&&f.m.position.y>.04)f.m.rotation.x+=f.spin*dt;if(f.life<=0){fxFree(f.m);FX.splice(i,1)}}
+for(let i=FX.length-1;i>=0;i--){const f=FX[i];if(f.ring){f.ring.rotation.y+=dt*f.ring.userData.s;continue}f.life-=dt;if(f.v){if(f.g)f.v.y-=18*dt;f.m.position.addScaledVector(f.v,dt);if(f.floor&&f.m.position.y<.03){f.m.position.y=.03;f.v.set(0,0,0)}}if(f.fn)f.fn(f,dt);else{f.m.material.opacity=Math.max(0,f.life*(f.fade?8:1.6))}if(f.exp){const s=.6+(.45-f.life)*14;f.m.scale.set(s,s,1)}if(f.sh){const q=Math.max(.15,Math.min(1,f.life*3));if(!f.fade)f.m.scale.setScalar(q)}if(f.spin&&f.m.position.y>.04)f.m.rotation.x+=f.spin*dt;if(f.life<=0){fxFree(f.m);FX.splice(i,1)}}
 if(!document.hidden)for(const r of RP)if(!r.left&&((r.t&&now-r.t>12000)||(!r.seen&&!r.bot&&now-startT>22000&&RP.some(q=>q.seen||q.bot))))playerLeft(r);
 if(!BOTM&&!RM&&onGhost&&!document.hidden&&now-startT>16000&&RP.every(r=>!r.seen)){const g=onGhost;onGhost=null;ghost(g);return}
 /* viewmodel: follow the camera exactly (plus a little weapon sway that lags behind fast turns), light it like the world, draw it last on a cleared depth buffer */
 if(useVM){if(vYaw==null){vYaw=yaw;vPit=pitch}const dyw=Math.atan2(Math.sin(yaw-vYaw),Math.cos(yaw-vYaw)),dpt=pitch-vPit,sw=cfp('fpsw',100)/100,lim=.09*Math.max(.3,sw),dc=Math.exp(-dt*9);vYaw=yaw;vPit=pitch;
-swY=Math.max(-lim,Math.min(lim,swY-dyw*.22*sw))*dc;swP=Math.max(-lim,Math.min(lim,swP-dpt*.22*sw))*dc;vSway.rotation.set(swP,swY,0);
-vm.g.position.set(cfp('fpgx',0)*.01,-1.68+cfp('fpgy',0)*.01,.1+cfp('fpgz',0)*.01); /* feet 1.68 under the eyes, body axis 0.1 behind them: the exact spot the arms always had relative to the camera */
-vm.update(dt,Object.assign({},po,{fp:1,pitch:0,k:k*cfp('fpbob',100)/100}));
+swY=Math.max(-lim,Math.min(lim,swY-dyw*.22*sw))*dc;swP=Math.max(-lim,Math.min(lim,swP-dpt*.22*sw))*dc;/* viewmodel life (Call of Duty style): gun sits low-right at the hip and slides to the centre when aiming, walk bob + sway, recoil kick back and up,
+   landing dip, tactical sprint (gun lowered, rolled and angled in), and a full reload: tilt the gun, drop the mag, slap the new one in, bring it back up */
+{const aa=1-ads*.7,hip=1-ads*ads*(3-2*ads),bsn2=Math.sin(wph),bcs=Math.cos(wph*.5),spr=(K.sprint&&sp>6&&!K.aim)?1:0,bw=cfp('fpbob',100)/100*aa*Math.min(1,sp/6.5)*(S.g?1:.2)*(K.shoot?.55:1);vmSpr+=(spr-vmSpr)*Math.min(1,dt*8);vmJ+=((S.g?0:Math.max(-1,Math.min(1,S.vy/10)))-vmJ)*Math.min(1,dt*7);
+const br=Math.sin(ph*1.7)*.0025*aa,kz=fireK*(w.melee?0:.075)*aa,sg=w.id=='shotgun';
+let rl=0,dip=0,jolt=0,shl=0;if(rlp>=0&&!w.melee){rl=rlp<.18?ease(rlp/.18):rlp<.8?1:1-ease((rlp-.8)/.2);if(!sg){dip=rlp>.2&&rlp<.5?Math.sin((rlp-.2)/.3*Math.PI):0;jolt=rlp>.58&&rlp<.7?Math.sin((rlp-.58)/.12*Math.PI):0;if(rlp>.6&&!vmRl){vmRl=1;SFX.tick()}}else shl=rlp>.2&&rlp<.8?Math.max(0,Math.sin(rlp*Math.PI*12))*.02:0;rl*=sg?.55:1}
+if(rlp<0||rlp<.05)vmRl=0;
+const mv=cfp('fpbob',100)/100,as=1-ads*.75,sxi=live?Math.max(-1,Math.min(1,(K.right?1:0)-(K.left?1:0)+(K.ax||0))):0,sfi=live?((K.fwd?1:0)-(K.back?1:0)):0,dr=Math.max(0,1-drw);vmSx+=(sxi-vmSx)*Math.min(1,dt*6);vmSf+=(sfi-vmSf)*Math.min(1,dt*6);vmLk+=(recoil-vmLk)*Math.min(1,dt*12);const drE=dr*dr,idl=Math.sin(ph*.85)*.0014*as,idl2=Math.cos(ph*1.1)*.001*as; /* extra life: strafe lag + lean, weapon draw (comes up from below), recoil build-up, slow idle drift */
+vPL.intensity=w.melee?0:Math.min(1,fireK*1.15)*2.6*aa;
+if(S.nextShot>vLS+1&&!w.melee&&!S.rl&&live){const ks=w.id=='shotgun'?2.4:w.id=='sniper'?3:w.id=='ar'?1:1.4;vkV+=.75*ks;vkRV+=1.3*ks;vkYV+=(Math.random()-.5)*1.1*ks}vLS=S.nextShot;
+if(S.g&&vAir){vkV+=.5;vkRV+=.9;vAir=0}else if(!S.g&&!vAir){vkV-=.15;vkRV-=.5;vAir=1} /* land = the gun dips and settles, jump = it lifts */
+{const h=Math.min(dt,.033),kk=240,cc=21;vkV+=(-kk*vkP-cc*vkV)*h;vkP+=vkV*h;vkRV+=(-kk*vkR-cc*vkRV)*h;vkR+=vkRV*h;vkYV+=(-kk*vkY-cc*vkYV)*h;vkY+=vkYV*h}
+const kP=Math.max(-.03,Math.min(.1,vkP))*aa,kR=Math.max(-.12,Math.min(.26,vkR))*aa,kY=Math.max(-.08,Math.min(.08,vkY))*aa;
+vmApply(hip*.03+bcs*.01*bw-vmSpr*.03+rl*.03-vmSx*.014*mv*as+idl,-hip*.025-Math.abs(bsn2)*.012*bw-landT*.08+br-vmSpr*.05-rl*.06-dip*.02+jolt*.02+shl-vmJ*.03-drE*.24+idl2,kz+vmSpr*.01-hip*.01+drE*.06+vmLk*.02*aa+kP,swP-fireK*.04*aa+vmSpr*.1+rl*.12-jolt*.05+vmJ*.05+drE*.55-vmLk*.025*aa-kR,swY+vmSpr*.18-rl*.08+vmSx*.035*mv*as+kY,bcs*.01*bw-swY*.5-vmSpr*.22-rl*.28+dip*.06-vmSx*.05*mv*as-drE*.1+kY*.8)}
+
+vm.g.position.set(cfp('fpgx',0)*.01,-1.68+cfp('fpgy',0)*.01,.01+cfp('fpgz',0)*.01); /* feet 1.68 under the eyes, body axis 0.1 behind them: the exact spot the arms always had relative to the camera */
+vm.update(dt,Object.assign({},po,{fp:1,pitch:0,k:0,air:0,vy:0,land:0,w:0})); /* the body never runs / jumps in the viewmodel: that made the arms jerk. All movement comes from the smooth offsets in vmApply */
 vRoot.position.copy(cam.position);vRoot.quaternion.copy(cam.quaternion);vRoot.updateMatrixWorld(true);
+if(!vcam)vcam=new T.PerspectiveCamera(90,cam.aspect,.01,30);vcam.fov=Math.min(90,bf)*(1-ads*.1);vcam.aspect=cam.aspect;vcam.updateProjectionMatrix();vcam.position.copy(cam.position);vcam.quaternion.copy(cam.quaternion);vcam.updateMatrixWorld(true);
 vHL.color.copy(HL.color);vHL.groundColor.copy(HL.groundColor);vHL.intensity=Math.min(1.7,HL.intensity*1.05+.3);vDL.color.copy(DL.color);vDL.intensity=Math.min(2.2,DL.intensity*1.05+.1)}else vYaw=null;
 if(LIM>40){const fx=SPT?SPT.opv.x:P.x,fz=SPT?SPT.opv.z:P.z;DL.target.position.set(fx,0,fz);DL.position.set(fx+30,40,fz+20)}
 if(ZN)zoneFrame(dt,live,SPT);
-R.autoClear=false;try{R.clear();R.render(sc,cam);if(useVM){R.clearDepth();R.render(vsc,cam)}}finally{R.autoClear=true}}
+dnTick();R.autoClear=false;try{R.clear();R.render(sc,cam);if(useVM){R.clearDepth();R.render(vsc,vcam||cam)}}finally{R.autoClear=true}}
 
 /* ================= HALLOWEEN EVENT: spooky arena dressing + candy pickups ================= */
 let HAL=0,HAN=[],CG=null,CN=[],candyCb=null,roundCb=null,HH=0,gTex=null;
@@ -1093,7 +1193,7 @@ if(vm){vSway.add(vm.g);vm.g.visible=false;vm.setFP(true,true,true);const sg0=me.
 fpCur=false;fpArmsCur=true;celT0=0;vYaw=null;swY=swP=fpRoll=0;setCut(0);cam.near=.1;cam.updateProjectionMatrix();
 ros.forEach(p=>{if(p.u===uid)return;mkRemote(p,p.t===myT)});
 {const wb=$('#wbar');WEAPONS.forEach((w,i)=>{const sv=wb&&wb.children[i]&&wb.children[i].querySelector('svg'),sk=GUN.get(i,GUN.pick(mc,i));if(sv)sv.outerHTML=gunIcon(w,sk&&sk.c,0,sk)})}me.setGun(1);buildT=null;mat=[500,300,200];msel=0;EDIT=null;visY=0;sc.add(me.g);
-Object.assign(S,{w:1,eq:0,nextShot:0,lat:0,rl:0,deaths:0,swingT:0,hadLock:0,killer:null,pumpT:0,rlT0:0,late:0,joinedLate:0,played:0,kills:0,dmg:0,rk:0,rdm:0,roundsPlayed:0,sh:0,place:0,rmN:0,rmWin:''});$('#pause').classList.remove('on');$('#pconf').style.display='none';rd=0;ads=0;fireK=0;phase='live';cdN=-1;clearTimeout(pt);
+gone=[];sbSet(0);dnClear();Object.assign(S,{w:1,eq:0,nextShot:0,lat:0,rl:0,deaths:0,swingT:0,hadLock:0,killer:null,pumpT:0,rlT0:0,late:0,joinedLate:0,played:0,kills:0,dmg:0,rk:0,rdm:0,roundsPlayed:0,sh:0,place:0,rmN:0,rmWin:''});$('#pause').classList.remove('on');$('#pconf').style.display='none';rd=0;ads=0;fireK=0;phase='live';cdN=-1;clearTimeout(pt);
 const base='matches/'+mid;pRef=db.ref(base+'/p/'+uid);shRef=db.ref(base+'/shots');pRef.onDisconnect().remove();RP.forEach(r=>{r.ref=db.ref(base+'/p/'+r.u);oRefs.push(r.ref)});
 let lateJ=false;{const mt=+String(mid).split('_').pop();firstTg=!BOTM&&Number.isFinite(mt)&&Math.abs(clk()-mt)<60000?mt+6000:0;lateJ=!!firstTg&&clk()-mt>LATE_MS;if(lateJ)S.joinedLate=1}lateB=[];PQB=[];lateSynced=0;if(RM)newRound(1,{rd:0,wait:0,sp:sp0,frz:0,ps:[uid],init:1});else newRound(lateJ);
 RP.forEach(r=>r.ref.on('value',s=>onOpp(r,s.val())));shRef.on('child_added',s=>onShot(s.val()));
@@ -1144,7 +1244,7 @@ TR.render(TS,TCam);url=TR.domElement.toDataURL('image/png');TS.remove(c.g);dispo
 THC.set(v,url);return url}
 const input={down:a=>{if(run&&hold())down(a,false)},up:a=>up(a),
 move(x,y){K.ax=x;K.ay=y;K.sprint=(x*x+y*y>.9&&y>.25)?1:0},
-look(dx,dy){if(!run||paused())return;const k=.0042*(window.CFG?CFG.sens:1)*(cam.fov/75);yaw-=dx*k;pitch=Math.max(-PMAX,Math.min(PMAX,pitch-dy*k))},
+look(dx,dy){if(!run||paused())return;const k=.0042*(window.CFG?CFG.sens:1)*(cam.fov/75)*((buildT||EDIT)?cfp('bsens',100)/100:1);yaw-=dx*k;pitch=Math.max(-PMAX,Math.min(PMAX,pitch-dy*k))},
 tapAim(){if(!run||!hold())return;if(EDIT||buildT){down('aim',false);up('aim')}else K.aim=K.aim?0:1},
 pause(){if(!run||phase=='ended')return;for(const k in K)K[k]=0;padSprint=0;$('#pause').classList.add('on');$('#pconf').style.display='none';$('#pbtns').style.display='block'}};
 return{input,start,lobby,leave,resume,quality,qinfo,thumb,busy:()=>!!run,refreshKeys,padLost(){if(run&&!paused()&&phase!='ended')input.pause()},specStep,toggleMap,thumbCached:v=>THC.get(+v||0),gunIcon:(wi,cols,sz,sk)=>gunIcon(WEAPONS[wi],cols,sz,sk),partner(i){PI=i;lobbyPartner()},kick(){LC&&LC.kick&&LC.kick()}}})();
