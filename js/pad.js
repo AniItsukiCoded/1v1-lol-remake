@@ -27,10 +27,10 @@ const LAYOUT={
  specP:[4,14],specN:[5,15]};
 LAYOUT.buildOn=LAYOUT.build;
 INPUT.label=a=>{const b=LAYOUT[a];if(!b||typeof b=='string')return b||'';return b.map(btnLabel).slice(0,1).join('')};
-INPUT.layout=()=>[
- ['Move',LAYOUT.move],['Look / aim','Right stick'],['Fire · place piece',btnLabel(7)],['Aim down sights',btnLabel(6)+' (build: cycle material)'],['Jump',btnLabel(0)],['Reload',btnLabel(2)],
- ['Build mode on / off',btnLabel(1)],['Next weapon',btnLabel(3)],['Sprint',btnLabel(10)],['First / third person',btnLabel(11)],['Edit (hold, release to confirm)',btnLabel(5)],['Cycle material',btnLabel(4)],['Map (Zone Wars)',btnLabel(8)],['Pause',btnLabel(9)],
- ['Weapons',btnLabel(12)+' shotgun · '+btnLabel(15)+' rifle · '+btnLabel(13)+' pickaxe'],['Build pieces (build mode)',btnLabel(12)+' wall · '+btnLabel(15)+' floor · '+btnLabel(13)+' stairs · '+btnLabel(14)+' roof'],['Spectate',btnLabel(4)+' / '+btnLabel(5)+' switch player · '+btnLabel(0)+' view']];
+INPUT.layout=()=>{const sw=cfg('pswap',0)==1,bj=cfg('play',0)==1,J=bj?4:0,MT=bj?0:4;return[
+ ['Move',sw?'Right stick':LAYOUT.move],['Look / aim',sw?'Left stick':'Right stick'],['Fire · place piece',btnLabel(7)],['Aim down sights',btnLabel(6)+' (build: cycle material)'],['Jump',btnLabel(J)],['Reload',btnLabel(2)],
+ ['Build mode on / off',btnLabel(1)],['Next weapon',btnLabel(3)],['Sprint',btnLabel(10)],['First / third person',btnLabel(11)],['Edit (hold, release to confirm)',btnLabel(5)],['Cycle material',btnLabel(MT)],['Map (Zone Wars)',btnLabel(8)],['Pause',btnLabel(9)],
+ ['Weapons',btnLabel(12)+' shotgun · '+btnLabel(15)+' rifle · '+btnLabel(13)+' pickaxe'],['Build pieces (build mode)',btnLabel(12)+' wall · '+btnLabel(15)+' floor · '+btnLabel(13)+' stairs · '+btnLabel(14)+' roof'],['Spectate',btnLabel(4)+' / '+btnLabel(5)+' switch player · '+btnLabel(0)+' view']]};
 INPUT.layoutMap=LAYOUT;
 /* ---------- device switching ---------- */
 function setDev(d){if(d==='touch'&&!INPUT.touchOK)return;if(INPUT.dev===d)return;INPUT.dev=d;
@@ -76,7 +76,7 @@ function press(){if(!fo||!document.body.contains(fo)||!vis(fo))return;if(window.
 function adjust(dir){if(fo&&fo.tagName==='INPUT'&&fo.type==='range'){const s=+fo.step||1,mn=+fo.min||0,mx=+fo.max||100;fo.value=Math.max(mn,Math.min(mx,+fo.value+dir*s));fo.dispatchEvent(new Event('input',{bubbles:true}));return true}return false}
 function back(){const root=layer();const c=root.querySelector&&root.querySelector('.close,#evback,#rvok,#back,#cancel,#pno,#msback,#afkleave');if(c&&vis(c)){c.click();return}
  if(root.id==='pause'){const r=document.getElementById('pres');r&&r.click();return}if(root.classList&&root.classList.contains('screen')&&root.id==='end'){const h=document.getElementById('home');h&&h.click()}}
-function tab(dir){const root=layer();const t=[...root.querySelectorAll('.tab,.t2,.seg button')].filter(vis);if(t.length<2)return false;let i=t.findIndex(e=>e.classList.contains('on'));i=(i+dir+t.length)%t.length;t[i].click();return true}
+function tab(dir){const root=layer();const st=root.querySelector&&root.querySelector('#stabs');if(st&&vis(st)){const b=[...st.querySelectorAll('button')];let i=b.findIndex(e=>e.classList.contains('on'));i=(i+dir+b.length)%b.length;b[i].click();return true}const t=[...root.querySelectorAll('.tab,.t2,.seg button')].filter(vis);if(t.length<2)return false;let i=t.findIndex(e=>e.classList.contains('on'));i=(i+dir+t.length)%t.length;t[i].click();return true}
 let rsT=0;
 function menuNav(now){const dz=.55;let dx=0,dy=0;
  if(Math.abs(S.ry)>.6&&now>rsT&&layer().id==='menu'){rsT=now+500;document.dispatchEvent(new CustomEvent('menuscroll',{detail:S.ry>0?1:-1}))} /* right stick down / up = scroll the lobby (game modes) */

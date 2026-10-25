@@ -1,5 +1,5 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#10082b">
-<title>1v1.Arena</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800&display=swap"><link rel="stylesheet" href="css/style.css"><link rel="stylesheet" href="css/theme.css"><link rel="stylesheet" href="css/modes.css"><link rel="stylesheet" href="css/menu2.css"><link rel="stylesheet" href="css/stats.css"></head><body>
+<title>1v1.Arena</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800&display=swap"><link rel="stylesheet" href="css/style.css"><link rel="stylesheet" href="css/theme.css"><link rel="stylesheet" href="css/modes.css"><link rel="stylesheet" href="css/menu2.css"><link rel="stylesheet" href="css/stats.css"><link rel="stylesheet" href="css/settings2.css"></head><body>
 <canvas id="c"></canvas>
 <div id="boot" class="screen on"><div class="card"><div class="spin"></div><h2 id="bt">Connecting…</h2><p id="berr"></p></div></div>
 <div id="net">● Connecting…</div>
@@ -34,13 +34,21 @@
 <div id="pin" style="display:none"><div class="codebox"><small>PARTY CODE</small><b id="pc"></b></div><button id="pcopy" class="btn">COPY INVITE LINK</button><button id="pleave" class="btn alt">LEAVE PARTY</button><p class="sub">The party leader presses PLAY to start the match.</p></div></div></div></div>
 <div id="lbm" class="modal"><div class="panel wide"><div class="ph"><h2>🏆 LEADERBOARD</h2><button class="x close">✕</button></div><div class="pb"><div id="lbt" class="seg"><button data-t="k" class="on">⚔ Kills</button><button data-t="dm">💥 Damage</button></div><p class="sub l">All-time totals from every mode: 1v1, 2v2, 3v3, Box Fights &amp; Zone Wars (online and vs bots).</p><div id="lbme"></div><div id="lbl"></div></div></div></div>
 <div id="settings" class="modal"><div class="panel"><div class="ph"><h2>⚙ SETTINGS</h2><button class="x close">✕</button></div><div class="pb">
+<div id="stabs" class="seg"><button data-s="gen">General</button><button data-s="fp">First Person</button><button data-s="xh">Crosshair</button><button data-s="kb">Controls</button><button data-s="pad">Controller</button><button data-s="mob">Mobile</button></div>
+<div class="sset on" data-s="gen">
 <div class="srow"><span>Mouse sensitivity</span><output id="sensv"></output><input id="sens" type="range" min=".3" max="2" step=".1"></div>
-<div class="srow"><span>Build sensitivity <small style="opacity:.6">(turning speed while building / editing: crank it for fast 90s)</small></span><output id="bsnv"></o><input id="bsn" type="range" min="50" max="400" step="5"></div>
+<div class="srow"><span>Build sensitivity <small style="opacity:.6">(turning speed while building / editing: crank it for fast 90s)</small></span><output id="bsnv"></output><input id="bsn" type="range" min="50" max="400" step="5"></div>
 <div class="srow"><span>Volume</span><output id="volv"></output><input id="vol" type="range" min="0" max="1" step=".05"></div>
 <div class="srow"><span>Graphics quality</span><output id="qlv"></output><input id="ql" type="range" min="0" max="3" step="1"></div><p class="qn" id="qln"></p>
 <p class="qn" style="margin-top:14px;opacity:.6">Character model: “1v1.lol Drop Kick” by youtube Argue (CC-BY-4.0)</p>
 <div class="row"><span>Music</span><label class="tg"><input id="mus" type="checkbox"><i></i></label></div>
 <div class="row"><span>🎃 Spooky arena effects</span><button id="hwfx" class="mini">FULL</button></div>
+<div class="row"><span>Scoreboard <small style="opacity:.6">(Tab by default · rebind it under Controls)</small></span><div id="sbmode" class="seg"><button data-m="hold">Hold</button><button data-m="toggle">Toggle</button></div></div>
+<div class="row"><span>Damage numbers <small style="opacity:.6">(floating numbers when you hit someone)</small></span><label class="tg"><input id="dmgnt" type="checkbox"><i></i></label></div>
+<div class="row"><span>Show FPS &amp; ping</span><label class="tg"><input id="sfp" type="checkbox"><i></i></label></div>
+<div class="row"><span>Fullscreen</span><button id="fs2" class="mini">TOGGLE</button></div>
+</div>
+<div class="sset" data-s="fp">
 <h3>FIRST PERSON <small style="opacity:.6;letter-spacing:1px">(saved in this browser)</small></h3>
 <div class="row"><span>Preset <small style="opacity:.6">(Balanced · Cinematic · Competitive)</small></span><div id="fppre" class="seg"><button data-p="bal">Balanced</button><button data-p="cin">Cinematic</button><button data-p="comp">Competitive</button></div></div>
 <div class="row"><span>First-person view <small style="opacity:.6">(third person by default · key B in a match)</small></span><label class="tg"><input id="fpv" type="checkbox"><i></i></label></div>
@@ -51,15 +59,13 @@
 <div class="srow"><span>Gun position: left / right</span><output id="fpgxv"></output><input id="fpgx" type="range" min="-10" max="10" step="1"></div>
 <div class="srow"><span>Gun position: down / up</span><output id="fpgyv"></output><input id="fpgy" type="range" min="-10" max="10" step="1"></div>
 <div class="srow"><span>Gun position: close / far</span><output id="fpgzv"></output><input id="fpgz" type="range" min="-10" max="10" step="1"></div>
-<div class="srow"><span>Left hand: left / right</span><output id="fplxv"></o><input id="fplxs" type="range" min="-20" max="20" step="1"></div>
-<div class="srow"><span>Left hand: down / up</span><output id="fplyv"></o><input id="fplys" type="range" min="-20" max="20" step="1"></div>
-<div class="srow"><span>Left hand: back / forward</span><output id="fplzv"></o><input id="fplzs" type="range" min="-20" max="20" step="1"></div>
-<div class="srow"><span>Left hand: roll <small style="opacity:.6">(0 = default, turn it until the palm cups the gun)</small></span><output id="fplrv"></o><input id="fplrs" type="range" min="-180" max="180" step="5"></div>
+<div class="srow"><span>Left hand: left / right</span><output id="fplxv"></output><input id="fplxs" type="range" min="-20" max="20" step="1"></div>
+<div class="srow"><span>Left hand: down / up</span><output id="fplyv"></output><input id="fplys" type="range" min="-20" max="20" step="1"></div>
+<div class="srow"><span>Left hand: back / forward</span><output id="fplzv"></output><input id="fplzs" type="range" min="-20" max="20" step="1"></div>
+<div class="srow"><span>Left hand: roll <small style="opacity:.6">(0 = default, turn it until the palm cups the gun)</small></span><output id="fplrv"></output><input id="fplrs" type="range" min="-180" max="180" step="5"></div>
 <div class="row"><span></span><button id="fpreset" class="mini alt">RESET FIRST PERSON</button></div>
-<div class="row"><span>Scoreboard <small style="opacity:.6">(Tab by default · rebind it under Controls)</small></span><div id="sbmode" class="seg"><button data-m="hold">Hold</button><button data-m="toggle">Toggle</button></div></div>
-<div class="row"><span>Damage numbers <small style="opacity:.6">(floating numbers when you hit someone)</small></span><label class="tg"><input id="dmgnt" type="checkbox"><i></i></label></div>
-<div class="row"><span>Show FPS &amp; ping</span><label class="tg"><input id="sfp" type="checkbox"><i></i></label></div>
-<div class="row"><span>Fullscreen</span><button id="fs2" class="mini">TOGGLE</button></div>
+</div>
+<div class="sset" data-s="xh">
 <h3>CROSSHAIR <small style="opacity:.6;letter-spacing:1px">(saved in this browser)</small></h3>
 <div id="xhprev"><div id="xhp" class="xh"></div></div>
 <div class="row"><span>Style</span><div id="xhst" class="seg"><button data-s="ring">Ring</button><button data-s="cross">Cross</button><button data-s="dot">Dot</button><button data-s="img">Image</button></div></div>
@@ -73,16 +79,39 @@
 <div class="row"><span>Dark outline</span><label class="tg"><input id="xhol" type="checkbox"><i></i></label></div>
 <div class="row"><span>Grow when moving / shooting</span><label class="tg"><input id="xhdy" type="checkbox"><i></i></label></div>
 <div class="row"><span></span><button id="xhreset" class="mini alt">RESET CROSSHAIR</button></div>
+</div>
+<div class="sset" data-s="kb">
+<div id="kbwrap"><h3>CONTROLS <small style="opacity:.6;letter-spacing:1px">(saved to your account)</small></h3>
+<p class="sub l">Click a box, then press a key or a mouse button (Esc cancels, Delete clears). Click the box again to bind Left Click. Each action has a main and an alternative key.</p>
+<div id="kbl"></div><div class="row"><span></span><button id="kbreset" class="mini alt">RESET CONTROLS</button></div></div>
+</div>
+<div class="sset" data-s="pad">
 <h3>CONTROLLER <small style="opacity:.6;letter-spacing:1px">(auto-detected · saved in this browser)</small></h3>
 <p class="sub l">Plug in or pair a controller and press any button: the game switches to it automatically (and back to mouse &amp; keyboard / touch as soon as you use those).</p>
 <div class="srow"><span>Look sensitivity</span><output id="psensv"></output><input id="psens" type="range" min=".3" max="2.5" step=".1"></div>
 <div class="srow"><span>Stick dead zone</span><output id="pdzv"></output><input id="pdz" type="range" min=".05" max=".35" step=".01"></div>
 <div class="row"><span>Invert look Y</span><label class="tg"><input id="pinv" type="checkbox"><i></i></label></div>
 <div class="row"><span>Vibration</span><label class="tg"><input id="prum" type="checkbox"><i></i></label></div>
+<div class="row"><span>Button layout <small style="opacity:.6">(Bumper Jumper: jump on the left bumper, cycle material on A)</small></span><div id="playout" class="seg"><button data-v="0">Default</button><button data-v="1">Bumper Jumper</button></div></div>
+<div class="row"><span>Swap sticks <small style="opacity:.6">(Southpaw: move on the right stick, look on the left)</small></span><label class="tg"><input id="pswap" type="checkbox"><i></i></label></div>
+<div class="row"><span>Auto-sprint <small style="opacity:.6">(push the move stick all the way forward)</small></span><label class="tg"><input id="pauto" type="checkbox"><i></i></label></div>
+<div class="row"><span>Look response curve</span><div id="pcrv" class="seg"><button data-v="1.45">Classic</button><button data-v="1">Linear</button><button data-v="2">Sharp</button></div></div>
+<div class="srow"><span>Aim-down-sights sensitivity <small style="opacity:.6">(look speed while scoped / aiming)</small></span><output id="padsv"></output><input id="pads" type="range" min="30" max="150" step="5"></div>
 <div id="padmap"></div>
-<div id="kbwrap"><h3>CONTROLS <small style="opacity:.6;letter-spacing:1px">(saved to your account)</small></h3>
-<p class="sub l">Click a box, then press a key or a mouse button (Esc cancels, Delete clears). Click the box again to bind Left Click. Each action has a main and an alternative key.</p>
-<div id="kbl"></div><div class="row"><span></span><button id="kbreset" class="mini alt">RESET CONTROLS</button></div></div>
+</div>
+<div class="sset" data-s="mob">
+<h3>MOBILE <small style="opacity:.6;letter-spacing:1px">(saved on this device)</small></h3>
+<p class="sub l" id="tnote">These settings are for phones and tablets (they also work if you open the game with ?touch=1).</p>
+<div class="row"><span>HUD layout</span><div id="tlay" class="seg"><button data-v="classic">Classic</button><button data-v="left">Left-handed</button><button data-v="compact">Compact</button><button data-v="custom">Custom</button></div></div>
+<div class="srow"><span>Button size</span><output id="tszv"></output><input id="tsz" type="range" min="70" max="150" step="5"></div>
+<div class="srow"><span>Button opacity</span><output id="tsov"></output><input id="tso" type="range" min="30" max="100" step="5"></div>
+<div class="srow"><span>Look sensitivity</span><output id="tsev"></output><input id="tse" type="range" min=".3" max="2.5" step=".1"></div>
+<div class="row"><span>Aim button</span><div id="tam" class="seg"><button data-v="tap">Tap to toggle</button><button data-v="hold">Hold</button></div></div>
+<div class="row"><span>Swap move &amp; look sides <small style="opacity:.6">(left-handed: stick on the right, look on the left)</small></span><label class="tg"><input id="tswap" type="checkbox"><i></i></label></div>
+<p class="sub l">Move the pieces of the in-game screen wherever you like: drag a piece in the box below (the game picks up the change straight away).</p>
+<div id="tled"></div>
+<div class="row"><span></span><button id="tlreset" class="mini alt">RESET LAYOUT</button></div>
+</div>
 <button class="btn close">DONE</button></div></div></div>
 <div id="admin" class="modal"><div class="panel wide"><div class="ph"><h2>🛠 ADMIN PANEL</h2><button class="x close">✕</button></div><div class="pb">
 <p class="sub l" id="admwho"></p>
@@ -115,7 +144,7 @@
 <div id="candy" style="display:none">🍬 <b id="cdm">0</b></div><div id="cross" class="xh"></div><div id="hit">✕</div><div id="eb"><u></u></div><div id="feed"></div><div id="vig"></div>
 <div id="mate"></div><div id="zinfo"></div><canvas id="mm" width="180" height="180"></canvas>
 <div id="spec"><div id="spec1"></div><div id="specb"><button id="specp" class="sb">◀</button><div class="sm"><div id="spec2"></div><div class="bar"><u id="spech"></u></div></div><button id="specn" class="sb">▶</button></div><small id="spech2"></small></div><div id="bot"><div class="hpw"><div class="hpc"><div class="bar shb" id="shw"><u id="shp"></u></div><div class="bar"><u id="hp"></u></div></div><span id="hpt">100</span></div><div id="ammo"><b id="am">12</b><small id="amr">/48</small><em id="wnm">PISTOL</em></div></div>
-<div id="bigmap"><div class="bmw"><canvas id="bmc" width="640" height="640"></canvas><small>Map · yellow arrow = you · green = teammates · purple = storm · dashed = next circle</small></div></div><div id="msg"></div><div id="latebn"></div><div id="rmst"></div><div id="elim"></div>
+<div id="bigmap"><div class="bmw"><canvas id="bmc" width="640" height="640"></canvas><small>Map · yellow arrow = you · green = teammates · purple = storm · dashed = next circle</small></div></div><div id="msg"></div><div id="mvote"><div class="mvh"><small>BEFORE THE MATCH</small><h2>VOTE FOR A MAP</h2><span><b id="mvt">8</b>s</span></div><div class="mvl"></div><p class="mvf">Click a map · or press 1 / 2 / 3 · controller: D-pad + A</p></div><div id="latebn"></div><div id="rmst"></div><div id="elim"></div>
 <div id="sb"><div class="sbc"><small id="sbs"></small><h2>SCOREBOARD</h2><div id="sbt"></div></div></div><div id="rboard"><div class="rbc"><small id="rbs">ROUND COMPLETE</small><h2 id="rbh">Round 1/100</h2><div id="rbw"></div><div id="rbt"></div><div id="rbn"></div></div></div><div id="resume">Click to play</div></div>
 <div id="rot"><div><b>⟳</b><p>Rotate your phone to landscape to play</p></div></div>
 <div id="toast"></div>
@@ -129,4 +158,4 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="js/skin.js"></script><script src="js/controls.js"></script><script src="js/crosshair.js"></script><script src="js/config.js"></script><script src="js/modes.js"></script><script src="js/audio.js"></script><script src="js/cosmetics.js"></script><script src="js/gunskins.js"></script><script src="js/events.js"></script><script src="js/touch.js"></script><script src="js/pad.js"></script><script src="js/weapons.js"></script><script src="js/game.js"></script><script src="js/main.js"></script><script src="js/passes.js"></script><script src="js/lobby2.js"></script><script src="js/leaders.js"></script><script src="js/admin.js"></script></body></html>
+<script src="js/skin.js"></script><script src="js/controls.js"></script><script src="js/crosshair.js"></script><script src="js/config.js"></script><script src="js/modes.js"></script><script src="js/audio.js"></script><script src="js/cosmetics.js"></script><script src="js/gunskins.js"></script><script src="js/events.js"></script><script src="js/touch.js"></script><script src="js/pad.js"></script><script src="js/weapons.js"></script><script src="js/game.js"></script><script src="js/main.js"></script><script src="js/passes.js"></script><script src="js/lobby2.js"></script><script src="js/leaders.js"></script><script src="js/admin.js"></script><script src="js/settings2.js"></script></body></html>

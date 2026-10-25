@@ -11,7 +11,7 @@ let isOpen=false,cool=0;
 const isOn=()=>$('#menu').classList.contains('on');
 const blocked=()=>!isOn()||!!document.querySelector('.modal.on')||$('#reveal').classList.contains('on');
 function mInfo(){const M=modeOf(CFG.mode);let h=`<b>${M.ic} ${M.n}</b> · ${M.tag}`;
- if(M.room)h+=`<small>${M.min}–${M.max} players · ${M.rounds} rounds of ${M.roundSec/60} min · join any time, a round starts as soon as 2 players are in. Join mid-round and you spawn next round. No bots.</small>`;
+ if(M.room)h+=`<small>${M.min}–${M.max} players · ${M.rounds} rounds · no time limit · 5 seconds between rounds · join any time, a round starts as soon as 2 players are in. Join mid-round and you spawn next round. No bots.</small>`;
  else if(M.ffa)h+=`<small>${M.min}–${M.max} players per match. Nobody online? Bots fill the lobby and you still earn everything.</small>`;
  else if(M.size>1)h+=`<small>Queue solo and you get matched with teammates, or party up with a friend (the + button in the lobby).</small>`;
  else if(M.map=='box')h+=`<small>Edit and build from the first second. Party up to fight a friend in private.</small>`;

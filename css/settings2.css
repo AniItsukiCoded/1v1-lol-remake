@@ -1,0 +1,33 @@
+/* settings tabs */
+#stabs{position:sticky;top:-2px;z-index:4;display:flex;flex-wrap:wrap;justify-content:center;gap:4px;margin:0 0 12px;padding:5px;background:#0a0526;border-radius:12px}
+#stabs button{flex:1 1 auto;border:0;background:none;color:#fff9;font-weight:800;padding:8px 10px;border-radius:9px;cursor:pointer;white-space:nowrap}
+#stabs button.on{background:#4d8bff;color:#fff}
+.sset{display:none}.sset.on{display:block}
+.sset>h3:first-child{margin-top:4px}
+/* mobile HUD layout editor */
+#tled{position:relative;width:100%;aspect-ratio:20/9;margin:6px 0 10px;border:2px solid #ffffff33;border-radius:12px;overflow:hidden;touch-action:none;background:linear-gradient(180deg,#1b2b6b,#2f6fb8 70%,#4aa04a 70%);user-select:none}
+#tled::after{content:'drag me';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:800;opacity:.35;pointer-events:none;letter-spacing:2px}
+#tled .tc{position:absolute;transform:translate(-50%,-50%);padding:5px 8px;border-radius:9px;font-size:10px;font-weight:900;line-height:1.1;text-align:center;background:#10183acc;border:2px solid #fff;color:#fff;cursor:grab;touch-action:none;z-index:1}
+#tled .tc.rd{border-radius:50%;min-width:42px;min-height:42px;display:grid;place-items:center;padding:3px}
+#tled .tc.dn{background:#38f5c8;color:#012;cursor:grabbing;z-index:2}
+#tfire.fire{}
+/* default spot for the SCORE button on phones (it had no position before) */
+.tb.sb{width:calc(var(--u)*.78);height:calc(var(--u)*.78);right:calc(max(12px,env(safe-area-inset-right)) + 112px);top:max(10px,env(safe-area-inset-top));font-size:calc(var(--u)*.38)}
+/* button size / opacity (Settings > Mobile) */
+body.touch .tb{--u:calc(min(11.5vh,62px)*var(--tsz,1));opacity:var(--tso,1)}
+/* map vote */
+#mvote{display:none;position:absolute;inset:0;z-index:12;pointer-events:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:radial-gradient(ellipse at center,#0a052866,#0a0528cc)}
+#mvote.on{display:flex}
+#mvote .mvh{text-align:center;pointer-events:none}#mvote .mvh small{display:block;font-size:12px;font-weight:800;letter-spacing:3px;color:#ffd23f}
+#mvote .mvh h2{margin:2px 0 4px;font-size:clamp(22px,5vh,40px);letter-spacing:2px;text-shadow:0 3px 0 #0008}
+#mvote .mvh span{font-size:15px;font-weight:800;opacity:.9}#mvote .mvh span b{font-size:26px;color:#38f5c8}
+#mvote .mvl{display:flex;gap:clamp(8px,2vw,18px);justify-content:center;pointer-events:auto;max-width:96vw}
+#mvote .mvc{position:relative;pointer-events:auto;cursor:pointer;width:clamp(120px,27vw,230px);height:clamp(110px,38vh,210px);padding:10px 8px;border-radius:16px;border:3px solid #ffffff55;color:#fff;font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;text-align:center;background:linear-gradient(180deg,var(--a),var(--b) 58%,var(--c));box-shadow:0 6px 0 #0006,inset 0 -40px 40px #0007;transition:transform .12s}
+#mvote .mvc:hover,#mvote .mvc.sel{transform:translateY(-4px) scale(1.03);outline:3px solid #ffd23f}
+#mvote .mvc.on{border-color:#38f5c8;box-shadow:0 0 24px #38f5c8aa,0 6px 0 #0006,inset 0 -40px 40px #0007}
+#mvote .mvc.hw{border-color:#ff9a2a;box-shadow:0 0 20px #ff7a00aa,0 6px 0 #0006,inset 0 -40px 40px #0007}
+#mvote .mvc em{position:absolute;left:8px;top:6px;font-style:normal;font-weight:900;font-size:18px;opacity:.9;text-shadow:0 2px 0 #0008}
+#mvote .mvc b{font-size:clamp(14px,2.6vh,20px);text-shadow:0 2px 0 #000a}#mvote .mvc small{font-size:11px;font-weight:800;opacity:.9}
+#mvote .mvc .mvn{min-height:16px;font-size:12px;font-weight:900;color:#38f5c8;text-shadow:0 1px 0 #000}
+#mvote .mvf{margin:0;font-size:12px;font-weight:800;opacity:.75;pointer-events:none}
+body.touch #stabs button[data-s=kb]{display:none}
