@@ -46,23 +46,25 @@ $('#play').onclick=()=>{SFX.resume();SFX.click();window.touchEnter&&touchEnter()
 $('#cancel').onclick=()=>{SFX.click();qStop&&qStop();menu()};
 $('#home').onclick=()=>{SFX.click();menu()};$('#again').onclick=()=>{SFX.click();window.touchEnter&&touchEnter();go()};
 function begin2(mid,ros,md){begin(mid,null,null,null,ros,false,md)}
-const beginAny=v=>{if(!v||!v.mid||(v.t&&now()-v.t>45000))return;v.ros?begin2(v.mid,v.ros,v.md):begin(v.mid,v.uid,v.name,v.skin,null,false,v.md)};
-function begin(mid,opp,oppName,oppSkin,ros,bot,md){qStop&&qStop();LB2.afkStop();LB2.sheet(0,1);md=window.MODES[md]?md:'1v1'; /* bot matches pay out exactly like online ones: XP, coins, candy, pass XP, quests */
+const beginAny=v=>{if(!v||!v.mid||(v.t&&now()-v.t>45000))return;if(v.room)return joinRoom(v.md,null,v.rid);v.ros?begin2(v.mid,v.ros,v.md):begin(v.mid,v.uid,v.name,v.skin,null,false,v.md)};
+function begin(mid,opp,oppName,oppSkin,ros,bot,md,room){qStop&&qStop();LB2.afkStop();LB2.sheet(0,1);md=window.MODES[md]?md:'1v1'; /* bot matches pay out exactly like online ones: XP, coins, candy, pass XP, quests */
 /* building the arena + characters takes a moment: show a loading card first (and let it paint) instead of freezing on a blank screen */
 const tok=begin.tok=(begin.tok||0)+1;show('queue');$('#qtxt').textContent='Loading match…';$('#qbot').style.display='none';$('#cancel').style.display='none';
-requestAnimationFrame(()=>setTimeout(()=>{if(tok!==begin.tok)return;$('#cancel').style.display='';show('none');try{Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,ros,mode:md,bot:!!bot,clock:now,skin:SK(),halloween:EV.matchStart(),onCandy:EV.candy,onRound:EV.round,
-onGhost:()=>{toast('Opponent never connected – searching again');menu();setTimeout(go,400)},
-onLeave:()=>{if(bot){EV.sync();menu();return}EV.sync();db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c.losses=(c.losses||0)+1;return c});menu()},
-onEnd:r=>{const pl=r.ffa?r.players-r.place:0,g0=r.draw?{x:75+r.me*15,c:12}:r.ffa?(r.win?{x:260,c:50}:{x:60+pl*30,c:8+pl*4}):r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8},gx={x:Math.round(g0.x),c:Math.round(g0.c)};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();const ex=EV.matchDone(r,gx)+(bot?'  · 🤖 bot match':'');
+requestAnimationFrame(()=>setTimeout(()=>{if(tok!==begin.tok)return;$('#cancel').style.display='';show('none');try{Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,ros,mode:md,bot:!!bot,room,clock:now,skin:SK(),halloween:EV.matchStart(),onCandy:EV.candy,onRound:EV.round,
+onGhost:()=>{toast(room?'That room had just finished – finding a new one':'Opponent never connected – searching again');menu();setTimeout(go,400)},
+onLeave:x=>{if(bot){EV.sync();menu();return}if(x&&x.room){const rw=roomReward(x);if(rw.x||rw.c){CFG.xp+=rw.x;CFG.coins+=rw.c;saveCfg()}EV.sync();menu();toast('You left the room · '+(x.rounds|0)+' rounds · '+(x.kills|0)+' kills'+(rw.x||rw.c?' · +'+rw.x+' XP +'+rw.c+' 🪙':''));return}EV.sync();db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c.losses=(c.losses||0)+1;return c});menu()},
+onEnd:r=>{const pl=r.ffa?r.players-r.place:0,g0=r.room?(rw=>({x:rw.x+(r.win?250:0),c:rw.c+(r.win?50:0)}))(roomReward(r)):r.draw?{x:75+r.me*15,c:12}:r.ffa?(r.win?{x:260,c:50}:{x:60+pl*30,c:8+pl*4}):r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8},gx={x:Math.round(g0.x),c:Math.round(g0.c)};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();const ex=EV.matchDone(r,gx)+(bot?'  · 🤖 bot match':'');
 $('#res').textContent=r.draw?'DRAW':r.win?'VICTORY':'DEFEAT';$('#res').style.color=r.draw?'#ffd23f':r.win?'#38f5c8':'#ff6b81';
 $('#winner').textContent=r.draw?'Nobody wins this one':'🏆 '+r.winner+' WINS!';$('#en1').textContent=r.ffa?'Your place':(r.myName||'You');$('#en2').textContent=r.ffa?'players':(r.oppName||'Enemy');$('#e1').textContent=r.ffa?'#'+r.place:r.me;$('#e2').textContent=r.ffa?r.players:r.opp;
-$('#rtag').textContent=r.title=='Opponent left'?'OPPONENT LEFT':r.ffa?(modeOf(r.mode).n.toUpperCase()+' · '+((r.first||1)>1?'FIRST TO '+r.first:'LAST ONE STANDING')):'MATCH OVER · FIRST TO '+(r.first||3);$('#rsub').textContent=`+${gx.x} XP  +${gx.c} 🪙`+ex;show('end');
-if(r.draw||bot||r.late)return;const f=r.win?'wins':'losses';db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c[f]=(c[f]||0)+1;return c})}})}catch(e){console.error('Match failed to start',e);toast('Could not start the match: '+((e&&e.message)||e));qStop=null;menu()}},30))}
+$('#rtag').textContent=r.title=='Opponent left'?'OPPONENT LEFT':r.room?(modeOf(r.mode).n.toUpperCase()+' · 100 ROUNDS · '+(r.kills|0)+' KILLS · '+(r.dmg|0)+' DAMAGE'):r.ffa?(modeOf(r.mode).n.toUpperCase()+' · '+((r.first||1)>1?'FIRST TO '+r.first:'LAST ONE STANDING')):'MATCH OVER · FIRST TO '+(r.first||3);$('#rsub').textContent=`+${gx.x} XP  +${gx.c} 🪙`+ex;show('end');
+if(r.draw||bot||r.late||(r.room&&!r.win))return;const f=r.win?'wins':'losses';db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c[f]=(c[f]||0)+1;return c})}})}catch(e){console.error('Match failed to start',e);toast('Could not start the match: '+((e&&e.message)||e));qStop=null;menu()}},30))}
 function botName(){const A=['Swift','Silent','Lucky','Crimson','Frosty','Rapid','Shadow','Turbo','Cosmic','Sneaky','Mighty','Rogue','Neon','Savage','Clutch','Ghost','Atomic','Wild','Hyper','Iron'],
 N=['Falcon','Tiger','Viper','Wolf','Panda','Cobra','Raven','Shark','Dragon','Fox','Hawk','Bear','Lynx','Ninja','Titan','Comet','Storm','Blaze','Pixel','Rider'],
 r=a=>a[Math.random()*a.length|0];return r(A)+r(N)+(10+Math.random()*9990|0)}
 /* practice bot: runs entirely on this device (no network). Always works, even offline. */
-function beginBot(md){md=window.MODES[md]?md:CFG.mode;const c=[0xff4d4d,0xffa42e,0xb04dff,0x4dffa8,0xff6bd6,0x38f5c8,0xffd23f],M=modeOf(md),me={u:user.uid,n:nm(),s:SK(),t:0},pc=()=>c[Math.random()*c.length|0];
+/* what you earn in a 100-round room (also when you leave early): rounds you played, eliminations and damage */
+const roomReward=r=>{const rounds=r.rounds|0,k=r.kills|0,d=r.dmg|0;if(!rounds&&!k)return{x:0,c:0};return{x:Math.min(3000,Math.round(rounds*14+k*12+d*.05)),c:Math.min(600,Math.round(rounds*1.5+k*2))}};
+function beginBot(md){md=window.MODES[md]?md:CFG.mode;if(modeOf(md).room){toast(modeOf(md).n+' is online-only: real players, no bots');return}const c=[0xff4d4d,0xffa42e,0xb04dff,0x4dffa8,0xff6bd6,0x38f5c8,0xffd23f],M=modeOf(md),me={u:user.uid,n:nm(),s:SK(),t:0},pc=()=>c[Math.random()*c.length|0];
 if(md=='1v1'){begin('bot_'+now(),'BOT',botName(),pc(),null,true,'1v1');return}
 const ros=[me];let i=0;
 if(M.ffa){for(;i<M.bots;i++)ros.push({u:'BOT'+i,n:botName(),s:pc(),t:i+1})}
@@ -186,7 +188,7 @@ $('#friend').onclick=()=>{SFX.click();pui();$('#party').classList.add('on')};
 function go(){const duo=!!party&&Object.keys(party.m).length>1,md=CFG.mode;
 if(md=='1v1'){if(duo){if(party.lead!=user.uid)return toast('Waiting for the party leader to press Play');return pmatch('1v1')}return find()}
 if(duo&&party.lead!=user.uid)return toast('Waiting for the party leader to press Play');
-if(md=='box'&&duo)return pmatch('box');
+if(modeOf(md).room)return joinRoom(md,duo?Object.keys(party.m).find(i=>i!=user.uid):null);
 return findN(md,duo?Object.keys(party.m):[user.uid])}
 /* ---- team / free-for-all matchmaking (2v2, 3v3, Box Fights, Zone Wars). lobby2/q holds waiting groups (1 solo player or a 2-player party) tagged with their mode.
    Whoever arrives and completes a valid match (right player count, groups splittable into two equal teams) creates it and writes an invite with the full roster for everyone else.
@@ -228,3 +230,30 @@ mine.onDisconnect().remove();hb=setInterval(()=>mine.transaction(c=>c?{...c,t:no
 inv.on('value',s=>{const v=s.val();if(v&&!done){inv.remove();beginAny(v)}})}
 catch(e){if(done)return;stop();if(!duo){toast('Matchmaking unavailable – starting a bot match');return beginBot(md)}menu();toast('Matchmaking error: '+String(e.message||e).replace('permission_denied','permission denied (publish database.rules.json)'))}}
 async function pmatch(md){const o=Object.keys(party.m).find(i=>i!=user.uid),mid=`${user.uid}_${o}_${now()}`;try{await db.ref('matches/'+mid+'/meta').set({a:user.uid,b:o});await db.ref('invites/'+o).set({mid,uid:user.uid,name:nm(),skin:SK(),md,t:now()});begin(mid,o,party.m[o].name,party.m[o].skin,null,false,md)}catch(e){toast(e.message)}}
+
+/* ---- open rooms (Box Fights, Zone Wars): 100 rounds, people join and leave any time, no bots.
+   rooms/<mode>/<roomId> = {mid, t0, hb, m:{uid:lastSeen}}. One transaction on rooms/<mode> picks the fullest room that still has space (or makes a new one), so two people who press
+   PLAY at the same moment always end up in the SAME room. The game inside the room (matches/<mid>) runs its own round clock, see "OPEN ROOMS" in game.js. ---- */
+function roomHold(md,rid){const m=db.ref(`rooms/${md}/${rid}/m/${user.uid}`),h=db.ref(`rooms/${md}/${rid}/hb`);m.onDisconnect().remove();
+const beat=()=>{m.set(now()).catch(()=>{});h.set(now()).catch(()=>{})},iv=setInterval(beat,10000);beat();
+return()=>{clearInterval(iv);m.onDisconnect().cancel().catch(()=>{});m.remove().catch(()=>{})}}
+async function joinRoom(md,partner,rid0){const M=modeOf(md);
+if(!conn){toast(M.n+' needs an internet connection (there are no bots in this mode)');return}
+show('queue');$('#qtxt').textContent='Finding a '+M.n+' room…';$('#qbot').style.display='none';
+const me=user.uid;let done=0,held=null,pick=null;
+const stop=()=>{done=1;if(held){held();held=null}if(qStop===stop)qStop=null};qStop=stop;
+try{const r=await db.ref('rooms/'+md).transaction(cur=>{pick=null;const t=now(),R=cur?JSON.parse(JSON.stringify(cur)):{},live={};
+ for(const k in R){const e=R[k];if(!e||!e.mid||!e.hb||t-e.hb>30000)continue;const m=e.m||{};for(const u in m)if(u===me||t-m[u]>90000)delete m[u];if(!Object.keys(m).length)continue;e.m=m;live[k]=e}
+ const cnt=k=>Object.keys(live[k].m).length;let best=null;
+ if(rid0&&live[rid0]&&cnt(rid0)<M.max)best=rid0;else for(const k in live)if(cnt(k)<M.max&&(best==null||cnt(k)>cnt(best)))best=k;
+ if(best){live[best].m[me]=t;live[best].hb=t;pick={rid:best,mid:live[best].mid}}
+ else{const x=Math.random().toString(36).slice(2,6),rid='r'+t.toString(36)+x,mid='rm_'+md+'_'+t+'_'+x;live[rid]={mid,t0:t,hb:t,m:{[me]:t}};pick={rid,mid}}
+ return live});
+ if(done){if(r&&r.committed&&pick)db.ref(`rooms/${md}/${pick.rid}/m/${me}`).remove().catch(()=>{});return}
+ if(!r.committed||!pick)throw new Error('busy');
+ held=roomHold(md,pick.rid);
+ if(partner)await db.ref('invites/'+partner).set({mid:pick.mid,rid:pick.rid,md,room:1,t:now()}).catch(()=>{});
+ if(done)return;
+ const off=held,rid=pick.rid;held=null; /* the game owns the membership from here on */
+ begin(pick.mid,null,null,null,null,false,md,{md,rid,off,close:()=>db.ref(`rooms/${md}/${rid}`).remove().catch(()=>{})})}
+catch(e){if(done)return;stop();menu();toast('Could not join a room: '+String(e.message||e).replace('permission_denied','permission denied (publish database.rules.json)'))}}
