@@ -30,12 +30,12 @@ return`<div class="pv${big?' big':''}${gun?' gun':''}" style="${st}"><span class
 /* portrait thumbnails: each one builds a character and encodes a PNG on the main thread, so they are made one at a time, only in idle time,
    visible ones first, never during a match and never in a hidden tab (rendering them back-to-back used to freeze weak devices whenever a shop / pass opened) */
 let thBusy=0;const thIdle=window.requestIdleCallback?f=>requestIdleCallback(f,{timeout:500}):f=>setTimeout(f,30),thGame=()=>window.Game&&Game.busy&&Game.busy();
-function thFill(){if(thBusy)return;thBusy=1;const go=()=>{if(document.hidden||thGame()){thBusy=0;setTimeout(thFill,1500);return}
+function thFill(){if(thBusy)return;thBusy=1;const go=()=>{if(document.hidden||thGame()||!document.querySelector('#menu.on')){thBusy=0;setTimeout(thFill,1500);return}
 const all=document.querySelectorAll('img[data-sv]:not([data-done])');if(!all.length){thBusy=0;return}
 let im=null;for(const x of all)if(x.offsetParent){im=x;break}
 const vis=!!im;if(!im)im=all[0];const v=im.dataset.sv,u=Game.thumb(v);
 document.querySelectorAll('img[data-sv="'+v+'"]:not([data-done])').forEach(x=>{if(u){x.src=u;x.dataset.done=1}else{const e=document.createElement('span');e.className='pe';e.textContent=x.dataset.ico||'';x.parentNode.classList.remove('ch');x.replaceWith(e)}});
-setTimeout(()=>thIdle(go),vis?40:250)};setTimeout(()=>thIdle(go),0)}
+setTimeout(()=>thIdle(go),vis?40:1500)};setTimeout(()=>thIdle(go),0)}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)thFill()});
 new MutationObserver(()=>{if(!thBusy&&document.querySelector('img[data-sv]:not([data-done])'))thFill()}).observe(document.body,{childList:true,subtree:true});
 const WS=['Shotgun','Rifle','Pickaxe'],icn=it=>it.k=='gun'?Game.gunIcon(it.w,it.g.c,0,it.g):it.ico,icol=it=>it.k=='gun'?it.col:it.v%16777216,ival=it=>it.k=='gun'?null:it.v,swI=(it,big)=>swHtml(icol(it),icn(it),big,ival(it)),inm=it=>it.k=='gun'?it.n+' '+WS[it.w]:it.n,

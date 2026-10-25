@@ -50,14 +50,14 @@ const beginAny=v=>{if(!v||!v.mid||(v.t&&now()-v.t>45000))return;v.ros?begin2(v.m
 function begin(mid,opp,oppName,oppSkin,ros,bot,md){qStop&&qStop();LB2.afkStop();LB2.sheet(0,1);md=window.MODES[md]?md:'1v1'; /* bot matches pay out exactly like online ones: XP, coins, candy, pass XP, quests */
 /* building the arena + characters takes a moment: show a loading card first (and let it paint) instead of freezing on a blank screen */
 const tok=begin.tok=(begin.tok||0)+1;show('queue');$('#qtxt').textContent='Loading match…';$('#qbot').style.display='none';$('#cancel').style.display='none';
-requestAnimationFrame(()=>setTimeout(()=>{if(tok!==begin.tok)return;$('#cancel').style.display='';show('none');Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,ros,mode:md,bot:!!bot,clock:now,skin:SK(),halloween:EV.matchStart(),onCandy:EV.candy,onRound:EV.round,
+requestAnimationFrame(()=>setTimeout(()=>{if(tok!==begin.tok)return;$('#cancel').style.display='';show('none');try{Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,ros,mode:md,bot:!!bot,clock:now,skin:SK(),halloween:EV.matchStart(),onCandy:EV.candy,onRound:EV.round,
 onGhost:()=>{toast('Opponent never connected – searching again');menu();setTimeout(go,400)},
 onLeave:()=>{if(bot){EV.sync();menu();return}EV.sync();db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c.losses=(c.losses||0)+1;return c});menu()},
 onEnd:r=>{const pl=r.ffa?r.players-r.place:0,g0=r.draw?{x:75+r.me*15,c:12}:r.ffa?(r.win?{x:260,c:50}:{x:60+pl*30,c:8+pl*4}):r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8},gx={x:Math.round(g0.x),c:Math.round(g0.c)};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();const ex=EV.matchDone(r,gx)+(bot?'  · 🤖 bot match':'');
 $('#res').textContent=r.draw?'DRAW':r.win?'VICTORY':'DEFEAT';$('#res').style.color=r.draw?'#ffd23f':r.win?'#38f5c8':'#ff6b81';
 $('#winner').textContent=r.draw?'Nobody wins this one':'🏆 '+r.winner+' WINS!';$('#en1').textContent=r.ffa?'Your place':(r.myName||'You');$('#en2').textContent=r.ffa?'players':(r.oppName||'Enemy');$('#e1').textContent=r.ffa?'#'+r.place:r.me;$('#e2').textContent=r.ffa?r.players:r.opp;
 $('#rtag').textContent=r.title=='Opponent left'?'OPPONENT LEFT':r.ffa?(modeOf(r.mode).n.toUpperCase()+' · '+((r.first||1)>1?'FIRST TO '+r.first:'LAST ONE STANDING')):'MATCH OVER · FIRST TO '+(r.first||3);$('#rsub').textContent=`+${gx.x} XP  +${gx.c} 🪙`+ex;show('end');
-if(r.draw||bot||r.late)return;const f=r.win?'wins':'losses';db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c[f]=(c[f]||0)+1;return c})}})},30))}
+if(r.draw||bot||r.late)return;const f=r.win?'wins':'losses';db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c[f]=(c[f]||0)+1;return c})}})}catch(e){console.error('Match failed to start',e);toast('Could not start the match: '+((e&&e.message)||e));qStop=null;menu()}},30))}
 function botName(){const A=['Swift','Silent','Lucky','Crimson','Frosty','Rapid','Shadow','Turbo','Cosmic','Sneaky','Mighty','Rogue','Neon','Savage','Clutch','Ghost','Atomic','Wild','Hyper','Iron'],
 N=['Falcon','Tiger','Viper','Wolf','Panda','Cobra','Raven','Shark','Dragon','Fox','Hawk','Bear','Lynx','Ninja','Titan','Comet','Storm','Blaze','Pixel','Rider'],
 r=a=>a[Math.random()*a.length|0];return r(A)+r(N)+(10+Math.random()*9990|0)}

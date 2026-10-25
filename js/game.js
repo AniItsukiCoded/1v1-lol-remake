@@ -963,7 +963,7 @@ else{const c=CCOL[Math.floor(Math.random()*CCOL.length)],m=new T.MeshStandardMat
 const gl=window.COS.prop.glow(gold?0xffd23f:0xffffff,gold?1.7:1.1);gl.position.y=.02;g.add(gl);g.userData.gold=gold;return g}
 function clearCandy(){if(CG){sc.remove(CG);CG=null}CN=[]}
 function spawnCandy(){clearCandy();if(!HAL)return;CG=new T.Group();sc.add(CG);const r=rng(HH^(rd*7919)),pts=[];let tries=0;
-while(pts.length<18&&tries++<400){const x=(r()*2-1)*27,z=(r()*2-1)*27;if(B.some(b=>Math.abs(x-b.x)<b.w/2+1.4&&Math.abs(z-b.z)<b.d/2+1.4))continue;if(corners.some(c=>Math.hypot(x-c[0],z-c[1])<6))continue;if(pts.some(p=>Math.hypot(x-p[0],z-p[1])<5))continue;pts.push([x,z])}
+while(pts.length<18&&tries++<400){const x=(r()*2-1)*27,z=(r()*2-1)*27;if(B.some(b=>Math.abs(x-b.x)<b.w/2+1.4&&Math.abs(z-b.z)<b.d/2+1.4))continue;if((corners||[]).some(c=>Math.hypot(x-c[0],z-c[1])<6))continue;if(pts.some(p=>Math.hypot(x-p[0],z-p[1])<5))continue;pts.push([x,z])}
 pts.forEach((p,i)=>{const gold=i<2,o=mkCandy(gold);o.position.set(p[0],1,p[1]);CG.add(o);CN.push({o,x:p[0],z:p[1],v:gold?CANDY.gold:CANDY.normal,gold,ph:i*1.3})})}
 function candyPop(x,y,z,gold){for(let i=0,n=Qs.fx>0?Math.max(2,Math.round((gold?14:7)*Qs.fx)):0;i<n;i++){const m=fxMk(CPG,gold?0xffd23f:CCOL[i%5]);m.position.set(x,y,z);sc.add(m);const a=Math.random()*6.283,s=2+Math.random()*3;FX.push({m,v:new T.Vector3(Math.cos(a)*s,2+Math.random()*3,Math.sin(a)*s),life:.55,g:1})}}
 function halUpdate(dt){if(!HAL)return;const t=performance.now()/1000;HAN.forEach(f=>f(t));
@@ -986,7 +986,7 @@ let hh=0;for(const ch of mid)hh=(hh*31+ch.charCodeAt(0))>>>0;const MAPX=MD.map==
 /* spawn corners: team 0 on the west side, team 1 on the east side */
 {const cnt=[0,0],A2=[[-24,-24],[-24,24]],B2=[[24,24],[24,-24]],A3=[[-24,-24],[-24,0],[-24,24]],B3=[[24,24],[24,0],[24,-24]],sz=MD.size||1;
 ros.forEach((p,i)=>{if(MD.map=='zone'){const rg=rng((hh^0x77)>>>0),a0=rg()*6.283;let a=a0+i/ros.length*6.283,rad=112,x=Math.cos(a)*rad,z=Math.sin(a)*rad;for(let n=0;n<40&&hits({x,y:0,z});n++){rad-=2.5;x=Math.cos(a)*rad;z=Math.sin(a)*rad}p.c=[x,z]}
-else if(MD.map=='box')p.c=boxSpot(p.t,ros.length);else p.c=(sz>=3?(p.t?B3:A3):(p.t?B2:A2))[cnt[p.t]++%(sz>=3?3:2)]});sp0=mp.c}
+else if(MD.map=='box')p.c=boxSpot(p.t,ros.length);else p.c=(sz>=3?(p.t?B3:A3):(p.t?B2:A2))[cnt[p.t]++%(sz>=3?3:2)]});sp0=mp.c;corners=ros.map(p=>p.c).filter(Boolean)}
 const mc=Number.isFinite(o.skin)?o.skin:0x2f9bff;me=char(mc);vm=null;if(me.isRig){try{vm=rig(mc,true)}catch(e){vm=null}}
 if(vm){vSway.add(vm.g);vm.g.visible=false;vm.setFP(true,true,true);const sg0=me.setGun;me.setGun=i=>{sg0(i);vm&&vm.setGun(i)}}
 fpCur=false;fpArmsCur=true;celT0=0;vYaw=null;swY=swP=fpRoll=0;setCut(0);cam.near=.1;cam.updateProjectionMatrix();
