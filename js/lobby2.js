@@ -11,13 +11,15 @@ let isOpen=false,cool=0;
 const isOn=()=>$('#menu').classList.contains('on');
 const blocked=()=>!isOn()||!!document.querySelector('.modal.on')||$('#reveal').classList.contains('on');
 function mInfo(){const M=modeOf(CFG.mode);let h=`<b>${M.ic} ${M.n}</b> · ${M.tag}`;
- if(M.room)h+=`<small>${M.min}–${M.max} players · ${M.rounds} rounds · no time limit · 5 seconds between rounds · join any time, a round starts as soon as 2 players are in. Join mid-round and you spawn next round. No bots.</small>`;
- else if(M.ffa)h+=`<small>${M.min}–${M.max} players per match. Nobody online? Bots fill the lobby and you still earn everything.</small>`;
+ if(M.id=='trainer')h+='<small>60-second drills, personal bests, unlimited ammo. Pick a drill:</small><div class="tdl">'+[['grid','Gridshot'],['micro','Microshot'],['flick','Flick'],['track','Tracking'],['strafe','Strafing']].map(([k,n])=>`<button data-d="${k}" class="${(CFG.tdrill||'grid')==k?'on':''}">${n}</button>`).join('')+'</div>';
+ else if(M.room)h+=`<small>${M.min}–${M.max} players · ${M.rounds} rounds · no time limit · 5 seconds between rounds · join any time, a round starts as soon as 2 players are in. Join mid-round and you spawn next round. No bots.</small>`;
+ else if(M.ffa)h+=`<small>${M.min}–${M.max} players per match. Real players only – bots are 1v1 only.</small>`;
  else if(M.size>1)h+=`<small>Queue solo and you get matched with teammates, or party up with a friend (the + button in the lobby).</small>`;
  else if(M.map=='box')h+=`<small>Edit and build from the first second. Party up to fight a friend in private.</small>`;
  else h+=`<small>Party up to duel a friend in private, or queue and get a random opponent.</small>`;
  $('#msinfo').innerHTML=h}
-function modeShow(){const M=modeOf(CFG.mode);{const b=$('#msbot');if(b)b.style.display=M.room?'none':''}$('#modet').textContent=M.n.toUpperCase();$('#msnow').innerHTML=`<span>${M.ic}</span><b>${M.n}</b>`;mInfo();
+$('#msinfo').onclick=e=>{const b=e.target.closest('[data-d]');if(!b)return;SFX.click();CFG.tdrill=b.dataset.d;saveLocal();mInfo()};
+function modeShow(){const M=modeOf(CFG.mode);{const b=$('#msbot');if(b)b.style.display=M.id=='1v1'?'':'none'}$('#modet').textContent=M.n.toUpperCase();$('#msnow').innerHTML=`<span>${M.ic}</span><b>${M.n}</b>`;mInfo();
  document.querySelectorAll('#mstrack .mcard').forEach(c=>{const on=c.dataset.m==CFG.mode;c.classList.toggle('on',on);c.setAttribute('aria-pressed',on)})}
 function cards(){const h=$('#mstrack');if(h.dataset.built)return;h.dataset.built=1;
  h.innerHTML=MODE_ORDER.map(id=>{const M=MODES[id];
@@ -25,7 +27,7 @@ function cards(){const h=$('#mstrack');if(h.dataset.built)return;h.dataset.built
 <div class="mart"><span class="mg1"></span><span class="mg2"></span><span class="mbig">${M.art}</span></div>
 <div class="minfo"><small class="mgrp">${M.grp}</small><b>${M.n}</b><p>${M.tag}</p><div class="mchips"><span>👤 ${M.ffa?M.min+'–'+M.max:M.ppl} players</span><span>🏆 ${M.rule}</span><span>🗺️ ${M.where}</span></div></div></button>`}).join('');
  h.querySelectorAll('.mcard').forEach(b=>b.onclick=()=>pick(b.dataset.m))}
-function pick(id,quiet){if(!MODES[id])return;SFX.click();const was=CFG.mode;CFG.mode=id;saveLocal();modeShow();if(!quiet&&was!==id)toast(modeOf(id).n+' selected')}
+function pick(id,quiet){if(!MODES[id])return;SFX.click();const was=CFG.mode;CFG.mode=id;saveLocal();modeShow();try{typeof pui=='function'&&pui()}catch(_){}if(!quiet&&was!==id)toast(modeOf(id).n+' selected')}
 function center(){const t=$('#mstrack'),c=t.querySelector('.mcard.on');if(c)t.scrollLeft=c.offsetLeft-(t.clientWidth-c.offsetWidth)/2}
 function sheet(v,instant){v=!!v;if(v===isOpen)return;isOpen=v;cool=Date.now()+650;document.body.classList.toggle('msopen',v);
  if(v){cards();modeShow();center();requestAnimationFrame(center)}

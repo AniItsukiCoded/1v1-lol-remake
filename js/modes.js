@@ -9,9 +9,19 @@ window.MODES={
 '2v2':{id:'2v2',n:'2v2',ic:'🤝',tag:'You + a teammate vs two enemies',size:2,win:3,map:'arena',ppl:4,grp:'DUOS',badge:'TEAMS',c1:'#16c9a0',c2:'#1c6fd0',art:'🤝',where:'Voted arena',rule:'First to 3 rounds'},
 '3v3':{id:'3v3',n:'3v3',ic:'👥',tag:'Squad up: three vs three',size:3,win:3,map:'arena',ppl:6,grp:'SQUADS',badge:'TEAMS',c1:'#ff8a2a',c2:'#d02a6a',art:'👥',where:'Voted arena',rule:'First to 3 rounds'},
 'box':{id:'box',n:'Box Fights',ic:'📦',tag:'Fortnite-style box fights · everyone starts in their own box · build, edit, outplay · join any time',ffa:1,room:1,rounds:100,roundSec:120,min:2,max:10,win:100,map:'box',ppl:10,grp:'BUILD',badge:'LIVE',c1:'#ffc233',c2:'#d9531e',art:'📦',where:'Enclosed box arena',rule:'100 rounds · no time limit · 5s between rounds'},
+'trainer':{id:'trainer',n:'Aim Trainer',ic:'🎯',tag:'Solo aim drills: gridshot, tracking, flicks, strafing targets and more',size:1,win:1,map:'trainer',ppl:1,solo:1,grp:'PRACTICE',badge:'TRAIN',c1:'#ff4d6d',c2:'#7a1fd1',art:'🎯',where:'Training range',rule:'60s drills · personal bests'},
 'zone':{id:'zone',n:'Zone Wars',ic:'🌀',tag:'Big map · closing storm · last one standing · join any time',ffa:1,room:1,rounds:100,roundSec:120,min:2,max:10,win:100,map:'zone',ppl:10,grp:'BATTLE',badge:'LIVE',c1:'#a64dff',c2:'#3a1a9a',art:'🌀',where:'Big map + storm',rule:'100 rounds · no time limit · 5s between rounds'}
 };
 window.modeOf=id=>window.MODES[id]||window.MODES['1v1'];
-window.MODE_ORDER=['1v1','2v2','3v3','box','zone'];
+window.MODE_ORDER=['1v1','2v2','3v3','box','zone','trainer'];
 /* AFK zone: stand in the zone and collect these every minute. candyRank=false keeps AFK candy out of the event leaderboard & candy goals (it is still spendable). */
 window.AFK={ms:60000,candy:5,coins:10,candyRank:false};
+/* Which party sizes a mode accepts. kind: 'solo' (aim trainer: everybody plays on their own) · 'queue' (the party queues as one group and is matched with others) ·
+   'private' (the party fills BOTH sides: 1v1 with 2 players, 2v2 with 4, 3v3 with 6) · 'room' (everybody joins the same Box Fights / Zone Wars room). */
+window.partyCheck=(id,n)=>{const M=modeOf(id);n=Math.max(1,n|0);
+ if(M.solo)return{ok:1,kind:'solo'};
+ if(M.room)return n<=M.max?{ok:1,kind:'room'}:{ok:0,why:M.n+' holds up to '+M.max+' players – your party has '+n};
+ if(M.size==1){if(n==1)return{ok:1,kind:'queue'};if(n==2)return{ok:1,kind:'private'};return{ok:0,why:'1v1 is for 1 or 2 players – your party has '+n}}
+ if(n<=M.size)return{ok:1,kind:'queue'};if(n==M.size*2)return{ok:1,kind:'private'};
+ return{ok:0,why:M.n+' needs a party of 1–'+M.size+' (or exactly '+M.size*2+' for a private match) – your party has '+n}};
+window.PARTY_MAX=10;

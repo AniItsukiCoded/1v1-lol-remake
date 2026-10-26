@@ -5,11 +5,11 @@
 const CTL=(()=>{
 const ACT=[ /* id, label, group, [primary, alt] defaults */
 ['fwd','Move forward','Movement',['KeyW','']],['back','Move back','Movement',['KeyS','']],['left','Move left','Movement',['KeyA','']],['right','Move right','Movement',['KeyD','']],
-['jump','Jump','Movement',['Space','']],['sprint','Sprint','Movement',['ShiftLeft','']],
+['jump','Jump','Movement',['Space','']],['sprint','Sprint','Movement',['ShiftLeft','']],['crouch','Crouch / slide (hold or toggle in Settings)','Movement',['KeyE','']],
 ['shoot','Shoot','Combat',['Mouse0','']],['aim','Aim / scope','Combat',['Mouse2','']],['reload','Reload','Combat',['KeyR','']],
 ['w1','Shotgun','Weapons',['Digit1','']],['w2','Assault rifle','Weapons',['Digit2','']],['pick','Pickaxe','Weapons',['KeyF','']],
 ['wall','Build wall','Building',['KeyZ','']],['floor','Build floor','Building',['KeyX','']],['ramp','Build stairs','Building',['KeyC','']],['roof','Build roof','Building',['KeyV','']],
-['build','Build mode (on / off)','Building',['KeyQ','']],['edit','Edit mode','Building',['KeyG','']],['mat','Cycle material','Building',['KeyT','Mouse1']],['mw','Wood','Building',['Digit4','']],['mb','Brick','Building',['Digit5','']],['mm','Metal','Building',['Digit6','']],
+['build','Build mode (on / off)','Building',['KeyQ','']],['turnL','Quick turn left 90° (building)','Building',['','']],['turnR','Quick turn right 90° (building)','Building',['','']],['edit','Edit mode','Building',['KeyG','']],['mat','Cycle material','Building',['KeyT','Mouse1']],['mw','Wood','Building',['Digit4','']],['mb','Brick','Building',['Digit5','']],['mm','Metal','Building',['Digit6','']],
 ['view','First / third person','Other',['KeyB','']],['music','Toggle music','Other',['KeyM','']],['map','Map (Zone Wars)','Other',['KeyN','']],['score','Scoreboard (kills / damage / K-D)','Other',['Tab','']],['specN','Spectate: next player','Other',['ArrowRight','']],['specP','Spectate: previous player','Other',['ArrowLeft','']]];
 const DEF={};ACT.forEach(a=>DEF[a[0]]=a[3]);
 const OK=/^(Mouse[0-6]|[A-Za-z][A-Za-z0-9]{1,19})$/,NONE=[];

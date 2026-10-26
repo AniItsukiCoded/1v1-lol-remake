@@ -35,12 +35,13 @@ const end=e=>{if(e.pointerId!==pid)return;pid=null;b.classList.remove('dn');onUp
 btn('tfire','FIRE','fire',()=>G()&&G().down('shoot'),()=>G()&&G().up('shoot'),true);
 btn('tjump','⤒','jump',()=>G()&&G().down('jump'),()=>G()&&G().up('jump'));
 btn('taim','◎','aim',()=>{const g=G();if(!g)return;if(window.CFG&&CFG.tam==='hold')g.aimHold(1);else g.tapAim()},()=>{const g=G();if(g&&window.CFG&&CFG.tam==='hold')g.aimHold(0)});
+btn('tcr','⤓','cr',()=>G()&&G().down('crouch'),()=>G()&&G().up('crouch'));
 btn('trl','↻','rl',()=>G()&&G().down('reload'),()=>G()&&G().up('reload'));
 btn('tbld','🧱','bld',()=>document.body.classList.toggle('bq'));
 btn('tsb','🏆','sb',()=>G()&&G().down('score'),()=>G()&&G().up('score'));
 btn('tpause','❚❚','pz',()=>G()&&G().pause());
 /* ---- HUD layout (Settings > Mobile): button size / opacity and where every piece of the match screen sits. Positions are the CENTRE of each piece in % of the screen. ---- */
-const LIDS={fire:'#tfire',jump:'#tjump',aim:'#taim',rl:'#trl',bld:'#tbld',sb:'#tsb',pz:'#tpause',wbar:'#wbar',bq:'#bq',bot:'#bot'};
+const LIDS={cr:'#tcr',fire:'#tfire',jump:'#tjump',aim:'#taim',rl:'#trl',bld:'#tbld',sb:'#tsb',pz:'#tpause',wbar:'#wbar',bq:'#bq',bot:'#bot'};
 window.touchLayout=()=>{const C=window.CFG||{},b=document.body,L=C.tlay&&C.tlay!=='classic'&&C.tl&&typeof C.tl=='object'?C.tl:null;
  b.style.setProperty('--tsz',String((+C.tsz||100)/100));b.style.setProperty('--tso',String((+C.tso||100)/100));
  for(const k in LIDS){const e=document.querySelector(LIDS[k]);if(!e)continue;const p=L&&L[k];

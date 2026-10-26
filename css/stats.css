@@ -30,3 +30,4 @@ body.touch #sb .sbc{padding:8px 12px}body.touch #sb h2{font-size:20px;margin-bot
 .lbn{font-size:15px;opacity:.85;text-align:center}.lba{width:26px;height:26px;border-radius:50%;border:2px solid #ffffff55}
 .lbu{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lbv{text-align:right}.lbv b{font-size:18px;display:block;line-height:1}.lbv small{font-size:10px;letter-spacing:1px;opacity:.65;text-transform:uppercase}
+#sbt.w6 .sbr{grid-template-columns:30px 1fr 56px 64px 92px 62px}

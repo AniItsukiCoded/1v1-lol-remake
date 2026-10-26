@@ -72,7 +72,7 @@ r=a=>a[Math.random()*a.length|0];return r(A)+r(N)+(10+Math.random()*9990|0)}
 /* practice bot: runs entirely on this device (no network). Always works, even offline. */
 /* what you earn in a 100-round room (also when you leave early): rounds you played, eliminations and damage */
 const roomReward=r=>{const rounds=r.rounds|0,k=r.kills|0,d=r.dmg|0;if(!rounds&&!k)return{x:0,c:0};return{x:Math.min(3000,Math.round(rounds*14+k*12+d*.05)),c:Math.min(600,Math.round(rounds*1.5+k*2))}};
-function beginBot(md){md=window.MODES[md]?md:CFG.mode;if(modeOf(md).room){toast(modeOf(md).n+' is online-only: real players, no bots');return}const c=[0xff4d4d,0xffa42e,0xb04dff,0x4dffa8,0xff6bd6,0x38f5c8,0xffd23f],M=modeOf(md),me={u:user.uid,n:nm(),s:SK(),t:0},pc=()=>c[Math.random()*c.length|0];
+function beginBot(md){md=window.MODES[md]?md:CFG.mode;if(md!='1v1'){toast('Bots only play 1v1 – '+modeOf(md).n+' is played with real players');menu();return}const c=[0xff4d4d,0xffa42e,0xb04dff,0x4dffa8,0xff6bd6,0x38f5c8,0xffd23f],M=modeOf(md),me={u:user.uid,n:nm(),s:SK(),t:0},pc=()=>c[Math.random()*c.length|0];
 if(md=='1v1'){begin('bot_'+now(),'BOT',botName(),pc(),null,true,'1v1');return}
 const ros=[me];let i=0;
 if(M.ffa){for(;i<M.bots;i++)ros.push({u:'BOT'+i,n:botName(),s:pc(),t:i+1})}
@@ -126,7 +126,7 @@ document.querySelectorAll('.modal .close').forEach(b=>b.onclick=()=>{SFX.click()
 $('#sens').value=CFG.sens;$('#vol').value=CFG.vol;$('#mus').checked=CFG.music;
 $('#sens').oninput=e=>{CFG.sens=+e.target.value;saveCfg()};$('#vol').oninput=e=>{CFG.vol=+e.target.value;SFX.setVol(CFG.vol);saveCfg()};$('#mus').onchange=e=>{CFG.music=e.target.checked;SFX.music(CFG.music);saveCfg()};
 const HWL=['OFF','LITE','FULL'],hwShow=()=>{$('#hwfx').textContent=HWL[CFG.hwfx===undefined?2:CFG.hwfx]};hwShow();$('#hwfx').onclick=()=>{SFX.click();CFG.hwfx=((CFG.hwfx===undefined?2:CFG.hwfx)+2)%3;saveCfg();hwShow();toast('Spooky effects: '+HWL[CFG.hwfx]+(CFG.hwfx<2?' (applies next match)':''))};
-const QN=['Anti-Lag','Low Quality','Normal','Higher Quality'];
+const QN=['Lowest Quality','Low Quality','Normal','Higher Quality'];
 function qShow(){$('#qlv').textContent=QN[CFG.gq];$('#qln').textContent=Game.qinfo(CFG.gq)}
 if(window.TOUCH){const r=$('#ql').closest('.srow');r&&(r.style.display='none');$('#qln').style.display='none'}$('#ql').value=CFG.gq;qShow();$('#ql').oninput=e=>{CFG.gq=+e.target.value;saveLocal();const r=Game.quality(CFG.gq);qShow();if(r&&r.reload)toast('Anti-aliasing changes after you reload the page')};
 CTL.build($('#kbl'),$('#kbreset'));
@@ -190,17 +190,25 @@ let party=null,pOff=null;
 const strip=()=>{try{const u=new URL(location.href);if(u.searchParams.has('party')){u.searchParams.delete('party');history.replaceState(null,'',u.pathname+(u.search||'')+u.hash)}}catch(e){}}; /* invite link is one-shot: a reload must not re-join */
 function pui(){const m=party?party.m:{},ids=Object.keys(m).sort((a,b)=>(a==party.lead?-1:0)-(b==party.lead?-1:0)||(a<b?-1:1));$('#pnone').style.display=party?'none':'block';$('#pin').style.display=party?'block':'none';$('#pc').textContent=party?party.code:'';
 $('#pin .sub').textContent=party&&party.lead!=user.uid?'Waiting for the party leader to press PLAY.':'The party leader presses PLAY to start the match.';
-[['#ps1',ids[0]],['#ps2',ids[1]]].forEach(([s,id])=>{const el=$(s);el.innerHTML='<i></i><b></b><small></small>';const i=el.querySelector('i');if(id){i.style.background=hx(m[id].skin);bustBg(i,m[id].skin);el.querySelector('b').textContent=m[id].name;el.querySelector('small').textContent=id==party.lead?'LEADER':'MEMBER'}else{i.className='em';i.textContent='+';el.querySelector('b').textContent='Waiting…'}});
-const o=ids.find(i=>i!=user.uid),f=$('#friend');f.classList.toggle('has',!!o);f.textContent=o?m[o].name.slice(0,2).toUpperCase():'+';f.style.background=o?hx(m[o].skin):'';f.title=o?m[o].name+' is in your party':'Invite to party';Game.partner(o?{name:m[o].name,skin:m[o].skin}:null)}
+{const box=$('#pslots');box.innerHTML='';const amLead=party&&party.lead==user.uid;
+const mkSlot=id=>{const el=document.createElement('div');el.className='slot'+(id?'':' empty');el.innerHTML='<i></i><b></b><small></small>';const ic=el.querySelector('i');
+ if(id){ic.style.background=hx(m[id].skin);bustBg(ic,m[id].skin);el.querySelector('b').textContent=m[id].name+(id==user.uid?' (you)':'');el.querySelector('small').textContent=id==party.lead?'👑 LEADER':'MEMBER';
+  if(amLead&&id!=user.uid){const a=document.createElement('div');a.className='pact';a.innerHTML='<button data-k="lead" title="Make leader">👑</button><button data-k="kick" title="Remove from party">✕</button>';a.dataset.u=id;el.appendChild(a)}}
+ else{ic.className='em';ic.textContent='+';el.querySelector('b').textContent='Open slot'}return el};
+ids.forEach(id=>box.appendChild(mkSlot(id)));if(party&&ids.length<PARTY_MAX)box.appendChild(mkSlot(null));
+const pc=$('#pcount');if(pc)pc.textContent=party?ids.length+' / '+PARTY_MAX+' players':'';
+const md=CFG.mode,chk=party&&ids.length>1?partyCheck(md,ids.length):null,pr=$('#prule');if(pr){pr.style.display=chk?'block':'none';pr.className='prule '+(chk&&chk.ok?'ok':'bad');pr.textContent=chk?(chk.ok?modeOf(md).n+': '+({solo:'everyone plays on their own',queue:'your party queues together',private:'private match – your party fills both sides',room:'your party joins the same room'}[chk.kind]||'ready'):'⚠ '+chk.why):''}}
+const o=ids.find(i=>i!=user.uid),f=$('#friend');f.classList.toggle('has',!!o);f.textContent=ids.length>2?String(ids.length):o?m[o].name.slice(0,2).toUpperCase():'+';f.style.background=o?hx(m[o].skin):'';f.title=o?(ids.length>1?ids.length+' players in your party':'')+'':'Invite to party';Game.partner(o?{name:m[o].name,skin:m[o].skin}:null)}
 function dropParty(){const p=pOff;pOff=null;party=null;p&&p();pui()}
-function attach(code,lead){const r=db.ref('parties/'+code),inv=db.ref('invites/'+user.uid),me=r.child('m/'+user.uid);let n=0;
+function attach(code,lead){const r=db.ref('parties/'+code),inv=db.ref('invites/'+user.uid),me=r.child('m/'+user.uid);let n=0,last=null;
 if(lead)r.onDisconnect().remove();else me.onDisconnect().remove();
-r.on('value',s=>{const v=s.val();if(!v||!(v.m||{})[user.uid]){if(party&&party.code===code){if(qStop){qStop();menu()}dropParty();toast('Party closed')}return}
+r.on('value',s=>{const v=s.val();if(!v||!(v.m||{})[user.uid]){if(party&&party.code===code){if(qStop){qStop();menu()}dropParty();toast(v?'You were removed from the party':'Party closed')}return}
+last=v;if(v.lead==user.uid&&!lead){lead=true;r.onDisconnect().remove();me.onDisconnect().cancel().catch(()=>{});toast('You are the party leader now')}else if(v.lead!=user.uid&&lead){lead=false;r.onDisconnect().cancel().catch(()=>{});me.onDisconnect().remove()}
 const was=n;n=Object.keys(v.m).length;party={code,lead:v.lead,m:v.m};
-if(was>n&&qStop){qStop();menu();toast('Your teammate left the party – search cancelled')} /* never keep searching with a roster that no longer exists */
+if(was>n&&qStop){qStop();menu();toast('A party member left – search cancelled')} /* never keep searching with a roster that no longer exists */
 pui()});
 let live=true;inv.remove().catch(()=>{}).then(()=>{if(!live)return;inv.on('value',s=>{const v=s.val();if(v&&live&&party&&party.code===code&&party.lead!=user.uid){inv.remove();$('#party').classList.remove('on');beginAny(v)}})}); /* stale invites from old matches are wiped before listening */
-pOff=()=>{live=false;r.off();inv.off();if(lead){r.onDisconnect().cancel().catch(()=>{});r.remove().catch(()=>{})}else{me.onDisconnect().cancel().catch(()=>{});me.remove().catch(()=>{})}}}
+pOff=()=>{live=false;r.off();inv.off();if(lead){r.onDisconnect().cancel().catch(()=>{});const oth=Object.keys((last&&last.m)||{}).filter(u=>u!=user.uid).sort();if(oth.length)r.update({lead:oth[0],['m/'+user.uid]:null}).catch(()=>{});else r.remove().catch(()=>{})}else{me.onDisconnect().cancel().catch(()=>{});me.remove().catch(()=>{})}}}
 const mem=()=>({name:nm(),skin:SK()});
 function partyRefresh(){if(party&&party.m[user.uid]){const m=mem(),c=party.m[user.uid];if(c.name!==m.name||c.skin!==m.skin)db.ref('parties/'+party.code+'/m/'+user.uid).set(m).catch(()=>{})}}
 const pcode=()=>{let c='';const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';for(let i=0;i<5;i++)c+=A[Math.random()*A.length|0];return c};
@@ -208,19 +216,25 @@ $('#pnew').onclick=async()=>{SFX.click();if(!conn)return toast('You are offline'
 for(let t=0;t<4;t++){const code=pcode();try{await db.ref('parties/'+code).set({lead:user.uid,m:{[user.uid]:mem()}});if(party)return;attach(code,true);return}catch(e){if(t==3)toast('Could not create party: '+(e.message||e).toString().replace('permission_denied','permission denied (publish database.rules.json)'))}}};
 async function joinParty(code){code=(code||'').toUpperCase().trim();if(code.length<4)return toast('Enter a party code');if(!conn)return toast('You are offline');if(party&&party.code===code){$('#party').classList.add('on');return}
 const r=db.ref('parties/'+code),v=(await r.once('value').catch(()=>null))?.val();
-if(!v||!v.lead)return toast('Party not found');if(!(v.m||{})[user.uid]&&Object.keys(v.m||{}).length>=2)return toast('Party is full');
+if(!v||!v.lead)return toast('Party not found');if(!(v.m||{})[user.uid]&&Object.keys(v.m||{}).length>=PARTY_MAX)return toast('Party is full ('+PARTY_MAX+' players)');
 if(party){if(qStop){qStop();menu()}dropParty()}
 try{await r.child('m/'+user.uid).set(mem())}catch(e){return toast('Could not join (party full?)')}
 attach(code,v.lead==user.uid);$('#party').classList.add('on');pui()}
+$('#pslots').onclick=e=>{const b=e.target.closest('button[data-k]');if(!b||!party||party.lead!=user.uid)return;const u=b.parentNode.dataset.u,r=db.ref('parties/'+party.code);SFX.click();
+if(b.dataset.k=='kick')r.child('m/'+u).remove().catch(()=>toast('Could not remove (publish database.rules.json)'));else r.child('lead').set(u).catch(()=>toast('Could not hand over (publish database.rules.json)'))};
 $('#pjoin').onclick=()=>{SFX.click();joinParty($('#pcode').value)};
 $('#pcopy').onclick=()=>{SFX.click();const l=location.origin.replace('null','')+location.pathname+'?party='+party.code;(navigator.clipboard?navigator.clipboard.writeText(l):Promise.reject()).then(()=>toast('Invite link copied!'),()=>prompt('Copy this invite link',l))};
 $('#pleave').onclick=()=>{SFX.click();if(qStop){qStop();menu()}dropParty();toast('Left party')};
 $('#friend').onclick=()=>{SFX.click();pui();$('#party').classList.add('on')};
-function go(){const duo=!!party&&Object.keys(party.m).length>1,md=CFG.mode;
-if(md=='1v1'){if(duo){if(party.lead!=user.uid)return toast('Waiting for the party leader to press Play');return pmatch('1v1')}return find()}
-if(duo&&party.lead!=user.uid)return toast('Waiting for the party leader to press Play');
-if(modeOf(md).room)return joinRoom(md,duo?Object.keys(party.m).find(i=>i!=user.uid):null);
-return findN(md,duo?Object.keys(party.m):[user.uid])}
+function go(){const uids=party?Object.keys(party.m):[user.uid],n=uids.length,duo=n>1,md=CFG.mode;
+if(md=='trainer')return beginTrainer(CFG.tdrill||'grid');
+if(duo){const pc=partyCheck(md,n);if(!pc.ok)return toast(pc.why);if(party.lead!=user.uid)return toast('Waiting for the party leader to press Play');
+ if(pc.kind=='private')return md=='1v1'?pmatch('1v1'):pmatchN(md);
+ if(pc.kind=='room')return joinRoom(md,uids.filter(i=>i!=user.uid));
+ return findN(md,uids)}
+if(md=='1v1')return find();
+if(modeOf(md).room)return joinRoom(md,null);
+return findN(md,[user.uid])}
 /* ---- team / free-for-all matchmaking (2v2, 3v3, Box Fights, Zone Wars). lobby2/q holds waiting groups (1 solo player or a 2-player party) tagged with their mode.
    Whoever arrives and completes a valid match (right player count, groups splittable into two equal teams) creates it and writes an invite with the full roster for everyone else.
    There is a bot fallback for every mode (button after 1s, automatic when nobody else is online). ---- */
@@ -229,22 +243,21 @@ if(A.length+g.length<=S){A.push(...g);if(go(i+1))return true;A.length-=g.length}
 return go(0)?[A,B]:null}
 function planT(mine,others,S){const need=S*2;let out=null;const dfs=(i,tot,ch)=>{if(out)return;if(tot==need){const t=packT(ch.slice().sort((a,b)=>b.m.length-a.m.length),S);if(t)out={ch:ch.slice(),teams:t};return}
 if(i>=others.length||tot>need)return;ch.push(others[i]);dfs(i+1,tot+others[i].m.length,ch);ch.pop();dfs(i+1,tot,ch)};dfs(0,mine.m.length,[mine]);return out}
-async function findN(md,uids){const M=modeOf(md);if(!conn){toast('Offline – starting a practice match with bots');return beginBot(md)}
+async function findN(md,uids){const M=modeOf(md);if(!conn){toast('You are offline – '+M.n+' needs real players (bots only play 1v1)');return menu()}
 show('queue');$('#qtxt').textContent='Searching for a '+M.n+' match…';$('#qbot').style.display='none';
 const me=user.uid,q=db.ref('lobby2/q'),mine=q.child(me),inv=db.ref('invites/'+me),duo=uids.length>1;let hb,tm,done=0,formed=null,sec=0;
 const mem=uids.map(u=>u==me?{u,n:nm(),s:SK()}:{u,n:party.m[u].name,s:party.m[u].skin});
 /* everything this search started lives in these two functions: stop() cleans it ALL up (timers, listeners, queue entry) and can run any number of times */
 const stop=()=>{done=1;clearInterval(hb);clearInterval(tm);inv.off();$('#qbot').style.display='none';mine.onDisconnect().cancel().catch(()=>{});mine.remove().catch(()=>{});if(qStop===stop)qStop=null;if(qBot===toBot)qBot=null};
 const toBot=()=>{if(done)return;stop();beginBot(md)};
-qStop=stop;qBot=duo?null:toBot;
-tm=setInterval(()=>{if(done)return;sec++;const others=Math.max(0,online-1);$('#qtxt').textContent=`Searching for a ${M.n} match${duo?' as a duo':''}… ${sec}s · ${others} other player${others==1?'':'s'} online`;
-if(sec>=1&&!duo)$('#qbot').style.display='block';
-if(!duo&&((others==0&&sec>=3)||sec>=20)){$('#qtxt').textContent='Not enough players – starting a match with bots…';toBot()}
-if(duo&&sec>=90){stop();menu();toast('No '+M.n+' match found for your duo – try again or pick another mode')}},1000);
+qStop=stop;qBot=null;
+tm=setInterval(()=>{if(done)return;sec++;const others=Math.max(0,online-1);$('#qtxt').textContent=`Searching for a ${M.n} match${duo?' with your party':''}… ${sec}s · ${others} other player${others==1?'':'s'} online`;
+
+if(duo&&sec>=90){stop();menu();toast('No '+M.n+' match found for your party – try again or pick another mode')}},1000);
 try{await Promise.race([inv.remove().catch(()=>{}),new Promise(r=>setTimeout(r,2500))]);if(done)return;
 let r=null;for(let t=0;t<4&&!done;t++){
 r=await q.transaction(cur=>{const t=now(),Q={};formed=null;
-for(const k in cur||{}){const e=cur[k];if(k!==me&&e&&Array.isArray(e.m)&&e.m.length&&e.m.length<3&&t-e.t<20000)Q[k]=e} /* stale / broken entries are dropped here */
+for(const k in cur||{}){const e=cur[k];if(k!==me&&e&&Array.isArray(e.m)&&e.m.length&&e.m.length<4&&t-e.t<20000)Q[k]=e} /* stale / broken entries are dropped here */
 const keys=Object.keys(Q).filter(k=>(Q[k].md||'2v2')==md).sort((a,b)=>Q[a].t-Q[b].t),others=keys.map(k=>({k,m:Q[k].m})),mineG={k:me,m:mem};
 if(M.ffa){let tot=mem.length;const pick=[mineG];for(const o of others){if(tot+o.m.length<=M.max){pick.push(o);tot+=o.m.length}}
  if(tot>=M.min){formed={ffa:pick.map(o=>o.m)};pick.forEach(o=>{if(o.k!==me)delete Q[o.k]});return Object.keys(Q).length?Q:null}}
@@ -259,7 +272,9 @@ await Promise.all(ros.filter(p=>p.u!==me).map(p=>db.ref('invites/'+p.u).set({mid
 if(done)return;return begin2(mid,ros,md)}
 mine.onDisconnect().remove();hb=setInterval(()=>mine.transaction(c=>c?{...c,t:now()}:undefined).catch(()=>{}),8000);
 inv.on('value',s=>{const v=s.val();if(v&&!done){inv.remove();beginAny(v)}})}
-catch(e){if(done)return;stop();if(!duo){toast('Matchmaking unavailable – starting a bot match');return beginBot(md)}menu();toast('Matchmaking error: '+String(e.message||e).replace('permission_denied','permission denied (publish database.rules.json)'))}}
+catch(e){if(done)return;stop();menu();toast('Matchmaking error: '+String(e.message||e).replace('permission_denied','permission denied (publish database.rules.json)'))}}
+async function pmatchN(md){const ids=Object.keys(party.m).sort((a,b)=>(a==party.lead?-1:0)-(b==party.lead?-1:0)||(a<b?-1:1)),ros=ids.map((u,i)=>({u,n:u==user.uid?nm():party.m[u].name,s:u==user.uid?SK():party.m[u].skin,t:i%2})),mid=ros.map(p=>p.u).join('_')+'_'+now();
+try{await db.ref('matches/'+mid+'/meta').set({a:ros[0].u,b:ros[1].u});await Promise.all(ros.filter(p=>p.u!==user.uid).map(p=>db.ref('invites/'+p.u).set({mid,ros,md,t:now()})));begin2(mid,ros,md)}catch(e){toast(e.message)}}
 async function pmatch(md){const o=Object.keys(party.m).find(i=>i!=user.uid),mid=`${user.uid}_${o}_${now()}`;try{await db.ref('matches/'+mid+'/meta').set({a:user.uid,b:o});await db.ref('invites/'+o).set({mid,uid:user.uid,name:nm(),skin:SK(),md,t:now()});begin(mid,o,party.m[o].name,party.m[o].skin,null,false,md)}catch(e){toast(e.message)}}
 
 /* ---- open rooms (Box Fights, Zone Wars): 100 rounds, people join and leave any time, no bots.
@@ -283,7 +298,7 @@ try{const r=await db.ref('rooms/'+md).transaction(cur=>{pick=null;const t=now(),
  if(done){if(r&&r.committed&&pick)db.ref(`rooms/${md}/${pick.rid}/m/${me}`).remove().catch(()=>{});return}
  if(!r.committed||!pick)throw new Error('busy');
  held=roomHold(md,pick.rid);
- if(partner)await db.ref('invites/'+partner).set({mid:pick.mid,rid:pick.rid,md,room:1,t:now()}).catch(()=>{});
+ if(partner)await Promise.all([].concat(partner).map(u=>db.ref('invites/'+u).set({mid:pick.mid,rid:pick.rid,md,room:1,t:now()}).catch(()=>{})));
  if(done)return;
  const off=held,rid=pick.rid;held=null; /* the game owns the membership from here on */
  begin(pick.mid,null,null,null,null,false,md,{md,rid,off,close:()=>db.ref(`rooms/${md}/${rid}`).remove().catch(()=>{})})}

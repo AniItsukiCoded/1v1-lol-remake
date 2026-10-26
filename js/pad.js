@@ -21,7 +21,7 @@ const btnLabel=i=>i<4?FACE[INPUT.type][i]:(BN[INPUT.type]||BN.xbox)[i]||('B'+i);
 /* in-match layout. Two layers: the normal one and the BUILD layer (while a build piece is selected) */
 const LAYOUT={
  move:'Left stick',look:'Right stick',
- shoot:[7],aim:[6],jump:[0],reload:[2],build:[1],wnext:[3],sprint:[10],view:[11],edit:[5],mat:[4],map:[8],pause:[9],
+ shoot:[7],aim:[6],jump:[0],reload:[2],build:[1],wnext:[3],sprint:[10],crouch:[11],edit:[5],mat:[4],map:[8],pause:[9],
  w1:[12],w2:[15],pick:[13],
  wall:[12],floor:[15],ramp:[13],roof:[14],
  specP:[4,14],specN:[5,15]};
@@ -29,7 +29,7 @@ LAYOUT.buildOn=LAYOUT.build;
 INPUT.label=a=>{const b=LAYOUT[a];if(!b||typeof b=='string')return b||'';return b.map(btnLabel).slice(0,1).join('')};
 INPUT.layout=()=>{const sw=cfg('pswap',0)==1,bj=cfg('play',0)==1,J=bj?4:0,MT=bj?0:4;return[
  ['Move',sw?'Right stick':LAYOUT.move],['Look / aim',sw?'Left stick':'Right stick'],['Fire · place piece',btnLabel(7)],['Aim down sights',btnLabel(6)+' (build: cycle material)'],['Jump',btnLabel(J)],['Reload',btnLabel(2)],
- ['Build mode on / off',btnLabel(1)],['Next weapon',btnLabel(3)],['Sprint',btnLabel(10)],['First / third person',btnLabel(11)],['Edit (hold, release to confirm)',btnLabel(5)],['Cycle material',btnLabel(MT)],['Map (Zone Wars)',btnLabel(8)],['Pause',btnLabel(9)],
+ ['Build mode on / off',btnLabel(1)],['Next weapon',btnLabel(3)],['Sprint',btnLabel(10)],['Crouch / slide',btnLabel(11)],['Edit (hold, release to confirm)',btnLabel(5)],['Cycle material',btnLabel(MT)],['Map (Zone Wars)',btnLabel(8)],['Pause',btnLabel(9)],
  ['Weapons',btnLabel(12)+' shotgun · '+btnLabel(15)+' rifle · '+btnLabel(13)+' pickaxe'],['Build pieces (build mode)',btnLabel(12)+' wall · '+btnLabel(15)+' floor · '+btnLabel(13)+' stairs · '+btnLabel(14)+' roof'],['Spectate',btnLabel(4)+' / '+btnLabel(5)+' switch player · '+btnLabel(0)+' view']]};
 INPUT.layoutMap=LAYOUT;
 /* ---------- device switching ---------- */
@@ -78,7 +78,7 @@ function back(){const root=layer();const c=root.querySelector&&root.querySelecto
  if(root.id==='pause'){const r=document.getElementById('pres');r&&r.click();return}if(root.classList&&root.classList.contains('screen')&&root.id==='end'){const h=document.getElementById('home');h&&h.click()}}
 function tab(dir){const root=layer();const st=root.querySelector&&root.querySelector('#stabs');if(st&&vis(st)){const b=[...st.querySelectorAll('button')];let i=b.findIndex(e=>e.classList.contains('on'));i=(i+dir+b.length)%b.length;b[i].click();return true}const t=[...root.querySelectorAll('.tab,.t2,.seg button')].filter(vis);if(t.length<2)return false;let i=t.findIndex(e=>e.classList.contains('on'));i=(i+dir+t.length)%t.length;t[i].click();return true}
 let rsT=0;
-function menuNav(now){const dz=.55;let dx=0,dy=0;
+function menuNav(now){if(window.PADCAP)return;const dz=.55;let dx=0,dy=0;
  if(Math.abs(S.ry)>.6&&now>rsT&&layer().id==='menu'){rsT=now+500;document.dispatchEvent(new CustomEvent('menuscroll',{detail:S.ry>0?1:-1}))} /* right stick down / up = scroll the lobby (game modes) */
  if(S.b[14]||S.lx<-dz)dx=-1;else if(S.b[15]||S.lx>dz)dx=1;if(S.b[12]||S.ly<-dz)dy=-1;else if(S.b[13]||S.ly>dz)dy=1;
  const d=dx||dy?dx+','+dy:null;
