@@ -10,7 +10,7 @@ const ACT=[ /* id, label, group, [primary, alt] defaults */
 ['w1','Shotgun','Weapons',['Digit1','']],['w2','Assault rifle','Weapons',['Digit2','']],['pick','Pickaxe','Weapons',['KeyF','']],
 ['wall','Build wall','Building',['KeyZ','']],['floor','Build floor','Building',['KeyX','']],['ramp','Build stairs','Building',['KeyC','']],['roof','Build roof','Building',['KeyV','']],
 ['build','Build mode (on / off)','Building',['KeyQ','']],['turnL','Quick turn left 90° (building)','Building',['','']],['turnR','Quick turn right 90° (building)','Building',['','']],['edit','Edit mode','Building',['KeyG','']],['mat','Cycle material','Building',['KeyT','Mouse1']],['mw','Wood','Building',['Digit4','']],['mb','Brick','Building',['Digit5','']],['mm','Metal','Building',['Digit6','']],
-['view','First / third person','Other',['KeyB','']],['music','Toggle music','Other',['KeyM','']],['map','Map (Zone Wars)','Other',['KeyN','']],['score','Scoreboard (kills / damage / K-D)','Other',['Tab','']],['specN','Spectate: next player','Other',['ArrowRight','']],['specP','Spectate: previous player','Other',['ArrowLeft','']]];
+['view','First / third person','Other',['KeyB','']],['music','Toggle music','Other',['KeyM','']],['map','Map (Zone Wars)','Other',['KeyN','']],['score','Scoreboard (kills / damage / K-D)','Other',['Tab','']],['specN','Spectate: next player','Other',['ArrowRight','']],['specP','Spectate: previous player','Other',['ArrowLeft','']],['admin','Admin menu (owners only)','Admin',['KeyY','']]];
 const DEF={};ACT.forEach(a=>DEF[a[0]]=a[3]);
 const OK=/^(Mouse[0-6]|[A-Za-z][A-Za-z0-9]{1,19})$/,NONE=[];
 const NAMES={Space:'Space',ShiftLeft:'L-Shift',ShiftRight:'R-Shift',ControlLeft:'L-Ctrl',ControlRight:'R-Ctrl',AltLeft:'L-Alt',AltRight:'R-Alt',ArrowUp:'↑',ArrowDown:'↓',ArrowLeft:'←',ArrowRight:'→',Backquote:'`',Minus:'-',Equal:'=',BracketLeft:'[',BracketRight:']',Semicolon:';',Quote:"'",Comma:',',Period:'.',Slash:'/',Backslash:'\\',CapsLock:'Caps',Tab:'Tab',Enter:'Enter',Backspace:'⌫'};
@@ -37,7 +37,7 @@ function cm(e){e.preventDefault()}
 function click(a,i){if(window.SFX)SFX.click();if(L&&L.a===a&&L.i===i){assign('Mouse0');return}
 stop();L={a,i};busy=true;addEventListener('keydown',kd,true);addEventListener('mousedown',md,true);addEventListener('contextmenu',cm,true);clearTimeout(cmT);render()}
 function render(){if(!host)return;host.textContent='';let grp='';
-ACT.forEach(([a,lab,g])=>{if(g!==grp){grp=g;const h=document.createElement('div');h.className='kg';h.textContent=g;host.appendChild(h)}
+ACT.forEach(([a,lab,g])=>{if(g==='Admin'&&!(typeof EV!='undefined'&&EV.owner&&EV.owner()))return;if(g!==grp){grp=g;const h=document.createElement('div');h.className='kg';h.textContent=g;host.appendChild(h)}
 const r=document.createElement('div');r.className='kr';const s=document.createElement('span');s.textContent=lab;r.appendChild(s);
 get(a).forEach((c,i)=>{const on=!!L&&L.a===a&&L.i===i,b=document.createElement('button');b.type='button';b.className='kb'+(on?' on':'')+(!c&&!on?' em':'');b.title=i?'Alternative key':'Main key';b.textContent=on?'Press a key…':label(c)||'—';b.onclick=()=>click(a,i);r.appendChild(b)});host.appendChild(r)})}
 function build(el,resetBtn){host=el;if(resetBtn)resetBtn.onclick=()=>{if(window.SFX)SFX.click();reset();if(window.toast)toast('Controls reset to default')};render()}

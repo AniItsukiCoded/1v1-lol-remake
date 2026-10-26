@@ -205,7 +205,7 @@ $('#lpass').onclick=$('#bpb').onclick=()=>{SFX.click();renderBp()};$('#hpass').o
 setInterval(()=>{if(user)refresh()},30000);
 function welcome(){if(on()&&!E.seen){E.seen=1;saveCfg();reveal({kind:'🎃 EVENT STARTED',ico:'🎃',col:0xa030ff,name:EVT.title,rar:'mythic',sub:'Collect 🍬 · Quests · Spooky Pass · Boxes',btn:'SEE EVENT',go:'ev'})}}
 /* ---------- admin / owner hooks (used by admin.js + main.js) ---------- */
-function setOwner(b,known){OWNER=!!b;KNOWN=known!==false;fix();
+function setOwner(b,known){OWNER=!!b;KNOWN=known!==false;fix();try{window.CTL&&CTL.refresh()}catch(_){}
 if(OWNER&&user)db.ref(EVT.lb+'/lb/'+user.uid).remove().catch(()=>{}); /* owners are not on the leaderboards: drop any entry they already had */
 saveCfg();refresh()}
 const lim=(v,a,b)=>Math.max(a,Math.min(b,Math.floor(+v)||0));
@@ -215,5 +215,8 @@ const admin={
  addXp(n){CFG.xp+=lim(n,0,1e7);saveCfg();ui()},
  resetDaily(){E.d={day:'',s:{},c:[]};E.tday='';CFG.dly=0;saveCfg();ui()},
  /* a gift sent by an admin from the panel (claimed from the gifts/<uid> inbox) */
- gift(g){const c=lim(g.candy,0,1e7),o=lim(g.coins,0,1e7),k=lim(g.keys,0,1000);E.candy+=c;CFG.coins+=o;E.keys+=k;saveCfg();ui();return{c,o,k}}};
+ gift(g){const c=lim(g.candy,0,1e7),o=lim(g.coins,0,1e7),k=lim(g.keys,0,1000),x=lim(g.xp,0,1e7),rk=!!g.rank&&c>0;E.candy+=c;CFG.coins+=o;E.keys+=k;CFG.xp+=x;
+ /* rank = the candy also counts as collected: ranked total (leaderboard) + today's board. Without it the candy is only spendable. */
+ if(rk){if(E.dl.k!=utcKey())E.dl={k:utcKey(),c:0};E.dl.c+=c;E.tot+=c}
+ saveCfg();ui();if(rk)syncLB();return{c,o,k,x,rk}}};
 return{on,ui:refresh,owner:()=>OWNER,setOwner,admin,locker,candy,afkCandy,round,matchStart,matchDone,welcome,openEvent,sync:()=>syncLB(1),reload:()=>{norm();rollDay();refresh()}}})();

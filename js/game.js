@@ -29,27 +29,29 @@ const UBOX=new T.BoxGeometry(1,1,1),SPG=new T.BoxGeometry(.1,.1,.1),CPG=new T.Sp
 /* ================= GRAPHICS QUALITY: 0 Anti-Lag · 1 Low · 2 Normal (the original look) · 3 Higher =================
    pr render-scale cap, ss super-sampling multiplier of the device pixel ratio, aa anti-aliasing (applies after a reload), sh/shs shadows + map size, se shadow refresh every N frames,
    dec scenery detail 0/1/2, fx particle multiplier (0 = none), cas shell casings, fl muzzle flashes, flat = grey untextured world */
-const QNAMES=['Lowest','Low','Normal','Higher'];
+const QNAMES=['Performance','Balanced','Normal','Higher'];
 const QL=()=>{const q=window.CFG&&CFG.gq!=null&&Number.isFinite(+CFG.gq)?Math.round(+CFG.gq):2;return Math.max(0,Math.min(3,q))};
+/* the lower presets keep the SAME picture (same colours, textures, scenery, sky, effects): they only lighten invisible work (shadow refresh rate, shadow map size,
+   particle counts, shell casings) and cap the resolution at native 1x. Nothing is ever rendered below native resolution. */
 const QT=q=>[
-{pr:.5,ss:1,aa:false,sh:false,shs:512,shT:T.BasicShadowMap,se:3,dec:0,fx:0,cas:false,fl:false,flat:true},
-{pr:.8,ss:1,aa:false,sh:true,shs:1024,shT:T.BasicShadowMap,se:3,dec:1,fx:.4,cas:false,fl:true,flat:false},
+{pr:1,ss:1,aa:false,sh:true,shs:1024,shT:T.BasicShadowMap,se:3,dec:2,fx:.6,cas:false,fl:true,flat:false},
+{pr:1.25,ss:1,aa:false,sh:true,shs:2048,shT:T.PCFShadowMap,se:2,dec:2,fx:.85,cas:false,fl:true,flat:false},
 {pr:2,ss:1,aa:true,sh:true,shs:2048,shT:T.PCFShadowMap,se:1,dec:2,fx:1,cas:true,fl:true,flat:false},
 {pr:2.5,ss:1.5,aa:true,sh:true,shs:4096,shT:T.PCFSoftShadowMap,se:1,dec:2,fx:1.5,cas:true,fl:true,flat:false}][Math.max(0,Math.min(3,q|0))];
 let Qs=QT(QL()),dynS=1,fAvg=16.7,fT0=0,fLow=0,fHi=0,dynX=0;
 /* lite mode (Chromebooks, <=4 cores / <=4GB, or Anti-Lag/Low): no CSS blur, no endless background animations, 30fps lobby */
-const isLite=()=>!!window.LITE||QL()<2;
+const isLite=()=>!!window.LITE;
 /* dynamic resolution: if the GPU can't hold ~50fps the render scale steps down (and back up when there is headroom) instead of stuttering */
 const prNow=()=>Math.min(Qs.pr,(devicePixelRatio||1)*Qs.ss);
 function setPR(){R.setPixelRatio(prNow()*dynS);R.setSize(innerWidth,innerHeight)}
 function dynStep(){/* last resorts once the render scale is at its floor: refresh shadows less often, then drop casings / halve particles */
 if(dynX==0&&Qs.sh&&Qs.se<2){dynX=1;Qs.se=2;R.shadowMap.autoUpdate=false;R.shadowMap.needsUpdate=true}
 else if(dynX<2){dynX=2;if(Qs.sh)Qs.se=4;Qs.fx*=.5;Qs.cas=false;R.shadowMap.autoUpdate=false}}
-const dynOn=()=>{const v=window.CFG&&CFG.dynres;return v==null?!!window.LITE:!!+v}; /* dynamic resolution is OFF unless you turn it on (or the device is weak): it re-allocated the canvas = freezes, and it lowered quality */
+const dynOn=()=>false; /* dynamic resolution is OFF unless you turn it on (or the device is weak): it re-allocated the canvas = freezes, and it lowered quality */
 function adapt(raw,now){if(!dynOn())return;if(raw>250||document.hidden||now-startT<3500){fLow=fHi=0;return}fAvg+=(raw-fAvg)*.05;if(now-fT0<2500)return;
 if(fAvg>21&&(dynS>.6||dynX<2)){if(++fLow>20){if(dynS>.6)dynS=Math.max(.6,+(dynS-.15).toFixed(2));else dynStep();fT0=now;fLow=0;fAvg=16.7;setPR()}}else fLow=0;
 if(fAvg<13.5&&dynS<1){if(++fHi>240){dynS=Math.min(1,+(dynS+.1).toFixed(2));fT0=now;fHi=0;setPR()}}else fHi=0}
-const QDESC=['Potato mode: grey untextured world, no shadows, no particles, muzzle flashes or special effects, low resolution. Highest FPS (turn on Anti-Lag instead if you only want less lag without losing quality).','Reduced resolution and scenery, small shadows, few particles. Smooth on weak devices.','The standard look: full resolution, shadows, anti-aliasing, all scenery and effects.','Super-sampled resolution, sharp soft shadows, anti-aliasing and extra particles. Needs a strong GPU.'];
+const QDESC=['Same picture, lighter on the GPU: native resolution, smaller shadows refreshed less often, fewer particles, no shell casings.','Same picture with a slightly lower resolution cap, shadows refreshed every other frame and a few less particles.','The standard look: full resolution, shadows, anti-aliasing, all scenery and effects.','Super-sampled resolution, sharp soft shadows, anti-aliasing and extra particles. Needs a strong GPU.'];
 const qinfo=q=>QDESC[Math.max(0,Math.min(3,q|0))];
 function applyQ(first){const q=QL();Qs=QT(q);dynS=1;dynX=0;document.body.classList.toggle('lite',isLite());FLASH=Qs.fl;R.setPixelRatio(prNow());if(!first)rs();
 const mode=(Qs.sh?1:0)+'|'+Qs.shT;if(mode!==shMode){shMode=mode;R.shadowMap.enabled=!!Qs.sh;R.shadowMap.type=Qs.shT;[sc,LS].forEach(s=>s&&s.traverse(o=>{const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>x.needsUpdate=true)}))}
@@ -87,7 +89,7 @@ const TCH=()=>!!window.TOUCH,PADM=()=>!!window.INPUT&&INPUT.dev==='pad',FREE=()=
 const hold=()=>run&&R&&(FREE()?!paused():document.pointerLockElement===R.domElement);
 const lock=()=>{if(!(run&&R))return;if(FREE()){S.hadLock=1;$('#resume').style.display='none';$('#pause').classList.remove('on');for(const k in K)K[k]=0}else R.domElement.requestPointerLock()};
 function trig(a,rep){switch(a){case 'map':if(!rep)toggleMap();break;case 'wnext':if(!rep&&!S.dead)selectW((S.w+1)%WEAPONS.length);break;case 'reload':reload();break;case 'music':if(!rep)SFX.music();break;case 'wall':case 'floor':case 'ramp':case 'roof':if(!rep)setBuild(a);break;case 'build':if(!rep){if(buildT)exitBuild();else setBuild(lastPiece)}break;case 'mat':if(!rep)cycleMat();break;case 'turnL':if(!rep)turnQ(1);break;case 'turnR':if(!rep)turnQ(-1);break;case 'view':if(!rep&&window.CFG){CFG.fp=!CFG.fp;if(typeof saveCfg=='function')saveCfg();const e=document.getElementById('fpv');if(e)e.checked=!!CFG.fp;feed(CFG.fp?'First-person view':'Third-person view')}break;case 'mw':case 'mb':case 'mm':if(!rep)pickMat({mw:0,mb:1,mm:2}[a]);break;
-case 'edit':if(!rep&&!EDIT)startEdit();break;case 'score':if(!rep&&sbOk()){if(sbToggle())sbSet(!sbOn);else sbSet(1)}break;case 'pick':selectW(PICK);break;case 'w1':selectW(0);break;case 'w2':selectW(1);break}}
+case 'edit':if(!rep&&!EDIT)startEdit();break;case 'score':if(!rep&&sbOk()){if(sbToggle())sbSet(!sbOn);else sbSet(1)}break;case 'pick':selectW(PICK);break;case 'w1':selectW(0);break;case 'w2':selectW(1);break;case 'admin':if(!rep&&typeof ADM!='undefined'&&ADM.owner())ADM.game();break}}
 function specKey(a,rep){if(phase=='ended')return false;if(a=='shoot'||a=='right'||a=='specN'){if(!rep&&hold())specStep(1);return true}if(a=='aim'||a=='left'||a=='specP'){if(!rep&&hold())specStep(-1);return true}return false}
 function down(a,rep){if(S.dead&&run&&specKey(a,rep))return;if(a=='shoot'){if(hold())K.shoot=1;return}
 if(a=='aim'){if(rep||!hold())return;if(EDIT)EDIT.mask=EDIT.mask?0:EDIT.orig;else if(buildT)cycleMat();else if(window.CFG&&CFG.adsm=='toggle'){K.aim=K.aim?0:1}else K.aim=1;return}
@@ -129,10 +131,10 @@ addEventListener('blur',()=>{for(const k in K)K[k]=0;S.lat=0;if(!sbToggle())sbSe
 addEventListener('wheel',e=>{if(TCH()||!run||document.pointerLockElement!=R.domElement)return;selectW((S.w+(e.deltaY>0?1:-1)+WEAPONS.length)%WEAPONS.length)},{passive:true});
 addEventListener('contextmenu',e=>{if(run)e.preventDefault()});
 addEventListener('mousemove',e=>{if(TCH()||!run||document.pointerLockElement!=R.domElement)return;const bd=!!(buildT||EDIT),lim=bd?2400:350;if(Math.abs(e.movementX)>lim||Math.abs(e.movementY)>lim)return;const k=.0024*(window.CFG?CFG.sens:1)*(cam.fov/75)*(bd?(EDIT?cfp('esens',100):cfp('bsens',100))/100:1);yaw-=e.movementX*k;pitch=Math.max(-PMAX,Math.min(PMAX,pitch-e.movementY*k))});
-addEventListener('mousedown',e=>{if(TCH()||!run||CTL.busy)return;if(e.target.closest&&e.target.closest('#pause,.modal,#mvote'))return;if(VOTE&&!VOTE.done)return;if(document.pointerLockElement!=R.domElement){R.domElement.requestPointerLock();return}
+addEventListener('mousedown',e=>{if(TCH()||!run||CTL.busy)return;if(e.target.closest&&e.target.closest('#pause,.modal,#mvote,#gadm'))return;if(VOTE&&!VOTE.done)return;if(document.pointerLockElement!=R.domElement){R.domElement.requestPointerLock();return}
 const as=CTL.acts('Mouse'+e.button);if(as.length&&(e.button===1||e.button>2))e.preventDefault();as.forEach(a=>down(a,false))});
 addEventListener('mouseup',e=>{for(const a of CTL.acts('Mouse'+e.button))up(a)});
-document.addEventListener('pointerlockchange',()=>{if(!run||(VOTE&&!VOTE.done))return;const l=!!document.pointerLockElement;if(l){S.hadLock=1;$('#resume').style.display='none';$('#pause').classList.remove('on')}
+document.addEventListener('pointerlockchange',()=>{if(!run||(VOTE&&!VOTE.done)||window.ADMOPEN)return;const l=!!document.pointerLockElement;if(l){S.hadLock=1;$('#resume').style.display='none';$('#pause').classList.remove('on')}
 else{for(const k in K)K[k]=0;if(!sbToggle())sbSet(0);if(FREE())return;if(S.hadLock&&phase!='ended'){$('#pause').classList.add('on');$('#pconf').style.display='none';$('#pbtns').style.display='block'}else $('#resume').style.display='grid'}});
 document.addEventListener('pointerlockerror',()=>{if(run&&!FREE()&&!document.pointerLockElement&&S.hadLock)setTimeout(()=>{if(run&&!document.pointerLockElement)R.domElement.requestPointerLock()},500)});
 document.addEventListener('visibilitychange',()=>{const n=performance.now();RP.forEach(r=>{if(r.t)r.t=n})});
@@ -563,10 +565,10 @@ else if(b.fl>0){b.fl=Math.max(0,b.fl-dt*5);b.mat.emissiveIntensity=.5*b.fl}}}
 function applyEdit(b,mask){mask=(mask|0)&511;if(!b||b.mask==mask||mask==511||(b.t!='wall'&&b.t!='floor'))return;dropParts(b);SUP.dirty=1;b.mask=mask;makePiece(b);freezePiece(b.g)}
 /* ---- placement ---- */
 let yawV=0,lyaw=null,tqT=0,tqA=0;const bAs=()=>!window.CFG||CFG.bassist!=0;
-const dirIdx=()=>{const ya=buildT&&bAs()?yaw+Math.max(-.45,Math.min(.45,yawV*.06)):yaw,fx=-Math.sin(ya),fz=-Math.cos(ya);return Math.abs(fx)>Math.abs(fz)?(fx>0?1:3):(fz>0?2:0)}; /* 0 = -z, 1 = +x, 2 = +z, 3 = -x */
+const dirIdx=()=>{const qt=tqT>0?tqA*(tqT/.09):0,ya=(buildT&&bAs()?yaw+Math.max(-.45,Math.min(.45,yawV*.06)):yaw)+qt,fx=-Math.sin(ya),fz=-Math.cos(ya);return Math.abs(fx)>Math.abs(fz)?(fx>0?1:3):(fz>0?2:0)}; /* 0 = -z, 1 = +x, 2 = +z, 3 = -x */
 /* what is under you: your tile, the level of your feet and, if you stand on stairs, which stairs and how far up (f 0..1) */
 function stand(){const cx=Math.round(P.x/GRID)*GRID,cz=Math.round(P.z/GRID)*GRID;let rp=null,rh=0;
-for(const r of RPL){if(r.x!==cx||r.z!==cz)continue;const h=rampH(r,P,0);if(h!=null&&P.y>=h-.8&&P.y<=h+2.4&&(!rp||r.y0>rp.y0)){rp=r;rh=h}}
+for(const r of RPL){if(r.x!==cx||r.z!==cz)continue;const h=rampH(r,P,0);if(h!=null&&P.y>=h-.45&&P.y<=h+.75&&(!rp||Math.abs(P.y-h)<Math.abs(P.y-rh))){rp=r;rh=h}}
 const L=Math.max(0,Math.floor((P.y+.6)/LVL));return{cx,cz,yb:L*LVL,rp,f:rp?(rh-rp.y0)/LVL:0}}
 /* where the crosshair points: the first thing the aim ray (same ray the bullets use) touches -- map, built pieces or the ground -- plus the face normal. */
 function aimHit(){const d=dirv(),o=camP.clone().addScaledVector(d,camD+.3),mx=60;let L=mx,bx=null,gr=0;
@@ -576,7 +578,7 @@ const h=o.clone().addScaledVector(d,L);let n=null;
 if(gr)n=[0,1,0];else if(bx){const y0=bx.y0||0,e=[[Math.abs(h.x-(bx.x-bx.w/2)),[-1,0,0]],[Math.abs(h.x-(bx.x+bx.w/2)),[1,0,0]],[Math.abs(h.z-(bx.z-bx.d/2)),[0,0,-1]],[Math.abs(h.z-(bx.z+bx.d/2)),[0,0,1]],[Math.abs(h.y-bx.h),[0,1,0]],[Math.abs(h.y-y0),[0,-1,0]]];e.sort((p,q)=>p[0]-q[0]);n=e[0][1]}
 return{o,d,L,h,n,hit:L<mx-.01}}
 /* a new floor / stairs snaps to the level of whatever it connects to (a stair top leading into the tile, or a floor next to it) so rushing and bridging stay clean */
-function snapLv(cx,cz,lv,floors){let best=lv,bd=9;const tryL=l=>{const dd=Math.abs(l-lv);if(dd<=1&&dd<bd){bd=dd;best=l}};
+function snapLv(cx,cz,lv,floors){let best=lv,bd=9;const tryL=l=>{const dd=Math.abs(l-lv);if(dd<=1&&(dd<bd||(dd==bd&&l>best))){bd=dd;best=l}};
 for(const r of RPL)if(Math.round(r.x+r.dx*GRID)===cx&&Math.round(r.z+r.dz*GRID)===cz)tryL(Math.round((r.y0+LVL)/LVL));
 for(const k in BLD){const b=BLD[k];if(b.t!='floor')continue;if(Math.abs(Math.abs(b.x-cx)+Math.abs(b.z-cz)-GRID)<.1)tryL(Math.round(b.y/LVL))}
 return Math.max(floors?1:0,best)}
@@ -744,8 +746,8 @@ if(S.dead||!run||sh.mate||s.rd!==rd)return;const mh=(s.h||[]).find(x=>x&&x.u===u
 if(!(phase=='live'||phase=='over'||(phase=='freeze'&&frz-now<600)))return; /* the 600ms grace covers the two clients leaving the countdown a hair apart */
 const cap=w.dmg*(w.pel||1)*w.hs*1.02,dm=Math.max(0,Math.min(cap,+mh.dm||0));if(dm<=0)return;takeHit(dm,!!mh.hd,null,s.by)}
 function takeHit(dmg,head,pnt,by){{const kb=by&&PLR(by);if(kb&&kb.bot)kb.dm=(kb.dm||0)+Math.min(dmg,Math.max(0,S.hp+(S.sh||0)))}window.PAD&&PAD.rumble(.3,.9,130);recoil=Math.min(1.2,recoil+.25);if(S.sh>0){const ab=Math.min(S.sh,dmg);S.sh-=ab;dmg-=ab}S.hp-=dmg;SFX.hurt();shake=Math.max(shake,.3);const vg=$('#vig');vg.classList.remove('on');void vg.offsetWidth;vg.classList.add('on');sparks(pnt||new T.Vector3(P.x,P.y+1.3,P.z),head?0xffd23f:0xff4d6d,head?16:10);if(S.hp<=0){S.hp=0;die(head,by)}hud();send()}
-const FALLV=13; /* Zone Wars only: landing faster than this hurts (about 3.5 m of fall = free, ~12 m = most of your health) */
-function fallHit(v){let dm=Math.min(180,Math.round((v-FALLV)*9));if(dm<1||S.dead)return;if(S.sh>0){const ab=Math.min(S.sh,dm);S.sh-=ab;dm-=ab}S.hp-=dm;SFX.hurt();window.PAD&&PAD.rumble(.5,.9,160);shake=Math.max(shake,.45);const vg=$('#vig');vg.classList.remove('on');void vg.offsetWidth;vg.classList.add('on');if(S.hp<=0){S.hp=0;die(false,null);S.storm=0;S.fell=1;specUi()}hud();send()}
+const FALLV=21; /* Zone Wars only: landing faster than this hurts (about 9 m of fall = free; a full terminal-velocity drop costs ~38 HP, never more than 45) */
+function fallHit(v){let dm=Math.min(45,Math.round((v-FALLV)*3.5));if(dm<1||S.dead)return;if(S.sh>0){const ab=Math.min(S.sh,dm);S.sh-=ab;dm-=ab}S.hp-=dm;SFX.hurt();window.PAD&&PAD.rumble(.5,.9,160);shake=Math.max(shake,.45);const vg=$('#vig');vg.classList.remove('on');void vg.offsetWidth;vg.classList.add('on');if(S.hp<=0){S.hp=0;die(false,null);S.storm=0;S.fell=1;specUi()}hud();send()}
 function hitFx(p,hd){if(!window.CFG||CFG.hitsnd!=0)SFX.hit();const h=$('#hit');h.classList.remove('on');void h.offsetWidth;h.classList.add('on');if(p)sparks(p,hd?0xffd23f:0xff4d6d,hd?16:10)}
 function die(head,by){exitEdit();exitBuild();S.dead=1;S.dts=clk();S.deaths++;S.killer=by||null;{const kb=by&&PLR(by);if(kb&&kb.bot)kb.k=(kb.k||0)+1}S.storm=by?0:(ZN?1:0);S.hdD=head?1:0;const kr=by&&PLR(by);S.away=kr?Math.atan2(P.x-kr.opv.x,P.z-kr.opv.z):Math.random()*6.283;S.dCol=0xff4d4d;K.shoot=0;K.aim=0;
 S.place=RM?0:teamsLeft().length+1;SFX.death();window.PAD&&PAD.rumble(1,1,380);
@@ -857,8 +859,8 @@ for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const a=SUP.map.get((cx+dx)+'
 function supStep(n){if(SUP.dirty)supRebuild();if(n-SUP.t<120)return;SUP.t=n;let drop=null;
 for(const b of SUP.L){if(b.sup){b.uns=0;continue}if(!b.uns)b.uns=n;else if(n-b.uns>450)(drop||(drop=[])).push(b.id)} /* a short grace: a remote piece may arrive a few ms before the piece that holds it */
 if(drop)for(const id of drop)removeBuild(id,false)}
-function losBad(c){const o=new T.Vector3(P.x,P.y+1.6,P.z),d=new T.Vector3(c[0]-o.x,c[1]-o.y,c[2]-o.z),len=d.length();if(len<2.4)return false;d.multiplyScalar(1/len);let hit=false;
-gRay(o,d,len-1.3,(b,L)=>{if(b.ray||b.ceil||b.cell)return L;if(!b.bid){if(!tallB(b))return L}else if(BLD[b.bid]&&BLD[b.bid].own)return L; /* map walls and enemy pieces block building through them; your own pieces and low props do not */const t=rayBox(o,d,b);if(t<L){hit=true;return t}return L});return hit}
+function losBad(c){const same=Math.abs(c[0]-Math.round(P.x/GRID)*GRID)<GRID*.6&&Math.abs(c[2]-Math.round(P.z/GRID)*GRID)<GRID*.6,o=new T.Vector3(P.x,P.y+1.6,P.z),d=new T.Vector3(c[0]-o.x,c[1]-o.y,c[2]-o.z),len=d.length();if(len<2.4)return false;d.multiplyScalar(1/len);let hit=false;
+gRay(o,d,len-1.3,(b,L)=>{if(b.ray||b.ceil||b.cell)return L;if(!b.bid){if(!tallB(b))return L}else{const B0=BLD[b.bid];if(!B0||B0.t!='wall'&&B0.own||B0.own&&same)return L} /* map walls, enemy pieces AND your own walls block building through them (inside your own tile you can still box up); floors / stairs and low props never block */const t=rayBox(o,d,b);if(t<L){hit=true;return t}return L});return hit}
 /* ================= OPEN ROOMS (Box Fights + Zone Wars) =================
    No bots, no fixed roster. Players come and go whenever they like; every room runs ROUNDS rounds of RSEC seconds.
    The room's round state lives in matches/<mid>/rs = {rd, st, t0, ps}:
@@ -1353,7 +1355,7 @@ const csk0=()=>{const v=window.CFG&&CFG.cshake;return v==null||v===''?1:Math.max
 function crUpd(dt,mv){const C=window.CFG||{};if(C.sprm=='auto'&&mv){K.sprint=(!K.aim&&(K.fwd||(K.ay||0)>.5))?1:0}if(!mv)S.crT=0;const want=!!(mv&&!EDIT&&(K.crouch||S.crT));let c=S.cr|0;
 if(c==2){S.slT-=dt;S.slV=Math.max(4.2,S.slV-(S.slV>8?10:6)*dt);S.slA=S.g?0:(S.slA||0)+dt;if(!want||S.slT<=0||S.slA>.25||S.dead)c=want?1:0}
 else{const f=(K.fwd?1:0)-(K.back?1:0)+(K.ay||0),r=(K.right?1:0)-(K.left?1:0)+(K.ax||0),l=Math.hypot(f,r);
-if(want&&!S.cwas&&S.g&&K.sprint&&!K.aim&&l>.3&&sp>7.5&&C.slide!=0){c=2;S.slT=.85;S.slA=0;S.slV=Math.min(13,Math.max(sp,10)+2.5);S.slx=(-Math.sin(yaw)*f+Math.cos(yaw)*r)/l;S.slz=(-Math.cos(yaw)*f-Math.sin(yaw)*r)/l;SFX.step()}else c=want?1:0}
+if(want&&!S.cwas&&S.g&&!K.aim&&l>.3&&sp>3.5&&C.slide!=0){c=2;S.slT=.85;S.slA=0;S.slV=Math.min(13,Math.max(sp,9)+2.5);S.slx=(-Math.sin(yaw)*f+Math.cos(yaw)*r)/l;S.slz=(-Math.cos(yaw)*f-Math.sin(yaw)*r)/l;SFX.step()}else c=want?1:0}
 if(c==0&&S.cr&&hits(P,1.8))c=1;S.cwas=want;S.cr=c}
 let ferr=0;const logE=e=>{if(++ferr<=5)console.error('[arena]',e)};
 function frame(t){try{frame0(t)}catch(e){logE(e)}} /* an exception in one frame must not stop the picture (it used to freeze the game until a refresh) */
@@ -1531,7 +1533,7 @@ for(let i=0;i<22;i++)ad(new T.ConeGeometry(.15,.9,4),0x8be04a,(i%11-5)*2.2+Math.
 for(let i=0;i<9;i++)ad(new T.ConeGeometry(9+i%3*3,10+i%4*4,4),i%2?0x3a63c9:0x4d7be0,(i-4)*14,3,-34-i%3*6);
 for(let i=0;i<7;i++){const c=ad(new T.SphereGeometry(2.4,8,6),0xffffff,(i-3)*9,11+i%3*2,-20-i%2*8);c.scale.set(2.2,.7,1);c.castShadow=false;CL.push(c)}
 LCam=new T.PerspectiveCamera(40,1,.1,100);LCam.position.set(-.6,1.5,6);LCam.lookAt(-.6,1.2,0);if(window.EVT&&EVT.on())lobbyHal()}
-setLC(col||0x2f9bff);const t0=performance.now();let lt=t0;(function l(){lraf=requestAnimationFrame(l);const n=performance.now();if(n-lt<(isLite()?28:0))return;const dt=Math.min(.1,(n-lt)/1000),t=(n-t0)/1000;lt=n;if(Qs.se>1)R.shadowMap.needsUpdate=(++fcnt%Qs.se)==0;
+setLC(col||0x2f9bff);const t0=performance.now();let lt=t0;(function l(){lraf=requestAnimationFrame(l);const n=performance.now();if(n-lt<(isLite()?33:14))return;if(document.body.classList.contains('msopen')){lt=n;return}const dt=Math.min(.1,(n-lt)/1000),t=(n-t0)/1000;lt=n;if(Qs.se>1)R.shadowMap.needsUpdate=(++fcnt%Qs.se)==0;
 lobbyPartner();LHAN.forEach(f=>f(t));
 CL.forEach((c,i)=>{c.position.x+=dt*(.4+i*.05);if(c.position.x>34)c.position.x=-34});
 LCam.aspect=innerWidth/innerHeight;LCam.updateProjectionMatrix();
@@ -1551,4 +1553,4 @@ look(dx,dy){if(!run||paused())return;const k=.0042*(window.CFG?CFG.sens:1)*(cam.
 aimHold(v){if(!run||!hold())return;if(EDIT||buildT){if(v){down('aim',false);up('aim')}}else K.aim=v?1:0},
 tapAim(){if(!run||!hold())return;if(EDIT||buildT){down('aim',false);up('aim')}else K.aim=K.aim?0:1},
 pause(){if(!run||phase=='ended')return;for(const k in K)K[k]=0;padSprint=0;$('#pause').classList.add('on');$('#pconf').style.display='none';$('#pbtns').style.display='block'}};
-return{ev:s=>window.DEBUG?eval(s):undefined /* debug builds only (?debug=1): lets the test rig read / write any variable inside this closure */,input,start,lobby,leave,resume,quality,qinfo,thumb,busy:()=>!!run,refreshKeys,padLost(){if(run&&!paused()&&phase!='ended')input.pause()},specStep,toggleMap,thumbCached:v=>THC.get(+v||0),gunIcon:(wi,cols,sz,sk)=>gunIcon(WEAPONS[wi],cols,sz,sk),partner(i){PI=i;lobbyPartner()},kick(){LC&&LC.kick&&LC.kick()}}})();
+return{players:()=>RP.filter(r=>r.u&&!r.bot).map(r=>({uid:r.u,name:r.name})),practice:()=>!!(BOTM||TRN),adminRefill:()=>{if(!(BOTM||TRN))return false;S.hp=100;S.sh=0;mat=[999,999,999];hud();return true},adminUi:v=>{window.ADMOPEN=!!v;if(v){for(const k in K)K[k]=0;try{document.exitPointerLock&&document.exitPointerLock()}catch(_){}}else if(run&&!FREE()){try{R.domElement.requestPointerLock()}catch(_){}}},ev:s=>window.DEBUG?eval(s):undefined /* debug builds only (?debug=1): lets the test rig read / write any variable inside this closure */,input,start,lobby,leave,resume,quality,qinfo,thumb,busy:()=>!!run,refreshKeys,padLost(){if(run&&!paused()&&phase!='ended')input.pause()},specStep,toggleMap,thumbCached:v=>THC.get(+v||0),gunIcon:(wi,cols,sz,sk)=>gunIcon(WEAPONS[wi],cols,sz,sk),partner(i){PI=i;lobbyPartner()},kick(){LC&&LC.kick&&LC.kick()}}})();

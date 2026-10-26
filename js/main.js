@@ -6,7 +6,7 @@ const PROG={skin:0x2f9bff,coins:0,xp:0,owned:[0x2f9bff,0xff4d4d],dly:0,gs:[0,0,0
 let saved={};try{saved=JSON.parse(localStorage.cfg||'{}')||{}}catch(e){}
 window.CFG=Object.assign({sens:1,vol:1,music:true,model:true,q:window.TOUCH?4:10,mode:'1v1',fp:false,fpfov:90},fresh(),saved);
 /* graphics: 0 Anti-Lag, 1 Low, 2 Normal, 3 Higher. One-time reset (GQ_VER) puts everyone on Normal; phones/tablets are always Normal */
-const GQ_VER=1;if(CFG.gqv!==GQ_VER||window.TOUCH||CFG.gq==null||!Number.isFinite(+CFG.gq)){CFG.gq=2;CFG.gqv=GQ_VER}CFG.gq=Math.max(0,Math.min(3,Math.round(+CFG.gq)));if(!window.MODES[CFG.mode])CFG.mode='1v1';
+const GQ_VER=2;if(CFG.gqv!==GQ_VER||CFG.gq==null||!Number.isFinite(+CFG.gq)){CFG.gq=window.LITE?1:2;CFG.gqv=GQ_VER}CFG.gq=Math.max(0,Math.min(3,Math.round(+CFG.gq)));if(!window.MODES[CFG.mode])CFG.mode='1v1';
 if(CFG.ver!==DATA_VER){const kb0=CFG.kb;PK.forEach(k=>delete CFG[k]);Object.assign(CFG,fresh());if(kb0&&typeof kb0=='object')CFG.kb=kb0;CFG.ver=DATA_VER;CFG.own=''} /* a data reset keeps your keybinds */
 const saveLocal=()=>{try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}}; /* device-only settings (quality, mode): no cloud upload */
 const saveCfg=()=>{try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}cloudDirty()};
@@ -21,7 +21,11 @@ db.ref('.info/serverTimeOffset').on('value',s=>off=s.val()||0);
 const net=()=>{const n=$('#net');n.className=conn?'ok':'';n.textContent=conn?`● Online · ${online} player${online==1?'':'s'}`:'● Offline – reconnecting…'};
 db.ref('.info/connected').on('value',s=>{conn=!!s.val();net();if(conn&&user)present()});
 function present(){if(presOff)presOff();const r=db.ref('presence/'+user.uid),c=db.ref('presence');
-r.onDisconnect().remove().then(()=>r.set(true));c.on('value',s=>{online=s.numChildren();net()});presOff=()=>{c.off();r.remove();presOff=null}}
+r.onDisconnect().remove().then(()=>r.set(true));
+/* count players from child events instead of re-downloading the whole presence list on every join / leave (that was a source of random hitches) */
+const ks=new Set();let pt=0;const upd=()=>{if(pt)return;pt=setTimeout(()=>{pt=0;online=ks.size;net()},500)};
+const fa=c.on('child_added',s=>{ks.add(s.key);upd()}),fr=c.on('child_removed',s=>{ks.delete(s.key);upd()});
+presOff=()=>{c.off('child_added',fa);c.off('child_removed',fr);r.remove();presOff=null}}
 // ---- auth: guest by default
 auth.onAuthStateChanged(async u=>{
 while(typeof EV=='undefined'||typeof LB2=='undefined'||typeof ADM=='undefined'||typeof LBK=='undefined')await new Promise(r=>setTimeout(r,25)); /* passes.js (EV) is the last script: never run the menu before it has loaded */
@@ -126,7 +130,7 @@ document.querySelectorAll('.modal .close').forEach(b=>b.onclick=()=>{SFX.click()
 $('#sens').value=CFG.sens;$('#vol').value=CFG.vol;$('#mus').checked=CFG.music;
 $('#sens').oninput=e=>{CFG.sens=+e.target.value;saveCfg()};$('#vol').oninput=e=>{CFG.vol=+e.target.value;SFX.setVol(CFG.vol);saveCfg()};$('#mus').onchange=e=>{CFG.music=e.target.checked;SFX.music(CFG.music);saveCfg()};
 const HWL=['OFF','LITE','FULL'],hwShow=()=>{$('#hwfx').textContent=HWL[CFG.hwfx===undefined?2:CFG.hwfx]};hwShow();$('#hwfx').onclick=()=>{SFX.click();CFG.hwfx=((CFG.hwfx===undefined?2:CFG.hwfx)+2)%3;saveCfg();hwShow();toast('Spooky effects: '+HWL[CFG.hwfx]+(CFG.hwfx<2?' (applies next match)':''))};
-const QN=['Lowest Quality','Low Quality','Normal','Higher Quality'];
+const QN=['Performance','Balanced','Normal','Higher Quality'];
 function qShow(){$('#qlv').textContent=QN[CFG.gq];$('#qln').textContent=Game.qinfo(CFG.gq)}
 if(window.TOUCH){const r=$('#ql').closest('.srow');r&&(r.style.display='none');$('#qln').style.display='none'}$('#ql').value=CFG.gq;qShow();$('#ql').oninput=e=>{CFG.gq=+e.target.value;saveLocal();const r=Game.quality(CFG.gq);qShow();if(r&&r.reload)toast('Anti-aliasing changes after you reload the page')};
 CTL.build($('#kbl'),$('#kbreset'));
@@ -139,7 +143,9 @@ $('#padmap').innerHTML=INPUT.layout().map(([a,b])=>`<div class="pm"><span>${a}</
 $('#padhint').textContent=`${INPUT.layoutMap.move.split(' ')[0]===''?'':''}D-pad / stick: move · ${INPUT.label('jump')}: select · ${INPUT.label('build')}: back · LB / RB: tabs · ${INPUT.label('wnext')}: game modes · ${INPUT.type=='ps'?'Options':INPUT.type=='switch'?'+':'Menu'}: play`};
 leg();INPUT.on(()=>{leg();CTL.refresh()})}
 $('#fs').onclick=()=>{const d=document.documentElement,rq=d.requestFullscreen||d.webkitRequestFullscreen;if(!rq)return toast('Fullscreen is not supported here – on iPhone use Share > Add to Home Screen');document.fullscreenElement||document.webkitFullscreenElement?(document.exitFullscreen||document.webkitExitFullscreen).call(document):rq.call(d)};
-let fr=0;(function f(){fr++;requestAnimationFrame(f)})();setInterval(()=>{$('#fps').textContent='FPS: '+fr;fr=0},1000);
+let fr=0,slow=0;(function f(){fr++;requestAnimationFrame(f)})();
+/* weak-device guard: if the menu itself runs under ~24 fps for 6 seconds in a row, switch the interface to lite mode (no blur, no endless animations, 30fps lobby) */
+setInterval(()=>{$('#fps').textContent='FPS: '+fr;if(!window.LITE&&!document.hidden&&!(window.Game&&Game.busy())){if(fr<24){if(++slow>=6){window.LITE=true;document.body.classList.add('lite');try{toast('Performance mode switched on to keep things smooth')}catch(_){}}}else slow=0}else slow=0;fr=0},1000);
 setInterval(()=>{if(!user||!conn)return;const t=performance.now();db.ref('presence/'+user.uid).set(true).then(()=>{$('#ping').textContent='Ping: '+Math.round(performance.now()-t)+' ms'}).catch(()=>{})},3000);
 
 // ---- account cloud save: only for logged-in accounts (guests keep their progress on this device). One JSON string per user at saves/<uid>.

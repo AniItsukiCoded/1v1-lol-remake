@@ -160,10 +160,28 @@ body.touch .mcard::after,body.touch #mhint i{animation:none}
 #admlist .sub{margin:6px 0;text-align:center}
 .admp{display:flex;justify-content:space-between;align-items:center;gap:10px;border:0;border-radius:12px;padding:10px 14px;background:#ffffff14;color:#fff;font-weight:800;font-size:15px;cursor:pointer;text-align:left}
 .admp:hover{background:#ffffff26}.admp b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800}.admp small{opacity:.6;font-weight:800;flex:none}
-.admg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0 4px}
+.admg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0 4px}
 .admg small{display:block;font-size:11px;letter-spacing:.12em;font-weight:900;opacity:.75}
 .admg input{margin:4px 0 0}
 #admin .row .adn{width:92px;margin:0;flex:none;text-align:center}
 #admsend:disabled{filter:grayscale(.8) brightness(.7)}
-@media(max-width:480px){.admg{grid-template-columns:1fr}}
+@media(max-width:560px){.admg{grid-template-columns:repeat(2,1fr)}}
+.admck{display:flex;align-items:center;gap:8px;margin:8px 0 10px;font-size:13px;font-weight:800;cursor:pointer}.admck input{width:18px;height:18px;margin:0;flex:none}
 #admsend+.sub{margin-top:16px}
+
+/* ---------- in-game admin menu (key Y) ---------- */
+#gadm{display:none;position:fixed;top:14px;right:14px;z-index:60;width:min(330px,94vw);max-height:calc(100vh - 28px);overflow:auto;padding:12px 14px 14px;border-radius:18px;color:#fff;background:linear-gradient(180deg,#2a1260f2,#12082eF2);border:2px solid #ffd23f88;box-shadow:0 16px 50px #000b;font-family:inherit}
+#gadm.on{display:block;animation:pop .25s cubic-bezier(.2,1.3,.35,1) both}
+#gadm .gh{display:flex;align-items:center;gap:8px;margin-bottom:8px}#gadm .gh b{font-family:var(--font-d,inherit);font-weight:400;font-size:20px;letter-spacing:.06em}#gadm .gh small{opacity:.6;font-size:11px;font-weight:800;margin-left:auto}
+#gadm .gh button{width:30px;height:30px;border:0;border-radius:50%;background:#ffffff22;color:#fff;font-size:14px;cursor:pointer}
+#gadm .gs{margin:10px 0 5px;font-size:10px;font-weight:900;letter-spacing:.2em;color:#ffd23f}#gadm .gs small{letter-spacing:.04em;opacity:.6;font-weight:800;text-transform:none}
+#gadm button{font-family:inherit;color:#fff;cursor:pointer}
+#gadm .gtg,#gadm .gpl,#gadm .gq{display:flex;flex-wrap:wrap;gap:6px}#gadm .gpl{margin-top:6px}
+#gadm .gtg button,#gadm .gpl button,#gadm .gq button{padding:6px 11px;border-radius:10px;border:2px solid #ffffff33;background:#ffffff14;font-weight:900;font-size:12px}
+#gadm .gtg button.on,#gadm .gpl button.on{border-color:#ffd23f;background:#ffd23f33}
+#gadm .gg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 6px}#gadm .gg small{display:block;font-size:10px;font-weight:900;letter-spacing:.12em;opacity:.75}
+#gadm .gg input{width:100%;box-sizing:border-box;margin:3px 0 0;padding:7px 8px;border-radius:9px;border:2px solid #ffffff33;background:#0a0526aa;color:#fff;font-size:15px;font-weight:800}
+#gadm .gk{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:12px;font-weight:800;cursor:pointer}#gadm .gk input{width:17px;height:17px;margin:0}
+#gadm .gsend,#gadm .gtool{width:100%;padding:10px;border:0;border-radius:12px;font-family:var(--font-d,inherit);font-size:17px;letter-spacing:.06em;background:linear-gradient(180deg,#ffe35c,#ffb52e);color:#3a1c00;box-shadow:0 4px 0 #a85d00}
+#gadm .gtool{background:linear-gradient(180deg,#5f9bff,#3a66d8);color:#fff;box-shadow:0 4px 0 #1c3a8a;font-size:14px}
+#gadm button:disabled{filter:grayscale(.8);opacity:.7}

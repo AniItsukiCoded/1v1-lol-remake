@@ -7,7 +7,7 @@ const LBK=(()=>{
 const $=s=>document.querySelector(s),PATH='arenaStats/lb',COUNT_BOTS=true;
 let tab='k',fl=0,tok=0;
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),nf=n=>Math.round(n).toLocaleString();
-const owner=()=>!!(window.EV&&EV.owner&&EV.owner()),qk=()=>'lbkq_'+(user?user.uid:'x');
+const owner=()=>!!(typeof EV!='undefined'&&EV.owner&&EV.owner()),qk=()=>'lbkq_'+(user?user.uid:'x');
 function pend(){try{const q=JSON.parse(localStorage.getItem(qk())||'{}');return{k:+q.k||0,dm:+q.dm||0}}catch(e){return{k:0,dm:0}}}
 function putPend(q){try{localStorage.setItem(qk(),JSON.stringify(q))}catch(e){}}
 function add(k,dm,bots){k=Math.max(0,Math.floor(+k||0));dm=Math.max(0,Math.round(+dm||0));if(bots&&!COUNT_BOTS)return;if((!k&&!dm)||!user||owner())return;const q=pend();q.k+=k;q.dm+=dm;putPend(q);flush()}

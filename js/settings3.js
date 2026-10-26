@@ -22,7 +22,7 @@ function tab(key,label,after){const b=document.createElement('button');b.dataset
 const gp=mk('gp',
  H.h3('MOVEMENT')+
  H.seg('crmS','Crouch / slide key',[['hold','Hold'],['toggle','Toggle']],'default key E · controller R3 · rebind under Controls')+
- H.tog('slideT','Sliding','sprint, then press crouch to slide')+
+ H.tog('slideT','Sliding','crouch while moving to slide, crouch while standing still to crouch')+
  H.seg('adsmS','Aim down sights',[['hold','Hold'],['toggle','Toggle']])+
  H.seg('sprmS','Sprint',[['hold','Hold'],['toggle','Toggle'],['auto','Auto']],'auto = sprint whenever you run forward')+
  H.h3('BUILDING')+
@@ -39,11 +39,10 @@ const vid=mk('vid',
  H.tog('antilagT','Anti-Lag','smoother frames and less network traffic. Picture quality stays exactly the same')+
  H.note('Anti-Lag: sends your position only when it changes, keeps rounds running while the tab is in the background, spreads work over frames and skips redundant updates. It never lowers graphics.')+
  H.seg('fpscapS','FPS limit',[[0,'Unlimited'],[60,'60'],[90,'90'],[120,'120'],[144,'144'],[240,'240']],'a limit can reduce heat and fan noise')+
- H.tog('dynresT','Dynamic resolution','only lowers the render resolution when your FPS drops. Off by default')+
  H.h3('CAMERA')+
  H.sl('fov3','Third-person field of view',60,110,1)+
  H.sl('cshake','Camera shake',0,200,10,'0 = none')+
- H.note('Graphics quality is in General. “Lowest” keeps the game playable on very weak devices.'));
+ H.note('Graphics quality is in General. Every preset keeps the same picture, the lower ones just do less invisible work.'));
 const aud=mk('aud',H.h3('VOLUME')+H.sl('vmus','Music volume',0,100,5)+H.sl('vsfx','Effects volume',0,100,5)+'<div id="audmv"></div>');
 tab('gp','Gameplay','gen');tab('vid','Video','gp');tab('aud','Audio','vid');
 /* master volume + music toggle live in the Audio tab */
@@ -51,7 +50,7 @@ tab('gp','Gameplay','gen');tab('vid','Video','gp');tab('aud','Audio','vid');
 /* ---------- wiring ---------- */
 seg('crmS','crm','hold',S);tog('slideT','slide',1);seg('adsmS','adsm','hold',S);seg('sprmS','sprm','hold',S);
 tog('bassistT','bassist',1);tog('bturboT','bturbo',1);sl('esens','esens',100,v=>Math.round(v)+'%');seg('bdiffS','bdiff','adapt',S);tog('hitsndT','hitsnd',1);
-tog('antilagT','antilag',1);seg('fpscapS','fpscap',0,N);tog('dynresT','dynres',0);sl('fov3','fov3',75,v=>Math.round(v)+'°');sl('cshake','cshake',100,v=>Math.round(v)+'%');
+tog('antilagT','antilag',1);seg('fpscapS','fpscap',0,N);sl('fov3','fov3',75,v=>Math.round(v)+'°');sl('cshake','cshake',100,v=>Math.round(v)+'%');
 {const f=(k,e)=>{const el=$('#'+e);if(!el)return;const v=CFG[k]==null?1:+CFG[k];el.value=Math.round(v*100);const o=$('#'+e+'v');if(o)o.textContent=Math.round(v*100)+'%';el.oninput=()=>{CFG[k]=+el.value/100;if(o)o.textContent=el.value+'%';save()}};f('vmus','vmus');f('vsfx','vsfx')}
 /* ---------- tabs: one switcher for every section ---------- */
 function showTab(k){const secs=all('.sset');if(!secs.some(s=>s.dataset.s===k))k='gen';all('#stabs button').forEach(b=>b.classList.toggle('on',b.dataset.s===k));secs.forEach(s=>s.classList.toggle('on',s.dataset.s===k));panel.scrollTop=0;CFG.stab=k;save()}
