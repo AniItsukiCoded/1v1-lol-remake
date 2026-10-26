@@ -22,7 +22,7 @@
 <button id="mhint" title="Scroll down for game modes"><span>GAME MODES</span><i>⌄</i></button>
 </div>
 <div id="msheet" aria-label="Game modes"><div class="mshd"><button id="msback" title="Back to lobby (scroll up)">⌃</button><div class="mst"><small>SELECT</small><h2>GAME MODE</h2></div><div id="msnow"></div></div>
-<div id="mstrack"></div>
+<div id="mstwrap"><button id="msprev" aria-label="Previous mode">‹</button><div id="mstrack"></div><button id="msnext" aria-label="Next mode">›</button></div>
 <div class="msft"><div id="msinfo"></div><div class="msb"><button id="msbot" class="btn alt">🤖 PLAY VS BOTS</button><button id="msplay" class="btn">PLAY!</button></div></div></div></div>
 <div id="padhint"></div>
 <div id="locker" class="modal"><div class="panel wide"><div class="ph"><div class="tb"><button id="tL" class="t2 on">👕 LOCKER</button><button id="tS" class="t2">🛒 SHOP</button></div><div class="cc">🪙 <b id="cn2">0</b></div><button class="x close">✕</button></div><div class="pb"><div id="lf" class="flt"></div><div id="sw"></div></div></div></div>
@@ -144,7 +144,7 @@
 <div id="candy" style="display:none">🍬 <b id="cdm">0</b></div><div id="cross" class="xh"></div><div id="hit">✕</div><div id="eb"><u></u></div><div id="feed"></div><div id="vig"></div>
 <div id="mate"></div><div id="zinfo"></div><canvas id="mm" width="180" height="180"></canvas>
 <div id="spec"><div id="spec1"></div><div id="specb"><button id="specp" class="sb">◀</button><div class="sm"><div id="spec2"></div><div class="bar"><u id="spech"></u></div></div><button id="specn" class="sb">▶</button></div><small id="spech2"></small></div><div id="bot"><div class="hpw"><div class="hpc"><div class="bar shb" id="shw"><u id="shp"></u></div><div class="bar"><u id="hp"></u></div></div><span id="hpt">100</span></div><div id="ammo"><b id="am">12</b><small id="amr">/48</small><em id="wnm">PISTOL</em></div></div>
-<div id="bigmap"><div class="bmw"><canvas id="bmc" width="640" height="640"></canvas><small>Map · yellow arrow = you · green = teammates · purple = storm · dashed = next circle</small></div></div><div id="msg"></div><div id="mvote"><div class="mvh"><small>BEFORE THE MATCH</small><h2>VOTE FOR A MAP</h2><span><b id="mvt">8</b>s</span></div><div class="mvl"></div><p class="mvf">Click a map · or press 1 / 2 / 3 · controller: D-pad + A</p></div><div id="latebn"></div><div id="rmst"></div><div id="elim"></div>
+<div id="bigmap"><div class="bmw"><canvas id="bmc" width="640" height="640"></canvas><small>Map · yellow arrow = you · green = teammates · purple = storm · dashed = next circle</small></div></div><div id="msg"></div><div id="mvote"><div class="mvh"><small>BEFORE THE MATCH</small><h2>VOTE FOR A MAP</h2><div class="mvtm"><div class="mvbar"><s id="mvbar"></s></div><span class="mvs"><b id="mvt">8</b>s</span></div></div><div class="mvl"></div><p class="mvf">Click a map · or press 1 / 2 / 3 · controller: D-pad + A</p></div><div id="mvres"></div><div id="latebn"></div><div id="rmst"></div><div id="elim"></div>
 <div id="sb"><div class="sbc"><small id="sbs"></small><h2>SCOREBOARD</h2><div id="sbt"></div></div></div><div id="rboard"><div class="rbc"><small id="rbs">ROUND COMPLETE</small><h2 id="rbh">Round 1/100</h2><div id="rbw"></div><div id="rbt"></div><div id="rbn"></div></div></div><div id="resume">Click to play</div></div>
 <div id="rot"><div><b>⟳</b><p>Rotate your phone to landscape to play</p></div></div>
 <div id="toast"></div>

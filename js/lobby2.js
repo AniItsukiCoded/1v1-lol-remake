@@ -11,24 +11,30 @@ let isOpen=false,cool=0;
 const isOn=()=>$('#menu').classList.contains('on');
 const blocked=()=>!isOn()||!!document.querySelector('.modal.on')||$('#reveal').classList.contains('on');
 function mInfo(){const M=modeOf(CFG.mode);let h=`<b>${M.ic} ${M.n}</b> · ${M.tag}`;
- if(M.id=='trainer')h+='<small>60-second drills, personal bests, unlimited ammo. Pick a drill:</small><div class="tdl">'+[['grid','Gridshot'],['micro','Microshot'],['flick','Flick'],['track','Tracking'],['strafe','Strafing']].map(([k,n])=>`<button data-d="${k}" class="${(CFG.tdrill||'grid')==k?'on':''}">${n}</button>`).join('')+'</div>';
+ if(M.id=='trainer'){const cur=DRILLS[CFG.tdrill]?CFG.tdrill:'grid',D=DRILLS[cur];
+  h=`<b>${M.ic} ${M.n}</b> · 60 second drills · unlimited ammo · personal bests<div class="tdl">`+DRILL_ORDER.map(k=>{const d=DRILLS[k],pb=(CFG.tb&&CFG.tb[k])|0;return`<button data-d="${k}" class="${cur==k?'on':''}" style="--dc:${d.c}"><span>${d.ic}</span><i>${d.n}</i><em>${pb?pb.toLocaleString():'-'}</em></button>`}).join('')+`</div><small><strong style="color:${D.c}">${D.n}</strong> · ${D.d} <u>${D.tip}</u></small>`}
  else if(M.room)h+=`<small>${M.min}–${M.max} players · ${M.rounds} rounds · no time limit · 5 seconds between rounds · join any time, a round starts as soon as 2 players are in. Join mid-round and you spawn next round. No bots.</small>`;
  else if(M.ffa)h+=`<small>${M.min}–${M.max} players per match. Real players only – bots are 1v1 only.</small>`;
  else if(M.size>1)h+=`<small>Queue solo and you get matched with teammates, or party up with a friend (the + button in the lobby).</small>`;
  else if(M.map=='box')h+=`<small>Edit and build from the first second. Party up to fight a friend in private.</small>`;
- else h+=`<small>Party up to duel a friend in private, or queue and get a random opponent.</small>`;
+ else h+=`<small>Party up to duel a friend in private, or queue and get a random opponent. Everyone votes for the map before the match.</small>`;
  $('#msinfo').innerHTML=h}
 $('#msinfo').onclick=e=>{const b=e.target.closest('[data-d]');if(!b)return;SFX.click();CFG.tdrill=b.dataset.d;saveLocal();mInfo()};
 function modeShow(){const M=modeOf(CFG.mode);{const b=$('#msbot');if(b)b.style.display=M.id=='1v1'?'':'none'}$('#modet').textContent=M.n.toUpperCase();$('#msnow').innerHTML=`<span>${M.ic}</span><b>${M.n}</b>`;mInfo();
  document.querySelectorAll('#mstrack .mcard').forEach(c=>{const on=c.dataset.m==CFG.mode;c.classList.toggle('on',on);c.setAttribute('aria-pressed',on)})}
 function cards(){const h=$('#mstrack');if(h.dataset.built)return;h.dataset.built=1;
- h.innerHTML=MODE_ORDER.map(id=>{const M=MODES[id];
+ h.innerHTML=MODE_ORDER.map(id=>{const M=MODES[id],pl=M.solo?'1 player':M.ffa?M.min+'–'+M.max+' players':M.ppl+' players';
  return`<button class="mcard" data-m="${id}" style="--c1:${M.c1};--c2:${M.c2}"><i class="mbadge">${M.badge}</i><i class="mchk">✓</i>
 <div class="mart"><span class="mg1"></span><span class="mg2"></span><span class="mbig">${M.art}</span></div>
-<div class="minfo"><small class="mgrp">${M.grp}</small><b>${M.n}</b><p>${M.tag}</p><div class="mchips"><span>👤 ${M.ffa?M.min+'–'+M.max:M.ppl} players</span><span>🏆 ${M.rule}</span><span>🗺️ ${M.where}</span></div></div></button>`}).join('');
- h.querySelectorAll('.mcard').forEach(b=>b.onclick=()=>pick(b.dataset.m))}
+<div class="minfo"><small class="mgrp">${M.grp}</small><b>${M.n}</b><p>${M.short||M.tag}</p><div class="mchips"><span><i>👤</i>${pl}</span><span><i>🏆</i>${M.rule}</span><span><i>🗺️</i>${M.where}</span></div></div></button>`}).join('');
+ h.querySelectorAll('.mcard').forEach(b=>{b.onclick=()=>pick(b.dataset.m);b.ondblclick=()=>{pick(b.dataset.m,1);$('#msplay').click()}});
+ h.addEventListener('scroll',arrows,{passive:true})}
+/* left / right arrows when the cards do not all fit on screen */
+function arrows(){const t=$('#mstrack'),l=$('#msprev'),r=$('#msnext');if(!t||!l||!r)return;const over=t.scrollWidth>t.clientWidth+6;l.style.display=over&&t.scrollLeft>6?'grid':'none';r.style.display=over&&t.scrollLeft<t.scrollWidth-t.clientWidth-6?'grid':'none'}
+addEventListener('resize',()=>{if(isOpen)arrows()});
+function step(d){const i=MODE_ORDER.indexOf(CFG.mode),n=MODE_ORDER[(i+d+MODE_ORDER.length)%MODE_ORDER.length];pick(n,1);center()}
 function pick(id,quiet){if(!MODES[id])return;SFX.click();const was=CFG.mode;CFG.mode=id;saveLocal();modeShow();try{typeof pui=='function'&&pui()}catch(_){}if(!quiet&&was!==id)toast(modeOf(id).n+' selected')}
-function center(){const t=$('#mstrack'),c=t.querySelector('.mcard.on');if(c)t.scrollLeft=c.offsetLeft-(t.clientWidth-c.offsetWidth)/2}
+function center(){const t=$('#mstrack'),c=t.querySelector('.mcard.on');if(c)t.scrollTo({left:c.offsetLeft-(t.clientWidth-c.offsetWidth)/2,behavior:'smooth'});setTimeout(arrows,60);setTimeout(arrows,400)}
 function sheet(v,instant){v=!!v;if(v===isOpen)return;isOpen=v;cool=Date.now()+650;document.body.classList.toggle('msopen',v);
  if(v){cards();modeShow();center();requestAnimationFrame(center)}
  if(!instant)SFX.click()}
@@ -51,7 +57,7 @@ addEventListener('keydown',e=>{if(blocked()||/^(INPUT|TEXTAREA|SELECT)$/.test(e.
  else if(isOpen&&e.code=='Enter'&&!e.target.closest('button')){e.preventDefault();$('#msplay').click()}});
 /* controller (pad.js sends this: right stick down / up, Y) */
 document.addEventListener('menuscroll',e=>{if(blocked())return;toggle(e.detail)});
-$('#mhint').onclick=()=>sheet(1);$('#modebox').onclick=()=>sheet(1);$('#msback').onclick=()=>sheet(0);
+$('#msprev').onclick=()=>{SFX.click();step(-1)};$('#msnext').onclick=()=>{SFX.click();step(1)};$('#mhint').onclick=()=>sheet(1);$('#modebox').onclick=()=>sheet(1);$('#msback').onclick=()=>sheet(0);
 $('#msplay').onclick=()=>{sheet(0,1);$('#play').click()};
 $('#msbot').onclick=()=>{SFX.resume();SFX.click();if(party&&Object.keys(party.m).length>1)return toast('Leave your party to play vs bots');window.touchEnter&&touchEnter();sheet(0,1);beginBot(CFG.mode)};
 
