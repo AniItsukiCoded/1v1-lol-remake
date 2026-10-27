@@ -76,35 +76,41 @@ tool('#admxpb','#admxp',v=>EV.admin.addXp(v),v=>'+'+cl(v,1e7).toLocaleString()+'
 tool('#admrd',null,()=>EV.admin.resetDaily(),()=>'Daily reward, treat & quests reset');
 
 /* ================= in-game admin menu (default key Y, owners only) =================
-   Same gifts as the main-menu panel (XP, candy with a leaderboard on/off switch, coins, keys) to yourself, everybody online or a player of this match,
-   plus a practice refill (only in bot matches and the aim trainer, never in a real match). The key is only listed in Settings > Controls for owners. */
-let gp=null,gt={me:1},gbusy=0;
+   In-match tools only (no gifts here, those live in the main-menu ADMIN panel): god mode, fly, noclip, infinite ammo, speed, super jump, refill.
+   They only take effect in bot matches and the aim trainer (never in a real match). Settings reset when a new match starts.
+   FLY: Space = up, Crouch = down, Sprint = faster.   The key is only listed in Settings > Controls for owners. */
+let gp=null,gbadge=null;
 const gOpen=()=>!!gp&&gp.classList.contains('on');
-function gBuild(){gp=document.createElement('div');gp.id='gadm';gp.innerHTML=
- '<div class="gh"><b>🛠 ADMIN</b><small>press Y to close</small><button type="button" data-a="x">✕</button></div>'+
- '<div class="gs">SEND TO</div><div class="gtg"><button type="button" data-t="me" class="on">ME</button><button type="button" data-t="all">EVERYONE ONLINE</button></div><div class="gpl"></div>'+
- '<div class="gg"><label><small>⭐ XP</small><input id="gax" type="number" min="0" value="0"></label><label><small>🍬 CANDY</small><input id="gac" type="number" min="0" value="0"></label><label><small>🪙 COINS</small><input id="gao" type="number" min="0" value="0"></label><label><small>🗝️ KEYS</small><input id="gak" type="number" min="0" value="0"></label></div>'+
- '<div class="gq"><button type="button" data-q="1000">+1K XP</button><button type="button" data-q="10000">+10K</button><button type="button" data-q="100000">+100K</button><button type="button" data-q="1000000">+1M</button></div>'+
- '<label class="gk"><input id="gar" type="checkbox" checked> Candy counts for the leaderboard &amp; goals</label>'+
- '<button type="button" class="gsend" data-a="send">SEND</button>'+
- '<div class="gs">PRACTICE TOOLS <small>bot matches &amp; aim trainer only</small></div><button type="button" class="gtool" data-a="refill">❤️ REFILL HP + MATERIALS</button>';
+const TOG=[['god','🛡️ GOD MODE','no damage at all'],['fly','🕊️ FLY','Space up · Crouch down'],['nc','👻 NOCLIP','walk through walls'],['ammo','♾️ INFINITE AMMO','never reload']];
+const SPD=[1,2,3,5],JMP=[1,2,3];
+function gBuild(){gp=document.createElement('div');gp.id='gadm';
+ gp.innerHTML='<div class="gh"><b>🛠 ADMIN</b><small>press Y to close</small><button type="button" data-a="x">✕</button></div>'+
+ '<p class="gnote" hidden>Tools only work in bot matches and the aim trainer.</p>'+
+ '<div class="gs">PLAYER</div><div class="gsw">'+TOG.map(t=>'<button type="button" data-k="'+t[0]+'"><b>'+t[1]+'</b><small>'+t[2]+'</small></button>').join('')+'</div>'+
+ '<div class="gs">MOVE SPEED</div><div class="gtg">'+SPD.map(v=>'<button type="button" data-s="'+v+'">x'+v+'</button>').join('')+'</div>'+
+ '<div class="gs">JUMP HEIGHT</div><div class="gtg">'+JMP.map(v=>'<button type="button" data-j="'+v+'">x'+v+'</button>').join('')+'</div>'+
+ '<div class="gs">QUICK</div><button type="button" class="gtool" data-a="refill">❤️ REFILL HP + MATERIALS</button><button type="button" class="gtool goff" data-a="reset">↺ TURN EVERYTHING OFF</button>';
  document.body.appendChild(gp);
  gp.addEventListener('keydown',e=>{e.stopPropagation();if(e.code=='Escape'||(CTL.acts(e.code)||[]).includes('admin')){e.preventDefault();gClose()}},true);
  gp.addEventListener('keyup',e=>e.stopPropagation(),true);
- gp.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;SFX.click();
-  if(b.dataset.t){gt=b.dataset.t=='all'?{all:1}:{me:1};gMark();return}
-  if(b.dataset.q){$('#gax').value=b.dataset.q;return}
-  if(b.dataset.u){gt={uid:b.dataset.u,name:b.textContent};gMark();return}
-  const a=b.dataset.a;
-  if(a=='x')return gClose();
-  if(a=='refill')return toast(Game.adminRefill()?'Refilled HP and materials':'Refill only works in bot matches and the aim trainer');
-  if(a=='send'){if(!EV.owner()||gbusy)return;const x=readAmt('#gac','#gao','#gak','#gax');x.rank=$('#gar').checked;if(!(x.c||x.o||x.k||x.x))return toast('Enter an amount to give');
-   gbusy=1;b.disabled=true;try{await giveTo(gt,x)}catch(_){toast('Could not send the gift')}finally{gbusy=0;b.disabled=false}}})}
-function gMark(){gp.querySelectorAll('[data-t]').forEach(b=>b.classList.toggle('on',(b.dataset.t=='me'&&gt.me)||(b.dataset.t=='all'&&gt.all)));gp.querySelectorAll('.gpl [data-u]').forEach(b=>b.classList.toggle('on',gt.uid===b.dataset.u))}
-function gPlayers(){const box=gp.querySelector('.gpl');box.textContent='';let l=[];try{l=Game.players().filter(p=>!user||p.uid!==user.uid)}catch(_){}
- l.slice(0,10).forEach(p=>{const b=document.createElement('button');b.type='button';b.dataset.u=p.uid;b.textContent=String(p.name||'Player').slice(0,18);box.appendChild(b)});gMark()}
+ gp.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;SFX.click();
+  const st=Game.adminState();
+  if(b.dataset.a=='x')return gClose();
+  if(!st.practice)return toast('Admin tools only work in bot matches and the aim trainer');
+  if(b.dataset.k){const k=b.dataset.k;Game.adminSet(k,st[k]?0:1);toast(TOG.find(t=>t[0]==k)[1]+(st[k]?' off':' on'))}
+  else if(b.dataset.s){Game.adminSet('spd',+b.dataset.s);toast('Speed x'+b.dataset.s)}
+  else if(b.dataset.j){Game.adminSet('jmp',+b.dataset.j);toast('Jump x'+b.dataset.j)}
+  else if(b.dataset.a=='refill')toast(Game.adminRefill()?'Refilled HP and materials':'Refill failed');
+  else if(b.dataset.a=='reset'){['god','fly','nc','ammo'].forEach(k=>Game.adminSet(k,0));Game.adminSet('spd',1);Game.adminSet('jmp',1);toast('All admin tools off')}
+  gSync()})}
+/* highlight what is on + a small badge so you can still see it with the menu closed */
+function gSync(){if(typeof Game=='undefined')return;const st=Game.adminState(),on=TOG.filter(t=>st[t[0]]).map(t=>t[1].split(' ').slice(1).join(' '));if(st.spd>1)on.push('SPEED x'+st.spd);if(st.jmp>1)on.push('JUMP x'+st.jmp);
+ if(gp){gp.querySelectorAll('[data-k]').forEach(b=>b.classList.toggle('on',!!st[b.dataset.k]));gp.querySelectorAll('[data-s]').forEach(b=>b.classList.toggle('on',+b.dataset.s==st.spd));gp.querySelectorAll('[data-j]').forEach(b=>b.classList.toggle('on',+b.dataset.j==st.jmp));gp.querySelector('.gnote').hidden=st.practice}
+ const show=st.practice&&on.length&&EV.owner()&&Game.busy();
+ if(show&&!gbadge){gbadge=document.createElement('div');gbadge.id='gadmb';document.body.appendChild(gbadge)}
+ if(gbadge){gbadge.style.display=show?'block':'none';if(show)gbadge.textContent='🛠 '+on.join(' · ')}}
 function gClose(){if(!gOpen())return;gp.classList.remove('on');Game.adminUi(0)}
-function gameToggle(){if(!EV.owner())return;if(gOpen())return gClose();if(!gp)gBuild();gPlayers();gp.classList.add('on');Game.adminUi(1)}
+function gameToggle(){if(!EV.owner())return;if(gOpen())return gClose();if(!gp)gBuild();gSync();gp.classList.add('on');Game.adminUi(1)}
 /* the panel only exists inside a match: leaving the match (or losing owner status) closes it */
-setInterval(()=>{if(gOpen()&&(!EV.owner()||!Game.busy())){gp.classList.remove('on');window.ADMOPEN=false}},500);
+setInterval(()=>{if(gOpen()&&(!EV.owner()||!Game.busy())){gp.classList.remove('on');window.ADMOPEN=false}gSync()},500);
 return{check,listen,owner:()=>EV.owner(),game:gameToggle}})();
