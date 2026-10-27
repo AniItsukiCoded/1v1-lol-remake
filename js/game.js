@@ -10,7 +10,8 @@ const T=THREE,DOM={},$=s=>DOM[s]||(DOM[s]=document.querySelector(s)); /* cached 
 let R,sc,cam,me,db,mid,uid,names,run=false,raf,last=0,pRef,shRef,onEnd,tick,pt,RP=[],oRefs=[],myT=0,W=[0,0],MODE2=0,fireK=0,fcnt=0,aaOn=true,shMode='';
 const B=[],K={},FX=[],S={},P=new T.Vector3(),camP=new T.Vector3();
 const PMAX=1.5;let yaw=0,pitch=.2,recoil=0,shake=0,sp=0,stepT=0,ph=0,wph=0,corners,sp0,hist=[];
-const AD={god:0,fly:0,nc:0,ammo:0,spd:1,jmp:1},PRAC=()=>!!(BOTM||TRN); /* admin in-game tools (menu key Y, owners only): only ever take effect in bot matches and the aim trainer */
+const AD={god:0,fly:0,nc:0,ammo:0,spd:1,jmp:1,grav:1,aim:0,silent:0,auto:0,head:1,hs:0,wb:0,rapid:0,norec:0,ikill:0,mats:0,esp:0,freeze:0},PRAC=()=>!!(BOTM||TRN);
+const adReset=()=>{AD.esp=0;try{adEsp()}catch(_){}AD.espOn=0;for(const k in AD)if(typeof AD[k]=='number'&&k!='t')AD[k]=0;AD.spd=AD.jmp=AD.grav=AD.head=1}; /* admin in-game tools (menu key Y, owners only): only ever take effect in bot matches and the aim trainer */
 let gone=[],sbOn=0,sbT=0,sbKey='',mvf=1,landT=0,onLeave=null,clk=Date.now,BOTM=0,startT=0,rT0=0,firstTg=0,onGhost=null;
 const NR={set(){return Promise.resolve()},push(){},on(){},off(){},remove(){return Promise.resolve()},update(){return Promise.resolve()},child(){return NR},onDisconnect(){return{remove(){},cancel(){},set(){}}}}; /* stand-in for Firebase refs in bot matches */
 let fpCur=false,phase='live',slowK=1,frz=0,rd=1,cdN=-1,ads=0,camD=4.2,deadK=0;
@@ -683,15 +684,45 @@ if(buildT)$('#wnm').textContent='BUILD · '+BPIECE[buildT].n+' · '+MT[msel].n+(
 $('#s1').textContent=W[myT];$('#s2').textContent=WO();$('#rnd').textContent=TRN?TDRILLS[TRN.id].n.toUpperCase():RM?rmTxt():FFA?(MD.map=='zone'?'':'ROUND '+rd+' · ')+'👥 '+teamsLeft().length+' ALIVE':'ROUND '+rd+' · FIRST TO '+WIN}
 function reload(){const w=curW(),st=curS();if(w.melee||S.rl||st.mag==w.mag||st.res<=0||S.dead||phase!='live')return;S.rl=1;S.rlT0=performance.now();SFX.reload();hud();const i=S.w;
 S.rlT=setTimeout(()=>{if(!run||S.w!=i)return;const n=Math.min(w.mag-st.mag,st.res);st.mag+=n;st.res-=n;S.rl=0;hud()},w.rl)}
-function shoot(){const w=curW(),st=curS(),n=performance.now();if(phase!='live'||S.dead||S.rl||n<S.nextShot||n<S.eq)return;
+
+/* ---- admin troll tools (practice only): targets, aimbot, silent aim, auto shoot, wallhack ---- */
+function adTargets(){const L=[];for(const q of RP){if(q.mate||q.dead||q.left||q.late||!q.g)continue;L.push({p:q.g.position,s:q.cr?(q.cr==2?.58:.7):1,q})}
+ if(TRN&&TRN.ts)for(const t of TRN.ts){if(!t.m)continue;const v=new T.Vector3();t.m.getWorldPosition(v);if(t.k=='strafe')v.y+=1.3;L.push({v})}return L}
+function adPick(vis){const o=camP;let bs=1e9,bp=null,bok=false;
+ for(const t of adTargets()){const p=t.v||new T.Vector3(t.p.x,t.p.y+(AD.head?HB.head[0]:(HB.torso[0][0]+HB.torso[0][1])/2)*t.s,t.p.z),dd=o.distanceTo(p);if(dd>110)continue;
+  const v=p.clone().sub(o).normalize(),ok=!!AD.wb||castRay(o,v,dd).L>=dd-.7,sc=dd+(ok?0:500);if(sc<bs){bs=sc;bp=p;bok=ok}}
+ return vis&&bp&&!bok?null:bp}
+function adSilentDir(dc){if(!(AD.silent&&PRAC()))return dc;const pt=adPick(false);if(!pt)return dc;const k=camD+.3;
+ let o=camP.clone().addScaledVector(dc,k),d=pt.clone().sub(o).normalize();o=camP.clone().addScaledVector(d,k);return pt.clone().sub(o).normalize()}
+function adAimStep(dt){if(!(AD.aim&&PRAC())||EDIT||buildT)return;const p=adPick(false);if(!p)return;const o=camP,dx=p.x-o.x,dy=p.y-o.y,dz=p.z-o.z,
+ ty=Math.atan2(-dx,-dz),tp=Math.max(-PMAX,Math.min(PMAX,Math.asin(dy/Math.max(1e-6,Math.hypot(dx,dy,dz))))),k=AD.aim==1?Math.min(1,dt*8):1;let ey=ty-yaw;ey=Math.atan2(Math.sin(ey),Math.cos(ey));yaw+=ey*k;pitch+=(tp-pitch)*k}
+function adAuto(){const w=curW();if(!w||w.melee||EDIT||buildT)return;let hit=false;
+ if(AD.silent)hit=!!adPick(true);
+ else{const d=dirv(),o=camP.clone().addScaledVector(d,camD+.3),wl=castRay(o,d,110).L;
+  for(const t of adTargets()){if(t.q){const h=hitZone(o,d,t.p,t.q.r,t.s);if(h&&(AD.wb||h.t<=wl+.05)){hit=true;break}}else{const v=t.v.clone().sub(o),tt=v.dot(d);if(tt>0&&o.clone().addScaledVector(d,tt).distanceTo(t.v)<.55){hit=true;break}}}}
+ if(hit){S.lat=0;shoot()}}
+function adEsp(){const on=!!(AD.esp&&PRAC());for(const q of RP){if(!q.g||q.mate)continue;q.g.traverse(o=>{const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
+  ms.forEach(m=>{if(on){if(m.userData.dt0===undefined)m.userData.dt0=m.depthTest;m.depthTest=false}else if(m.userData.dt0!==undefined){m.depthTest=m.userData.dt0;delete m.userData.dt0}});
+  if(on){if(o.userData.ro0===undefined)o.userData.ro0=o.renderOrder;o.renderOrder=999}else if(o.userData.ro0!==undefined){o.renderOrder=o.userData.ro0;delete o.userData.ro0}})}}
+function adTick(dt,live){if(!PRAC()){if(AD.espOn){AD.esp=0;try{adEsp()}catch(_){}AD.espOn=0}return}
+ AD.t=(AD.t||0)+1;if(AD.mats){mat[0]=mat[1]=mat[2]=999;if((AD.t&31)==0)hud()}
+ if((AD.t&15)==0&&(AD.esp||AD.espOn)){try{adEsp()}catch(_){}AD.espOn=AD.esp}
+ if(!live||S.dead)return;adAimStep(dt);if(AD.auto)adAuto()}
+function adBots(){return RP.filter(r=>r.bot&&!r.dead&&!r.left&&r.g)}
+function adAct(a){if(!PRAC())return false;
+ if(a=='kill'){const L=adBots();L.forEach(r=>{try{botHit(r,1e6,1,new T.Vector3(r.g.position.x,r.g.position.y+1.7,r.g.position.z))}catch(_){}});return L.length}
+ if(a=='bring'){const L=adBots();L.forEach((r,i)=>{const an=yaw+Math.PI*2*i/Math.max(1,L.length),x=P.x+Math.sin(an)*3.2,z=P.z+Math.cos(an)*3.2;r.tg.set(x,P.y,z);if(r.g)r.g.position.set(x,P.y,z)});return L.length}
+ if(a=='tp'){const L=adBots().sort((x,y)=>x.g.position.distanceTo(P)-y.g.position.distanceTo(P));if(!L.length)return 0;const t=L[0].g.position;P.set(t.x+Math.sin(yaw)*2,t.y+.1,t.z+Math.cos(yaw)*2);S.vy=0;return 1}
+ return false}
+function shoot(){const w=curW(),st=curS(),n=performance.now();if(PRAC()){if(AD.ammo&&!w.melee&&st.mag<w.mag){st.mag=w.mag;S.rl=0;clearTimeout(S.rlT)}if(AD.rapid){if(n-(S.rapT||0)<45)return;S.rapT=n;S.nextShot=0;S.lat=0}}if(phase!='live'||S.dead||S.rl||n<S.nextShot||n<S.eq)return;
 if(!w.auto&&S.lat)return;
 if(!w.melee&&st.mag<=0){SFX.empty();S.nextShot=n+250;reload();return}
-if(!w.melee&&!TRN&&!(AD.ammo&&PRAC()))st.mag--;S.nextShot=n+w.rate;S.lat=1;window.PAD&&PAD.rumble(w.id=='shotgun'?.8:w.melee?.3:.12,w.id=='shotgun'?.3:.35,w.id=='shotgun'?90:45);recoil=Math.min(1.2,recoil+w.rec);shake+=w.shk;fireK=Math.min(1,fireK+(w.kk||0));S.pumpT=n;if(w.melee)S.swingT=n;
-const d=dirv(),rt=new T.Vector3(Math.cos(yaw),0,-Math.sin(yaw)),up=new T.Vector3().crossVectors(rt,d).normalize();
-const o=camP.clone().addScaledVector(d,camD+.3),mu=w.melee?o:me.muzzle(),muL=!w.melee&&fpCur&&vm&&vm.g.visible?vm.muzzle():mu,spr=w.spread*(1+(sp>3?.9:0)+(S.g?0:1.5))*(1-ads*.65),D=[],L=[],bd={},HT={},mx=w.melee?w.range:110;let harv=0;
-for(let i=0;i<w.pel;i++){const a=Math.random()*6.283,r=(w.pel>1?Math.sqrt(Math.random()):Math.random())*spr,v=d.clone().addScaledVector(rt,Math.cos(a)*r).addScaledVector(up,Math.sin(a)*r).normalize(),c=castRay(o,v,mx);if(TRN&&!w.melee)trnRay(o,v,c.L);let l=c.L,ht=null,hq=null;
+if(!w.melee&&!TRN&&!(AD.ammo&&PRAC()))st.mag--;S.nextShot=n+w.rate;S.lat=1;window.PAD&&PAD.rumble(w.id=='shotgun'?.8:w.melee?.3:.12,w.id=='shotgun'?.3:.35,w.id=='shotgun'?90:45);if(!(AD.norec&&PRAC())){recoil=Math.min(1.2,recoil+w.rec);shake+=w.shk}fireK=Math.min(1,fireK+(w.kk||0));S.pumpT=n;if(w.melee)S.swingT=n;
+const d=adSilentDir(dirv()),rt=new T.Vector3(Math.cos(yaw),0,-Math.sin(yaw)),up=new T.Vector3().crossVectors(rt,d).normalize();
+const o=camP.clone().addScaledVector(d,camD+.3),mu=w.melee?o:me.muzzle(),muL=!w.melee&&fpCur&&vm&&vm.g.visible?vm.muzzle():mu,spr=w.spread*(1+(sp>3?.9:0)+(S.g?0:1.5))*(1-ads*.65)*(AD.norec&&PRAC()?0:1),D=[],L=[],bd={},HT={},mx=w.melee?w.range:110;let harv=0;
+for(let i=0;i<w.pel;i++){const a=Math.random()*6.283,r=(w.pel>1?Math.sqrt(Math.random()):Math.random())*spr,v=d.clone().addScaledVector(rt,Math.cos(a)*r).addScaledVector(up,Math.sin(a)*r).normalize(),c=castRay(o,v,mx);if(TRN&&!w.melee)trnRay(o,v,c.L);let l=(AD.wb&&PRAC())?mx:c.L,ht=null,hq=null;
 for(const q of RP){if(q.mate||q.dead||q.left||q.late)continue;const h=hitZone(o,v,q.g.position,q.r,q.cr?(q.cr==2?.58:.7):1);if(h&&h.t<=Math.min(l,mx)+.05&&(!ht||h.t<ht.t)){ht=h;hq=q}}
-if(ht){const f=w.fall,m=1-(1-f[2])*Math.max(0,Math.min(1,(ht.t-f[0])/(f[1]-f[0]))),e=HT[hq.u]||(HT[hq.u]={r:hq,dm:0,hd:0,p:null});e.dm+=w.dmg*m*(ht.z=='head'?w.hs:ht.z=='legs'?.8:1);if(ht.z=='head')e.hd=1;e.p=o.clone().addScaledVector(v,ht.t);l=ht.t}
+if(ht){const f=w.fall,m=1-(1-f[2])*Math.max(0,Math.min(1,(ht.t-f[0])/(f[1]-f[0]))),e=HT[hq.u]||(HT[hq.u]={r:hq,dm:0,hd:0,p:null});e.dm+=w.dmg*m*((ht.z=='head'||(AD.hs&&PRAC()))?w.hs:ht.z=='legs'?.8:1);if(ht.z=='head')e.hd=1;e.p=o.clone().addScaledVector(v,ht.t);l=ht.t}
 if(!ht&&c.id&&l<mx)bd[c.id]=(bd[c.id]||0)+w.bdmg;else if(!ht&&w.melee&&l<mx&&!harv){harv=1;mat[msel]=Math.min(999,mat[msel]+25);SFX.hit();hud()}
 D.push(r3(v.x),r3(v.y),r3(v.z));L.push(Math.round(l*10)/10);if(!w.melee)tracer(muL,o.clone().addScaledVector(v,l),0xfff2a0,w.pel>1?.025:.04)}
 const bda=Object.keys(bd).map(k=>[k,bd[k]]);bda.forEach(([id,dm])=>damageBuild(id,dm));
@@ -1122,7 +1153,7 @@ function resume(){lock()}
 const BSK={easy:.12,normal:.4,hard:.7,insane:.95};
 function botSkill(){const d=window.CFG&&CFG.bdiff;if(BSK[d]!=null)return BSK[d];const lead=W[myT]-WO();return Math.max(.2,Math.min(.88,.46+.12*lead+(Math.random()-.5)*.1))}
 function botSpawn(r){const s=botSkill();r.cr=0;r.ai={sk:s,strafe:Math.random()<.5?1:-1,st:0,vy:0,g:1,mag:30,rlUntil:0,burst:0,nextShot:0,bnext:0,react:0,los:false,losT:0,blk:null,blkT:0,stuck:0,jmpT:0,yaw:r.r||0,pit:0,rec:0,ph:Math.random()*60,lk:null,lkT:0,hurtT:0,bT:0,nb:[],ccT:0,focus:0,aimHead:Math.random()<s*.35,idle:0}}
-function botHit(r,dm,hd,p){const a=r.ai;if(r.dead)return;hitFx(p,hd);{const real=Math.min(dm,Math.max(0,r.hp));S.dmg+=real;S.rdm+=real;dmgPop(real,hd,p)}r.hp-=dm;if(a){a.hurtT=performance.now();a.react=Math.min(a.react||1e12,performance.now()+250)}
+function botHit(r,dm,hd,p){const a=r.ai;if(r.dead)return;hitFx(p,hd);{const real=Math.min(dm,Math.max(0,r.hp));S.dmg+=real;S.rdm+=real;dmgPop(real,hd,p)}r.hp-=(AD.ikill&&PRAC()?1e6:dm);if(a){a.hurtT=performance.now();a.react=Math.min(a.react||1e12,performance.now()+250)}
 if(r.hp<=0){S.kills++;S.rk++;elimPop(r.name,1);r.hp=0;r.dead=1;r.dts=clk();r.dc=(r.dc||0)+1;r.dAway=Math.atan2(r.tg.x-P.x,r.tg.z-P.z);r.dHead=hd?1:0;SFX.kill();feed('You eliminated '+r.name);hud();mateUi();checkRound()}}
 /* bot-on-bot damage (and the storm): by = shooter bot, or 'STORM' */
 function botDmg(v,dm,hd,by){if(v.dead||v.left)return;{const real=Math.min(dm,Math.max(0,v.hp));if(by&&by.name)by.dm=(by.dm||0)+real}v.hp-=dm;if(v.ai)v.ai.react=Math.min(v.ai.react||1e12,performance.now()+250);
@@ -1139,7 +1170,7 @@ const x=ax?cx+Math.sign(dx)*GRID/2:cx,z=ax?cz:cz+Math.sign(dz)*GRID/2,rr=ax?1:0;
 if(Math.abs(x)>LIM+4||Math.abs(z)>LIM+4)return false;
 const id='bot_'+r.u+'_'+(a.bseq=(a.bseq||0)+1);if(a.nb.length>=8){const o=a.nb.shift();if(BLD[o])removeBuild(o,true)}
 if(addBuild(id,'wall',x,0,z,rr,false,Math.random()<.5?1:0,0,false)){a.nb.push(id);return true}return false}
-function botStep(r,dt,now){const a=r.ai;if(!a||r.dead||r.left)return;const live=phase=='live',pos=r.tg,w=WEAPONS[1],s=a.sk;
+function botStep(r,dt,now){const a=r.ai;if(!a||r.dead||r.left)return;if(AD.freeze&&PRAC())return;const live=phase=='live',pos=r.tg,w=WEAPONS[1],s=a.sk;
 if(!live){a.vy=0;return}
 const tq=botTarget(r,now);if(!tq){a.vy=0;return}const tReal=tq===ME?P:tq.g.position;
 /* what the bot perceives: your position as it was a moment ago (never the live position) */
@@ -1364,11 +1395,11 @@ function frame0(t){if(!run)return;raf=requestAnimationFrame(frame);if(window.CFG
 if(Qs.se>1)R.shadowMap.needsUpdate=(++fcnt%Qs.se)==0;
 if(phase=='freeze'){const n=Math.ceil((frz-now)/1000);if(n!=cdN){cdN=n;if(n>0){$('#cd').textContent=n;$('#cd').classList.remove('on');void $('#cd').offsetWidth;$('#cd').classList.add('on');SFX.tick()}}
 if(now>=frz){phase='live';$('#cd').textContent='';msg('FIGHT!');SFX.go();S.eq=0;if(CELLG)cellDrop()}}
-if(VOTE&&!VOTE.done)voteTick(now);const live=phase=='live';if(live)checkRound();turnStep(dt);csk=csk0();
+if(VOTE&&!VOTE.done)voteTick(now);const live=phase=='live';if(live)checkRound();turnStep(dt);adTick(dt,live);csk=csk0();
 if(!S.dead){const mv0=live||phase=='over',bh0=S.cr?1.15:1.8;if(AD.nc&&PRAC()){S.nc=1;S.ncT=now}if(!S.nc&&mv0&&hits(P,bh0)){S.nc=1;S.ncT=now}crUpd(dt,mv0);const bh=S.cr?1.15:1.8,nc=!!S.nc;let ox=P.x,oy=P.y,oz=P.z,og=S.g,wh=nc?false:hits(P,bh),mv=live||phase=='over',f=mv?Math.max(-1,Math.min(1,(K.fwd?1:0)-(K.back?1:0)+(K.ay||0))):0,r=mv?Math.max(-1,Math.min(1,(K.right?1:0)-(K.left?1:0)+(K.ax||0))):0,l=Math.max(1,Math.hypot(f,r)),spd=(K.sprint&&!K.aim?10:6.5)*(K.aim?.6:1)*(S.cr==1?.55:1)*(PRAC()?AD.spd:1),vx=(-Math.sin(yaw)*f+Math.cos(yaw)*r)/l*spd,vz=(-Math.cos(yaw)*f-Math.sin(yaw)*r)/l*spd;
 if(S.cr==2&&!(AD.fly&&PRAC())){vx=S.slx*S.slV;vz=S.slz*S.slV}
 P.x+=vx*dt;if(!nc&&hits(P,bh))P.x-=vx*dt;P.z+=vz*dt;if(!nc&&hits(P,bh))P.z-=vz*dt;P.x=Math.max(-LIM,Math.min(LIM,P.x));P.z=Math.max(-LIM,Math.min(LIM,P.z));
-if(f)mvf=f<0?-1:1;if(mv&&K.jump&&S.g){S.vy=9*(PRAC()?AD.jmp:1);S.g=0;SFX.jump()}S.vy=Math.max(-32,S.vy-25*dt);if(AD.fly&&PRAC()){S.vy=mv?((K.jump?1:0)-(K.crouch?1:0))*(K.sprint?14:8):0;S.g=0}if(S.vy>0&&!nc&&headHit(P,S.vy,dt))S.vy=0;const y0=P.y;P.y+=S.vy*dt;let gh=gnd(P,y0);if(S.g&&S.vy<=0&&P.y>gh&&P.y-gh<.4){P.y=gh}if(P.y<=gh&&S.vy<=0){if(!S.g&&!(AD.fly&&PRAC())){if(S.vy<-4)landT=.3;if(S.vy<-8)SFX.land();if(MD.map=='zone'&&live&&!S.dead&&S.vy<-FALLV)fallHit(-S.vy)}P.y=gh;S.vy=0;S.g=1}else if(P.y>gh+.05)S.g=0;
+if(f)mvf=f<0?-1:1;if(mv&&K.jump&&S.g){S.vy=9*(PRAC()?AD.jmp:1);S.g=0;SFX.jump()}S.vy=Math.max(-32,S.vy-25*(PRAC()?AD.grav:1)*dt);if(AD.fly&&PRAC()){S.vy=mv?((K.jump?1:0)-(K.crouch?1:0))*(K.sprint?14:8):0;S.g=0}if(S.vy>0&&!nc&&headHit(P,S.vy,dt))S.vy=0;const y0=P.y;P.y+=S.vy*dt;let gh=gnd(P,y0);if(S.g&&S.vy<=0&&P.y>gh&&P.y-gh<.4){P.y=gh}if(P.y<=gh&&S.vy<=0){if(!S.g&&!(AD.fly&&PRAC())){if(S.vy<-4)landT=.3;if(S.vy<-8)SFX.land();if(MD.map=='zone'&&live&&!S.dead&&S.vy<-FALLV)fallHit(-S.vy)}P.y=gh;S.vy=0;S.g=1}else if(P.y>gh+.05)S.g=0;
 sp+=(Math.hypot(vx,vz)-sp)*Math.min(1,dt*10);stepT-=dt;if(sp>3&&S.g&&stepT<0){SFX.step();stepT=K.sprint?.28:.4}
 if(!nc&&!wh&&P.y>oy+1e-4&&hits(P,bh)){P.x=ox;P.y=oy;P.z=oz;if(S.vy>0)S.vy=0;S.g=og} /* climbing stairs into a ceiling: the head bump blocks you (like Fortnite) instead of squeezing you through it */
 if(S.nc){if(!hits(P,bh)||now-S.ncT>7000){S.nc=0;if(hits(P,bh))unstick()}}else unstick();if(MD.map=='box'){if(P.y>CEILH-1.9){P.y=CEILH-1.9;if(S.vy>0)S.vy=0}if(Math.abs(P.x)>LIM+.4||Math.abs(P.z)>LIM+.4){P.x=Math.max(-LIM,Math.min(LIM,P.x));P.z=Math.max(-LIM,Math.min(LIM,P.z))}}if((live||phase=='over')&&K.shoot&&!EDIT){if(buildT)place(buildT);else shoot()}}
@@ -1482,7 +1513,7 @@ function warm(){try{if(!WARMG){WARMG=new T.Group();const add=m=>{const x=new T.M
 add(new T.MeshStandardMaterial({color:0x888888,roughness:.85,flatShading:true,transparent:true,opacity:.5,emissive:0xff3b3b,emissiveIntensity:.5}));
 add(new T.MeshStandardMaterial({color:0x888888,roughness:.5,metalness:.3}));add(new T.MeshStandardMaterial({color:0xc98f55,map:matTex(0),roughness:.85,flatShading:true,transparent:true,opacity:.5,emissive:0x2a6bff,emissiveIntensity:.5}));add(new T.MeshStandardMaterial({color:0xc98f55,map:matTex(1),roughness:.85,flatShading:true}));add(new T.MeshBasicMaterial({color:0xfff2a0,transparent:true}));add(flashMat());add(new T.MeshBasicMaterial({color:0x66b3ff,transparent:true,opacity:.42,depthWrite:false}))}
 sc.add(WARMG);R.compile(sc,cam);sc.remove(WARMG);if(vm)R.compile(vsc,cam)}catch(e){}}
-function start(o){init();trnClear();AD.god=AD.fly=AD.nc=AD.ammo=0;AD.spd=AD.jmp=1;cancelAnimationFrame(lraf);cancelAnimationFrame(raf);clearInterval(tick);clr(pt);clearTimeout(S.rlT);ferr=0;BOTM=!!o.bot;clk=o.clock||Date.now;onGhost=o.onGhost||null;rT0=0;startT=performance.now();db=BOTM?{ref:()=>NR}:o.db;uid=o.uid;mid=o.mid;onEnd=o.onEnd;onLeave=o.onLeave;clearBuilds();
+function start(o){init();trnClear();adReset();cancelAnimationFrame(lraf);cancelAnimationFrame(raf);clearInterval(tick);clr(pt);clearTimeout(S.rlT);ferr=0;BOTM=!!o.bot;clk=o.clock||Date.now;onGhost=o.onGhost||null;rT0=0;startT=performance.now();db=BOTM?{ref:()=>NR}:o.db;uid=o.uid;mid=o.mid;onEnd=o.onEnd;onLeave=o.onLeave;clearBuilds();
 for(let i=FX.length-1;i>=0;i--)if(!FX[i].ring){fxFree(FX[i].m);FX.splice(i,1)}
 if(window.PAD)PAD.drain();specT=null;lastDead=0;if(vm){vSway.remove(vm.g);disposeTree(vm.g);vm=null}if(me){sc.remove(me.g);disposeTree(me.g)}RP.forEach(r=>{sc.remove(r.g);disposeTree(r.g);if(r.bar)r.bar.remove()});RP=[];oRefs=[];
 /* roster: 1v1 = two players (lower uid is team 0); 2v2 = four players from the matchmaker, team 0 first */
@@ -1554,4 +1585,4 @@ look(dx,dy){if(!run||paused())return;const k=.0042*(window.CFG?CFG.sens:1)*(cam.
 aimHold(v){if(!run||!hold())return;if(EDIT||buildT){if(v){down('aim',false);up('aim')}}else K.aim=v?1:0},
 tapAim(){if(!run||!hold())return;if(EDIT||buildT){down('aim',false);up('aim')}else K.aim=K.aim?0:1},
 pause(){if(!run||phase=='ended')return;for(const k in K)K[k]=0;padSprint=0;$('#pause').classList.add('on');$('#pconf').style.display='none';$('#pbtns').style.display='block'}};
-return{players:()=>RP.filter(r=>r.u&&!r.bot).map(r=>({uid:r.u,name:r.name})),practice:()=>!!(BOTM||TRN),adminState:()=>({god:AD.god,fly:AD.fly,nc:AD.nc,ammo:AD.ammo,spd:AD.spd,jmp:AD.jmp,practice:PRAC()}),adminSet:(k,v)=>{if(!PRAC()||!(k in AD))return false;AD[k]=v;if(k=='fly'&&v){S.g=0}return true},adminRefill:()=>{if(!(BOTM||TRN))return false;S.hp=100;S.sh=0;mat=[999,999,999];hud();return true},adminUi:v=>{window.ADMOPEN=!!v;if(v){for(const k in K)K[k]=0;try{document.exitPointerLock&&document.exitPointerLock()}catch(_){}}else if(run&&!FREE()){try{R.domElement.requestPointerLock()}catch(_){}}},ev:s=>window.DEBUG?eval(s):undefined /* debug builds only (?debug=1): lets the test rig read / write any variable inside this closure */,input,start,lobby,leave,resume,quality,qinfo,thumb,busy:()=>!!run,refreshKeys,padLost(){if(run&&!paused()&&phase!='ended')input.pause()},specStep,toggleMap,thumbCached:v=>THC.get(+v||0),gunIcon:(wi,cols,sz,sk)=>gunIcon(WEAPONS[wi],cols,sz,sk),partner(i){PI=i;lobbyPartner()},kick(){LC&&LC.kick&&LC.kick()}}})();
+return{players:()=>RP.filter(r=>r.u&&!r.bot).map(r=>({uid:r.u,name:r.name})),practice:()=>!!(BOTM||TRN),adminState:()=>Object.assign({},AD,{practice:PRAC(),bots:PRAC()?adBots().length:0}),adminSet:(k,v)=>{if(!PRAC()||!(k in AD)||k=='t'||k=='espOn')return false;AD[k]=v;if(k=='fly'&&v){S.g=0}if(k=='esp'){try{adEsp()}catch(_){}AD.espOn=AD.esp}return true},adminAct:adAct,adminRefill:()=>{if(!(BOTM||TRN))return false;S.hp=100;S.sh=0;mat=[999,999,999];hud();return true},adminUi:v=>{window.ADMOPEN=!!v;if(v){for(const k in K)K[k]=0;try{document.exitPointerLock&&document.exitPointerLock()}catch(_){}}else if(run&&!FREE()){try{R.domElement.requestPointerLock()}catch(_){}}},ev:s=>window.DEBUG?eval(s):undefined /* debug builds only (?debug=1): lets the test rig read / write any variable inside this closure */,input,start,lobby,leave,resume,quality,qinfo,thumb,busy:()=>!!run,refreshKeys,padLost(){if(run&&!paused()&&phase!='ended')input.pause()},specStep,toggleMap,thumbCached:v=>THC.get(+v||0),gunIcon:(wi,cols,sz,sk)=>gunIcon(WEAPONS[wi],cols,sz,sk),partner(i){PI=i;lobbyPartner()},kick(){LC&&LC.kick&&LC.kick()}}})();

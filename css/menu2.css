@@ -194,3 +194,9 @@ body.touch .mcard::after,body.touch #mhint i{animation:none}
 #gadm .gsw button.on,#gadm .gtg button.on{border-color:#38f5c8;background:#38f5c833}
 #gadm .gtool{margin-bottom:6px}#gadm .gtool.goff{background:linear-gradient(180deg,#8a7aa8,#5d4f7a);box-shadow:0 4px 0 #35294f}
 #gadmb{display:none;position:fixed;left:12px;bottom:12px;z-index:59;padding:5px 10px;border-radius:10px;background:#12082ecc;border:1px solid #38f5c888;color:#38f5c8;font-size:11px;font-weight:900;letter-spacing:.06em;pointer-events:none}
+
+#gadm{width:min(360px,94vw)}
+#gadm .gs2{margin:8px 0 4px;font-size:10px;font-weight:900;letter-spacing:.14em;opacity:.7}
+#gadm .gtg2{display:grid;grid-template-columns:1fr;gap:6px}#gadm .gtg2 .gtool{margin:0}
+#gadm .gtg button{flex:1 1 auto}
+#gadmb{max-width:70vw}

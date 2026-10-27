@@ -76,36 +76,43 @@ tool('#admxpb','#admxp',v=>EV.admin.addXp(v),v=>'+'+cl(v,1e7).toLocaleString()+'
 tool('#admrd',null,()=>EV.admin.resetDaily(),()=>'Daily reward, treat & quests reset');
 
 /* ================= in-game admin menu (default key Y, owners only) =================
-   In-match tools only (no gifts here, those live in the main-menu ADMIN panel): god mode, fly, noclip, infinite ammo, speed, super jump, refill.
-   They only take effect in bot matches and the aim trainer (never in a real match). Settings reset when a new match starts.
-   FLY: Space = up, Crouch = down, Sprint = faster.   The key is only listed in Settings > Controls for owners. */
+   In-match tools only (gifts live in the main-menu ADMIN panel). Everything here only takes effect in bot matches and the aim trainer
+   (never in a real match). Settings reset when a new match starts.  FLY: Space = up, Crouch = down, Sprint = faster. */
 let gp=null,gbadge=null;
 const gOpen=()=>!!gp&&gp.classList.contains('on');
-const TOG=[['god','🛡️ GOD MODE','no damage at all'],['fly','🕊️ FLY','Space up · Crouch down'],['nc','👻 NOCLIP','walk through walls'],['ammo','♾️ INFINITE AMMO','never reload']];
-const SPD=[1,2,3,5],JMP=[1,2,3];
+/* toggles: [key, label, hint] */
+const GROUPS=[
+ ['AIM',[['silent','🎯 SILENT AIM','shots curve to the nearest enemy'],['auto','🔫 AUTO SHOOT','fires when an enemy is on target'],['hs','💀 ALWAYS HEADSHOT','every hit counts as a headshot'],['wb','🧱 WALLBANG','bullets ignore walls']],
+  [['aim','AIMBOT',[[0,'OFF'],[1,'SMOOTH'],[2,'SNAP']]],['head','AIM AT',[[0,'BODY'],[1,'HEAD']]]]],
+ ['GUN',[['ammo','♾️ INF AMMO','never reload, mag always full'],['rapid','⚡ RAPID FIRE','every gun full-auto, super fast'],['norec','🎛️ NO RECOIL / SPREAD','laser-straight bullets'],['ikill','☠️ ONE-HIT KILL','bots die in one shot'],['mats','🧱 INF MATERIALS','build forever']],[]],
+ ['PLAYER',[['god','🛡️ GOD MODE','no damage at all'],['fly','🕊️ FLY','Space up · Crouch down'],['nc','👻 NOCLIP','walk through walls']],
+  [['spd','MOVE SPEED',[[1,'x1'],[2,'x2'],[3,'x3'],[5,'x5']]],['jmp','JUMP HEIGHT',[[1,'x1'],[2,'x2'],[3,'x3']]],['grav','GRAVITY',[[1,'NORMAL'],[.5,'LOW'],[.25,'MOON'],[.08,'SPACE']]]]],
+ ['TROLL',[['esp','👁️ WALLHACK','see enemies through walls'],['freeze','🧊 FREEZE BOTS','bots stop moving & shooting']],[]]
+];
+const TOGS=[].concat(...GROUPS.map(g=>g[1]));
 function gBuild(){gp=document.createElement('div');gp.id='gadm';
- gp.innerHTML='<div class="gh"><b>🛠 ADMIN</b><small>press Y to close</small><button type="button" data-a="x">✕</button></div>'+
- '<p class="gnote" hidden>Tools only work in bot matches and the aim trainer.</p>'+
- '<div class="gs">PLAYER</div><div class="gsw">'+TOG.map(t=>'<button type="button" data-k="'+t[0]+'"><b>'+t[1]+'</b><small>'+t[2]+'</small></button>').join('')+'</div>'+
- '<div class="gs">MOVE SPEED</div><div class="gtg">'+SPD.map(v=>'<button type="button" data-s="'+v+'">x'+v+'</button>').join('')+'</div>'+
- '<div class="gs">JUMP HEIGHT</div><div class="gtg">'+JMP.map(v=>'<button type="button" data-j="'+v+'">x'+v+'</button>').join('')+'</div>'+
- '<div class="gs">QUICK</div><button type="button" class="gtool" data-a="refill">❤️ REFILL HP + MATERIALS</button><button type="button" class="gtool goff" data-a="reset">↺ TURN EVERYTHING OFF</button>';
- document.body.appendChild(gp);
+ let h='<div class="gh"><b>🛠 ADMIN</b><small>press Y to close</small><button type="button" data-a="x">✕</button></div><p class="gnote" hidden>Tools only work in bot matches and the aim trainer.</p>';
+ GROUPS.forEach(g=>{h+='<div class="gs">'+g[0]+'</div><div class="gsw">'+g[1].map(t=>'<button type="button" data-k="'+t[0]+'"><b>'+t[1]+'</b><small>'+t[2]+'</small></button>').join('')+'</div>';
+  g[2].forEach(sg=>{h+='<div class="gs2">'+sg[1]+'</div><div class="gtg">'+sg[2].map(o=>'<button type="button" data-sk="'+sg[0]+'" data-sv="'+o[0]+'">'+o[1]+'</button>').join('')+'</div>'})});
+ h+='<div class="gs">BOT ACTIONS <small>bot matches only</small></div><div class="gtg2"><button type="button" class="gtool" data-a="kill">☠️ KILL ALL BOTS</button><button type="button" class="gtool" data-a="bring">🧲 BRING BOTS TO ME</button><button type="button" class="gtool" data-a="tp">🌀 TELEPORT TO A BOT</button></div>'+
+  '<div class="gs">QUICK</div><button type="button" class="gtool" data-a="refill">❤️ REFILL HP + MATERIALS</button><button type="button" class="gtool goff" data-a="reset">↺ TURN EVERYTHING OFF</button>';
+ gp.innerHTML=h;document.body.appendChild(gp);
  gp.addEventListener('keydown',e=>{e.stopPropagation();if(e.code=='Escape'||(CTL.acts(e.code)||[]).includes('admin')){e.preventDefault();gClose()}},true);
  gp.addEventListener('keyup',e=>e.stopPropagation(),true);
  gp.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;SFX.click();
   const st=Game.adminState();
   if(b.dataset.a=='x')return gClose();
   if(!st.practice)return toast('Admin tools only work in bot matches and the aim trainer');
-  if(b.dataset.k){const k=b.dataset.k;Game.adminSet(k,st[k]?0:1);toast(TOG.find(t=>t[0]==k)[1]+(st[k]?' off':' on'))}
-  else if(b.dataset.s){Game.adminSet('spd',+b.dataset.s);toast('Speed x'+b.dataset.s)}
-  else if(b.dataset.j){Game.adminSet('jmp',+b.dataset.j);toast('Jump x'+b.dataset.j)}
+  if(b.dataset.k){const k=b.dataset.k;Game.adminSet(k,st[k]?0:1);toast(TOGS.find(t=>t[0]==k)[1]+(st[k]?' off':' on'))}
+  else if(b.dataset.sk){Game.adminSet(b.dataset.sk,+b.dataset.sv);toast(b.textContent+' set')}
   else if(b.dataset.a=='refill')toast(Game.adminRefill()?'Refilled HP and materials':'Refill failed');
-  else if(b.dataset.a=='reset'){['god','fly','nc','ammo'].forEach(k=>Game.adminSet(k,0));Game.adminSet('spd',1);Game.adminSet('jmp',1);toast('All admin tools off')}
+  else if(b.dataset.a=='reset'){TOGS.forEach(t=>Game.adminSet(t[0],0));Game.adminSet('aim',0);Game.adminSet('head',1);Game.adminSet('spd',1);Game.adminSet('jmp',1);Game.adminSet('grav',1);toast('All admin tools off')}
+  else{const n=Game.adminAct(b.dataset.a);toast(!n?'No bots in this match':(b.dataset.a=='kill'?'☠️ Eliminated '+n+' bot'+(n==1?'':'s'):b.dataset.a=='bring'?'🧲 Pulled '+n+' bot'+(n==1?'':'s')+' to you':'🌀 Teleported'))}
   gSync()})}
 /* highlight what is on + a small badge so you can still see it with the menu closed */
-function gSync(){if(typeof Game=='undefined')return;const st=Game.adminState(),on=TOG.filter(t=>st[t[0]]).map(t=>t[1].split(' ').slice(1).join(' '));if(st.spd>1)on.push('SPEED x'+st.spd);if(st.jmp>1)on.push('JUMP x'+st.jmp);
- if(gp){gp.querySelectorAll('[data-k]').forEach(b=>b.classList.toggle('on',!!st[b.dataset.k]));gp.querySelectorAll('[data-s]').forEach(b=>b.classList.toggle('on',+b.dataset.s==st.spd));gp.querySelectorAll('[data-j]').forEach(b=>b.classList.toggle('on',+b.dataset.j==st.jmp));gp.querySelector('.gnote').hidden=st.practice}
+function gSync(){if(typeof Game=='undefined')return;const st=Game.adminState(),on=TOGS.filter(t=>st[t[0]]).map(t=>t[1].split(' ').slice(1).join(' '));
+ if(st.aim)on.unshift(st.aim==2?'AIMBOT SNAP':'AIMBOT');if(st.spd>1)on.push('SPEED x'+st.spd);if(st.jmp>1)on.push('JUMP x'+st.jmp);if(st.grav<1)on.push('LOW GRAV');
+ if(gp){gp.querySelectorAll('[data-k]').forEach(b=>b.classList.toggle('on',!!st[b.dataset.k]));gp.querySelectorAll('[data-sk]').forEach(b=>b.classList.toggle('on',+b.dataset.sv==st[b.dataset.sk]));gp.querySelector('.gnote').hidden=st.practice}
  const show=st.practice&&on.length&&EV.owner()&&Game.busy();
  if(show&&!gbadge){gbadge=document.createElement('div');gbadge.id='gadmb';document.body.appendChild(gbadge)}
  if(gbadge){gbadge.style.display=show?'block':'none';if(show)gbadge.textContent='🛠 '+on.join(' · ')}}
