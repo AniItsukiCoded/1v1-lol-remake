@@ -79,10 +79,10 @@ $('#bpb2').onclick=e=>{const b=e.target.closest('.rw');if(!b)return;SFX.click();
 /* ---------- locker / shop ---------- */
 const RO={mythic:-1,legendary:0,epic:1,rare:2,common:3};
 function locker(shop){const el=$('#sw');el.innerHTML='';$('#tL').classList.toggle('on',!shop);$('#tS').classList.toggle('on',!!shop);
-const F=[['all','ALL'],['hw','🎃 HALLOWEEN'],['bp','⭐ PASS'],['gun','🔫 GUNS'],['col','COLORS']],fl=$('#lf');fl.innerHTML=F.map(f=>`<button class="fc ${lfs==f[0]?'on':''}" data-f="${f[0]}">${f[1]}</button>`).join('');fl.style.display=shop?'none':'flex';
+const F=[['all','ALL'],['hw','🎃 HALLOWEEN'],['bp','⭐ PASS'],['rk','🏅 RANKED'],['gun','🔫 GUNS'],['col','COLORS']],fl=$('#lf');fl.innerHTML=F.map(f=>`<button class="fc ${lfs==f[0]?'on':''}" data-f="${f[0]}">${f[1]}</button>`).join('');fl.style.display=shop?'none':'flex';
 fl.onclick=e=>{const b=e.target.closest('.fc');if(b){SFX.click();lfs=b.dataset.f;locker(0)}};
 let list=ITEMS.filter(x=>shop?(!own(x.v)&&x.price):own(x.v));
-if(!shop&&lfs!='all')list=list.filter(x=>lfs=='hw'?x.src=='hw':lfs=='bp'?x.src=='bp':lfs=='gun'?x.k=='gun':x.k=='color');
+if(!shop&&lfs!='all')list=list.filter(x=>lfs=='hw'?x.src=='hw':lfs=='bp'?x.src=='bp':lfs=='rk'?x.src=='rk':lfs=='gun'?x.k=='gun':x.k=='color');
 list.sort((a,b)=>eq(b)-eq(a)||RO[a.rar]-RO[b.rar]);
 if(shop&&on()){const n=document.createElement('button');n.className='cd evcard';n.style.gridColumn='1/-1';n.innerHTML='<span class="ic">🎃</span><b>Halloween skins &amp; gun skins are earned in the Event menu</b><span class="pr">OPEN</span>';n.onclick=()=>{SFX.click();$('#locker').classList.remove('on');openEvent('home')};el.appendChild(n)}
 list.forEach(x=>{const b=document.createElement('button'),r=RAR[x.rar];b.className='cd r-'+x.rar+(!shop&&eq(x)?' sel':'');b.style.setProperty('--r',r[1]);
@@ -219,4 +219,4 @@ const admin={
  /* rank = the candy also counts as collected: ranked total (leaderboard) + today's board. Without it the candy is only spendable. */
  if(rk){if(E.dl.k!=utcKey())E.dl={k:utcKey(),c:0};E.dl.c+=c;E.tot+=c}
  saveCfg();ui();if(rk)syncLB();return{c,o,k,x,rk}}};
-return{on,ui:refresh,owner:()=>OWNER,setOwner,admin,locker,candy,afkCandy,round,matchStart,matchDone,welcome,openEvent,sync:()=>syncLB(1),reload:()=>{norm();rollDay();refresh()}}})();
+return{on,ui:refresh,owner:()=>OWNER,setOwner,admin,locker,candy,afkCandy,round,matchStart,matchDone,welcome,openEvent,give,reveal,sync:()=>syncLB(1),reload:()=>{norm();rollDay();refresh()}}})();

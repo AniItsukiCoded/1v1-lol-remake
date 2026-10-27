@@ -66,7 +66,8 @@ const LIST=[
 {id:10,n:'Reaper',ico:'☠️',set:'hw',rar:'legendary'},{id:11,n:'Pumpkin King',ico:'👑',set:'hw',rar:'legendary'},{id:12,n:'Frankenstein',ico:'🔩',set:'hw',rar:'rare'},
 {id:13,n:'Candy Corn',ico:'🍬',set:'hw',rar:'rare'},{id:14,n:'Spider',ico:'🕷️',set:'hw',rar:'epic'},{id:15,n:'Werewolf',ico:'🐺',set:'hw',rar:'epic'},{id:16,n:'Black Cat',ico:'🐈‍⬛',set:'hw',rar:'rare'},{id:17,n:'Nightmare King',ico:'👹',set:'hw',rar:'mythic'},{id:18,n:'Spectral Knight',ico:'⚔️',set:'hw',rar:'mythic'},
 {id:20,n:'Crown',ico:'👑',set:'bp',rar:'epic'},{id:21,n:'Halo',ico:'😇',set:'bp',rar:'rare'},{id:22,n:'Headphones',ico:'🎧',set:'bp',rar:'rare'},
-{id:23,n:'Cyber Visor',ico:'🥽',set:'bp',rar:'epic'},{id:24,n:'Shades',ico:'😎',set:'bp',rar:'common'},{id:25,n:'Angel',ico:'🪽',set:'bp',rar:'legendary'}];
+{id:23,n:'Cyber Visor',ico:'🥽',set:'bp',rar:'epic'},{id:24,n:'Shades',ico:'😎',set:'bp',rar:'common'},{id:25,n:'Angel',ico:'🪽',set:'bp',rar:'legendary'},
+{id:26,n:'Archnemesis',ico:'😈',set:'rk',rar:'mythic'},{id:27,n:'Ranked Champion',ico:'🥇',set:'rk',rar:'mythic'},{id:28,n:'Ranked Runner-Up',ico:'🥈',set:'rk',rar:'mythic'},{id:29,n:'Ranked Third Place',ico:'🥉',set:'rk',rar:'mythic'}];
 const B={};
 
 B[1]=()=>({head:[pumpkin(1)]});
@@ -241,6 +242,37 @@ const w=wings(0xffffff,1.6,true,.12,2.4),h=mesh(new T.TorusGeometry(.14,.014,6,2
 const sp=orbit(8,()=>glow(0xffffff,.14),.55,1,.0,1.5),pl=pauldron(0xfff0b8,1.15,{metalness:.7,roughness:.3,emissive:0x665020,emissiveIntensity:.5});
 const drape=skirt(0xffffff,.2,.3,.55,.0,0,{emissive:0xdfe8ff,emissiveIntensity:.35,roughness:.8},.1,8),tr=mesh(new T.TorusGeometry(.115,.014,6,20),goldM(),0,.02,0);tr.rotation.x=Math.PI/2;
 return{head:[h,gl],chest:[pl,drape,tr],back:[w.g],hip:[sp.g],upd:(t,d,o)=>{w.upd(t,.0);const y=.31+Math.sin(t*2)*.012;h.position.y=gl.position.y=y;sp.upd(t)}}};
+
+/* ---------- RANKED season rewards (set 'rk') ---------- */
+B[26]=()=>{/* Archnemesis: obsidian horns, burning crown, ember wings, spiked pauldrons and orbiting crimson shards. The hardest flex in the game. */
+const ob=M(0x16060f,{metalness:.55,roughness:.35,emissive:0x40001a,emissiveIntensity:.5}),hot=0xff1f5a;
+const hn=[-1,1].map(s=>{const h=horn(0x16060f,.3,.05);h.position.set(s*.115,.1,.02);h.rotation.z=-s*.42;h.rotation.x=-.12;h.children.forEach(c=>{c.material=ob});return h});
+const tip=[-1,1].map(s=>{const t=mesh(new T.SphereGeometry(.02,8,6),gemM(hot,1),s*.2,.3,0);return t});
+const fl=flames(9,.26,0xff1f5a,0xffa03a);fl.g.position.y=.16;fl.g.scale.setScalar(1.1);
+const ring=mesh(new T.TorusGeometry(.15,.012,6,26),BM(hot),0,.14,0);ring.rotation.x=Math.PI/2;
+const wg=wings(0x1a0614,1.55,false,.2,3.2);
+const pl=pauldron(0x16060f,1.3,{metalness:.65,roughness:.3,emissive:0x50001c,emissiveIntensity:.55});
+const sp=[-1,1].map(s=>spike(0x16060f,.2,.045,s*.27,.02,0,0,-s*.8,{emissive:0x60001c,emissiveIntensity:.6}));
+const bl=belt(0x16060f,-.5,{emissive:0x500018,emissiveIntensity:.6}),core=mesh(new T.OctahedronGeometry(.05),gemM(hot,1),0,-.12,-.17);
+const sh=orbit(6,i=>mesh(new T.OctahedronGeometry(.045),gemM(i%2?hot:0xffa03a,.9)),.5,1.4,-.1,1.4),em=embers(14,0xff5a3a,.3,1.3);em.g.position.set(0,-.9,0);
+return{head:[...hn,...tip,fl.g,ring,eyes(0xff2a5a,.022,.052,-.128,.017),sheen(hot,.45,-.05,.022,-.14),sheen(hot,.45,.05,.022,-.14),glow(hot,.95)],chest:[pl,...sp,bl,core,glow(hot,.5)],back:[wg.g],hip:[sh.g,em.g],mat:m=>{m.emissive.set(0x2a000e);m.emissiveIntensity=.4},
+ upd:(t,d,o)=>{fl.upd(t);em.upd(t);sh.upd(t);wg.upd(t,o.k||0);ring.rotation.z=t*1.1;core.rotation.y=t*2;core.material.emissiveIntensity=.7+.4*Math.sin(t*3);tip.forEach((q,i)=>q.material.emissiveIntensity=.7+.5*Math.sin(t*4+i))}}};
+const champ=(c1,c2,c3,gl)=>()=>{/* season podium crown: tall jewelled crown, halo ring, orbiting stars, wings of light and a regal cape */
+const gm=M(c1,{metalness:.9,roughness:.2,emissive:c3,emissiveIntensity:.5,side:T.DoubleSide}),g=new T.Group();
+g.add(mesh(new T.CylinderGeometry(.15,.17,.09,18,1,true),gm));
+for(let i=0;i<9;i++){const a=i/9*TAU,x=Math.cos(a)*.16,z=Math.sin(a)*.16,h=i%3==0?.2:.13;g.add(mesh(new T.ConeGeometry(.034,h,4),gm,x,.09+h/2-.02,z));g.add(mesh(new T.SphereGeometry(.02,8,6),gemM(i%3==0?c2:0xffffff,.95),x,.09+h-.01,z))}
+[0,1].forEach(i=>{const t=mesh(new T.TorusGeometry(.155,.011,5,18,Math.PI),gm,0,.1,0);t.rotation.y=i*Math.PI/2;g.add(t)});
+const top=mesh(new T.OctahedronGeometry(.045),gemM(c2,1),0,.27,0);g.add(top,sheen(gl,.9,0,.14,0));g.position.y=.2;
+const halo=mesh(new T.TorusGeometry(.24,.014,6,30),BM(c2,{transparent:true,opacity:.9}),0,.62,0);halo.rotation.x=Math.PI/2;
+const st=orbit(5,()=>glow(0xffffff,.2),.3,1.8,.5,.75),w=wings(c1,1.7,true,.1,2.2);
+const cape=capeMesh(c3,c1,1.05,.2,.44),pl=pauldron(c1,1.25,{metalness:.8,roughness:.25,emissive:c3,emissiveIntensity:.5});
+const sash=mesh(new T.BoxGeometry(.36,.07,.02),gm,0,-.18,-.15);sash.rotation.z=.6;
+const em=embers(10,gl,.3,1.4);em.g.position.set(0,-.9,0);
+return{head:[g,halo,st.g,glow(gl,1.05)],chest:[pl,sash,sheen(gl,.5,0,-.15,-.18)],back:[w.g,cape],hip:[em.g],
+ upd:(t,d,o)=>{top.rotation.y=t*2;top.material.emissiveIntensity=.7+.5*Math.sin(t*3);halo.position.y=.62+Math.sin(t*2)*.015;halo.rotation.z=t*.5;st.upd(t);w.upd(t,o.k||0);em.upd(t);cape.rotation.x=-.1-.05*Math.sin(t*2)-(o.k||0)*.25}}};
+B[27]=champ(0xffd23f,0xfff2a8,0x8a5a00,0xffd23f);
+B[28]=champ(0xdfe6f5,0x9fe8ff,0x4a5878,0xcfe8ff);
+B[29]=champ(0xd98a4a,0xffc89a,0x6a3414,0xffa060);
 
 /* ---------- Halloween scenery props (used by the lobby and in-match decor) ---------- */
 function jack(s=1,lite){return pumpkin(s,0xffd34a,0xff7a12,lite)}

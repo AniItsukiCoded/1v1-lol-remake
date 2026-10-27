@@ -2,7 +2,7 @@ firebase.initializeApp(window.FIREBASE_CONFIG);
 /* ---- saved data. PROGRESS (coins, xp, skins, passes, event...) is wiped once whenever DATA_VER changes (accounts/usernames are untouched);
    settings (sensitivity, volume...) are kept. Logged-in accounts also save their progress to the cloud (see "account cloud save" below). ---- */
 const DATA_VER=2;
-const PROG={skin:0x2f9bff,coins:0,xp:0,owned:[0x2f9bff,0xff4d4d],dly:0,gs:[0,0,0],kb:{}},PK=[...Object.keys(PROG),'ev','bp'],fresh=()=>JSON.parse(JSON.stringify(PROG));
+const PROG={skin:0x2f9bff,coins:0,xp:0,owned:[0x2f9bff,0xff4d4d],dly:0,gs:[0,0,0],kb:{}},PK=[...Object.keys(PROG),'ev','bp','rkd'],fresh=()=>JSON.parse(JSON.stringify(PROG));
 let saved={};try{saved=JSON.parse(localStorage.cfg||'{}')||{}}catch(e){}
 window.CFG=Object.assign({sens:1,vol:1,music:true,model:true,q:window.TOUCH?4:10,mode:'1v1',fp:false,fpfov:90},fresh(),saved);
 /* graphics: 0 Anti-Lag, 1 Low, 2 Normal, 3 Higher. One-time reset (GQ_VER) puts everyone on Normal; phones/tablets are always Normal */
@@ -28,7 +28,7 @@ const fa=c.on('child_added',s=>{ks.add(s.key);upd()}),fr=c.on('child_removed',s=
 presOff=()=>{c.off('child_added',fa);c.off('child_removed',fr);r.remove();presOff=null}}
 // ---- auth: guest by default
 auth.onAuthStateChanged(async u=>{
-while(typeof EV=='undefined'||typeof LB2=='undefined'||typeof ADM=='undefined'||typeof LBK=='undefined')await new Promise(r=>setTimeout(r,25)); /* passes.js (EV) is the last script: never run the menu before it has loaded */
+while(typeof EV=='undefined'||typeof LB2=='undefined'||typeof ADM=='undefined'||typeof LBK=='undefined'||typeof RK=='undefined')await new Promise(r=>setTimeout(r,25)); /* passes.js (EV) is the last script: never run the menu before it has loaded */
 if(!u){user=null;presOff&&presOff();try{await auth.signInAnonymously()}catch(e){$('.spin').style.display='none';$('#bt').textContent='Could not start';
 $('#berr').textContent=(e.code=='auth/operation-not-allowed'||e.code=='auth/admin-restricted-operation')?'Enable the Anonymous provider in Firebase console > Authentication > Sign-in method (and make sure sign-ups are allowed under Settings > User actions), then reload.':e.code=='auth/unauthorized-domain'?'Add this site ('+location.hostname+') to Firebase Authentication > Settings > Authorized domains, or open the game from your .web.app / .firebaseapp.com link.':e.message}return}
 if(u.isAnonymous&&!u.displayName)await u.updateProfile({displayName:'Guest '+(1000+Math.random()*9000|0)});
@@ -41,16 +41,16 @@ if(user&&user.isAnonymous)await user.linkWithCredential(firebase.auth.EmailAuthP
 await auth.currentUser.updateProfile({displayName:n});user=auth.currentUser;await sess();menu()}else await auth.signInWithEmailAndPassword(e,p)}catch(x){err(x)}};
 $('#back').onclick=()=>{SFX.click();menu()};
 $('#acct').onclick=async()=>{SFX.click();if(user.isAnonymous){$('#err').textContent='';show('auth')}else{presOff&&presOff();await cloudPush();cloud.ready=false;cloud.uid=cloud.p=null;wipe();await auth.signOut()}};
-async function menu(){show('menu');ui();LB2.modeShow();LBK.flush();if(!menu.j){menu.j=1;const c=new URLSearchParams(location.search).get('party');if(c){strip();joinParty(c)}}partyRefresh();Game.lobby(true,CFG.skin);EV.welcome();$('#av').style.background=hx(CFG.skin);bustBg($('#av'),CFG.skin);$('#gbtn').style.display=user.isAnonymous?'block':'none';$('#who').textContent=nm().slice(0,14);$('#acct').textContent=user.isAnonymous?'Email sign in / up':'Sign out';
+async function menu(){show('menu');ui();LB2.modeShow();LBK.flush();if(!menu.j){menu.j=1;const c=new URLSearchParams(location.search).get('party');if(c){strip();joinParty(c)}}partyRefresh();Game.lobby(true,CFG.skin);EV.welcome();RK.paint();RK.load();$('#av').style.background=hx(CFG.skin);bustBg($('#av'),CFG.skin);$('#gbtn').style.display=user.isAnonymous?'block':'none';$('#who').textContent=nm().slice(0,14);$('#acct').textContent=user.isAnonymous?'Email sign in / up':'Sign out';
 let s=(await db.ref('users/'+user.uid).once('value').catch(()=>null))?.val()||{};
 if(s.v!==DATA_VER){s={name:nm(),wins:0,losses:0,v:DATA_VER};db.ref('users/'+user.uid).set(s).catch(()=>{})} /* data reset: win/loss record starts over, the account stays */
 else if(s.name!==nm())db.ref('users/'+user.uid+'/name').set(nm()).catch(()=>{});
 $('#stats').textContent=`Wins ${s.wins||0} · Losses ${s.losses||0}`}
 $('#play').onclick=()=>{SFX.resume();SFX.click();window.touchEnter&&touchEnter();go()};
 $('#cancel').onclick=()=>{SFX.click();qStop&&qStop();menu()};
-$('#home').onclick=()=>{SFX.click();menu()};$('#again').onclick=()=>{SFX.click();window.touchEnter&&touchEnter();go()};
-function begin2(mid,ros,md){begin(mid,null,null,null,ros,false,md)}
-const beginAny=v=>{if(!v||!v.mid||(v.t&&now()-v.t>45000))return;if(v.room)return joinRoom(v.md,null,v.rid);v.ros?begin2(v.mid,v.ros,v.md):begin(v.mid,v.uid,v.name,v.skin,null,false,v.md)};
+$('#home').onclick=()=>{SFX.click();menu()};$('#again').onclick=()=>{SFX.click();window.touchEnter&&touchEnter();window.LASTRK?RK.play():go()};
+function begin2(mid,ros,md,rkm){begin(mid,null,null,null,ros,false,md,undefined,undefined,rkm)}
+const beginAny=v=>{if(!v||!v.mid||(v.t&&now()-v.t>45000))return;if(v.room)return joinRoom(v.md,null,v.rid);v.ros?begin2(v.mid,v.ros,v.md,v.rm?{md:v.md,s:v.s,ros:v.ros}:null):begin(v.mid,v.uid,v.name,v.skin,null,false,v.md,undefined,v.rk)};
 /* match-over screen: tint by result, Victory Royale banner for the winner only, reward chips */
 function endFx(r,gx,ex){const e=$('#end'),res=r.draw?'draw':r.win?'win':'lose';e.classList.remove('win','lose','draw');e.classList.add(res);
 const vr=$('#vroy');vr.classList.remove('on');void vr.offsetWidth;if(res=='win')vr.classList.add('on');$('#res').style.display=res=='win'?'none':'';
@@ -59,16 +59,16 @@ const ch=[['xp','+'+gx.x+' XP'],['co','+'+gx.c+' 🪙']];if(r.kills)ch.push(['k'
 const box=$('#rsub');box.textContent='';const row=document.createElement('div');row.className='chips';ch.forEach(([c,t],i)=>{const s=document.createElement('span');s.className='chip '+c;s.style.animationDelay=(.45+i*.12)+'s';s.textContent=t;row.appendChild(s)});box.appendChild(row);
 [['#e1',.75],['#e2',.75]].forEach(([q,d])=>{const el=$(q),t=el.textContent;if(!/^\d+$/.test(t)||+t<1)return;const n=+t,t0=performance.now()+d*1000;el.textContent='0';(function f(){const k=Math.min(1,(performance.now()-t0)/500);if(k<0){requestAnimationFrame(f);return}const v=Math.round(n*(1-Math.pow(1-k,3)));el.textContent=v;if(k<1)requestAnimationFrame(f);else el.textContent=n})()});
 const x=String(ex||'').replace(/\s+/g,' ').trim();if(x){const n=document.createElement('div');n.className='rx';n.textContent=x;box.appendChild(n)}}
-function begin(mid,opp,oppName,oppSkin,ros,bot,md,room){qStop&&qStop();LB2.afkStop();LB2.sheet(0,1);md=window.MODES[md]?md:'1v1'; /* bot matches pay out exactly like online ones: XP, coins, candy, pass XP, quests */
+function begin(mid,opp,oppName,oppSkin,ros,bot,md,room,orx,rkm){qStop&&qStop();LB2.afkStop();LB2.sheet(0,1);md=window.MODES[md]?md:'1v1';window.LASTRK=!!rkm&&!bot; /* bot matches pay out exactly like online ones: XP, coins, candy, pass XP, quests */
 /* building the arena + characters takes a moment: show a loading card first (and let it paint) instead of freezing on a blank screen */
 const tok=begin.tok=(begin.tok||0)+1;show('queue');$('#qtxt').textContent='Loading match…';$('#qbot').style.display='none';$('#cancel').style.display='none';
-requestAnimationFrame(()=>setTimeout(()=>{if(tok!==begin.tok)return;$('#cancel').style.display='';show('none');try{Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,ros,mode:md,bot:!!bot,room,clock:now,skin:SK(),halloween:EV.matchStart(),onCandy:EV.candy,onRound:EV.round,
+requestAnimationFrame(()=>setTimeout(()=>{if(tok!==begin.tok)return;$('#cancel').style.display='';show('none');try{Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,oppRk:orx,rk:RK.pack(),ranked:rkm?{win:md=='1v1'?5:4}:null,ros,mode:md,bot:!!bot,room,clock:now,skin:SK(),halloween:EV.matchStart(),onCandy:EV.candy,onRound:EV.round,
 onGhost:()=>{toast(room?'That room had just finished – finding a new one':'Opponent never connected – searching again');menu();setTimeout(go,400)},
-onLeave:x=>{LBK.add(x&&x.kills,x&&x.dmg,bot);if(bot){EV.sync();menu();return}if(x&&x.room){const rw=roomReward(x);if(rw.x||rw.c){CFG.xp+=rw.x;CFG.coins+=rw.c;saveCfg()}EV.sync();menu();toast('You left the room · '+(x.rounds|0)+' rounds · '+(x.kills|0)+' kills'+(rw.x||rw.c?' · +'+rw.x+' XP +'+rw.c+' 🪙':''));return}EV.sync();db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c.losses=(c.losses||0)+1;return c});menu()},
-onEnd:r=>{LBK.add(r.kills,r.dmg,bot);const pl=r.ffa?r.players-r.place:0,g0=r.room?(rw=>({x:rw.x+(r.win?250:0),c:rw.c+(r.win?50:0)}))(roomReward(r)):r.draw?{x:75+r.me*15,c:12}:r.ffa?(r.win?{x:260,c:50}:{x:60+pl*30,c:8+pl*4}):r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8},gx={x:Math.round(g0.x),c:Math.round(g0.c)};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();const ex=EV.matchDone(r,gx)+(bot?'  · 🤖 bot match':'');
+onLeave:x=>{LBK.add(x&&x.kills,x&&x.dmg,bot);if(rkm&&!bot)RK.finish(rkm,{win:false},true);if(bot){EV.sync();menu();return}if(x&&x.room){const rw=roomReward(x);if(rw.x||rw.c){CFG.xp+=rw.x;CFG.coins+=rw.c;saveCfg()}EV.sync();menu();toast('You left the room · '+(x.rounds|0)+' rounds · '+(x.kills|0)+' kills'+(rw.x||rw.c?' · +'+rw.x+' XP +'+rw.c+' 🪙':''));return}EV.sync();db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c.losses=(c.losses||0)+1;return c});menu()},
+onEnd:r=>{LBK.add(r.kills,r.dmg,bot);const rkr=rkm&&!bot&&!r.late?RK.finish(rkm,r,false):null;const pl=r.ffa?r.players-r.place:0,g0=r.room?(rw=>({x:rw.x+(r.win?250:0),c:rw.c+(r.win?50:0)}))(roomReward(r)):r.draw?{x:75+r.me*15,c:12}:r.ffa?(r.win?{x:260,c:50}:{x:60+pl*30,c:8+pl*4}):r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8},gx={x:Math.round(g0.x*(rkm?1.5:1)),c:Math.round(g0.c*(rkm?1.5:1))};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();const ex=EV.matchDone(r,gx)+(bot?'  · 🤖 bot match':'');
 $('#res').textContent=r.draw?'DRAW':r.win?'VICTORY':'DEFEAT';$('#res').style.color=r.draw?'#ffd23f':r.win?'#38f5c8':'#ff6b81';
 $('#winner').textContent=r.draw?'Nobody wins this one':'🏆 '+r.winner+' WINS!';$('#en1').textContent=r.ffa?'Your place':(r.myName||'You');$('#en2').textContent=r.ffa?'players':(r.oppName||'Enemy');$('#e1').textContent=r.ffa?'#'+r.place:r.me;$('#e2').textContent=r.ffa?r.players:r.opp;
-$('#rtag').textContent=r.title=='Opponent left'?'OPPONENT LEFT':r.room?(modeOf(r.mode).n.toUpperCase()+' · 100 ROUNDS · '+(r.kills|0)+' KILLS · '+(r.dmg|0)+' DAMAGE'):r.ffa?(modeOf(r.mode).n.toUpperCase()+' · '+((r.first||1)>1?'FIRST TO '+r.first:'LAST ONE STANDING')):'MATCH OVER · FIRST TO '+(r.first||3);endFx(r,gx,ex);show('end');
+$('#rtag').textContent=r.title=='Opponent left'?'OPPONENT LEFT':r.room?(modeOf(r.mode).n.toUpperCase()+' · 100 ROUNDS · '+(r.kills|0)+' KILLS · '+(r.dmg|0)+' DAMAGE'):r.ffa?(modeOf(r.mode).n.toUpperCase()+' · '+((r.first||1)>1?'FIRST TO '+r.first:'LAST ONE STANDING')):'MATCH OVER · FIRST TO '+(r.first||3);endFx(r,gx,ex);rkr&&RK.endUi(rkr);show('end');
 if(r.draw||bot||r.late||(r.room&&!r.win))return;const f=r.win?'wins':'losses';db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c[f]=(c[f]||0)+1;return c})}})}catch(e){console.error('Match failed to start',e);toast('Could not start the match: '+((e&&e.message)||e));qStop=null;menu()}},30))}
 function botName(){const A=['Swift','Silent','Lucky','Crimson','Frosty','Rapid','Shadow','Turbo','Cosmic','Sneaky','Mighty','Rogue','Neon','Savage','Clutch','Ghost','Atomic','Wild','Hyper','Iron'],
 N=['Falcon','Tiger','Viper','Wolf','Panda','Cobra','Raven','Shark','Dragon','Fox','Hawk','Bear','Lynx','Ninja','Titan','Comet','Storm','Blaze','Pixel','Rider'],
@@ -76,7 +76,7 @@ r=a=>a[Math.random()*a.length|0];return r(A)+r(N)+(10+Math.random()*9990|0)}
 /* practice bot: runs entirely on this device (no network). Always works, even offline. */
 /* what you earn in a 100-round room (also when you leave early): rounds you played, eliminations and damage */
 const roomReward=r=>{const rounds=r.rounds|0,k=r.kills|0,d=r.dmg|0;if(!rounds&&!k)return{x:0,c:0};return{x:Math.min(3000,Math.round(rounds*14+k*12+d*.05)),c:Math.min(600,Math.round(rounds*1.5+k*2))}};
-function beginBot(md){md=window.MODES[md]?md:CFG.mode;if(md!='1v1'){toast('Bots only play 1v1 – '+modeOf(md).n+' is played with real players');menu();return}const c=[0xff4d4d,0xffa42e,0xb04dff,0x4dffa8,0xff6bd6,0x38f5c8,0xffd23f],M=modeOf(md),me={u:user.uid,n:nm(),s:SK(),t:0},pc=()=>c[Math.random()*c.length|0];
+function beginBot(md){md=window.MODES[md]?md:CFG.mode;if(md!='1v1'){toast('Bots only play 1v1 – '+modeOf(md).n+' is played with real players');menu();return}const c=[0xff4d4d,0xffa42e,0xb04dff,0x4dffa8,0xff6bd6,0x38f5c8,0xffd23f],M=modeOf(md),me={u:user.uid,n:nm(),s:SK(),t:0,rk:RK.pack()},pc=()=>c[Math.random()*c.length|0];
 if(md=='1v1'){begin('bot_'+now(),'BOT',botName(),pc(),null,true,'1v1');return}
 const ros=[me];let i=0;
 if(M.ffa){for(;i<M.bots;i++)ros.push({u:'BOT'+i,n:botName(),s:pc(),t:i+1})}
@@ -95,13 +95,13 @@ qBot=toBot;
    v22 fixes: the invited player now ANSWERS (ack) so the one who invited never walks into a match nobody joined; if there is no answer the slot was a ghost and we search again;
    the heartbeat can no longer re-create a half-empty slot; the bot only takes over late (and never while an invite is in flight), so two players who queue a few seconds apart still meet. */
 const claim=async()=>{if(done||pend)return;let taken=null,r=null;tries++;
-for(let t=0;t<6&&!done;t++){taken=null;r=await w.transaction(cur=>{if(cur&&cur.uid&&cur.uid!==uid&&now()-cur.t<20000){taken=cur;return null}taken=null;return{uid,name:nm(),skin:SK(),t:now()}});if(r.committed)break}
+for(let t=0;t<6&&!done;t++){taken=null;r=await w.transaction(cur=>{if(cur&&cur.uid&&cur.uid!==uid&&now()-cur.t<20000){taken=cur;return null}taken=null;return{uid,name:nm(),skin:SK(),rk:RK.pack(),t:now()}});if(r.committed)break}
 if(done){if(r&&r.committed&&!taken)w.remove().catch(()=>{});return}if(!r||!r.committed)throw new Error('busy');
 if(taken){queued=0;const mid=`${taken.uid}_${uid}_${now()}`;$('#qtxt').textContent='Opponent found – connecting…';
-await db.ref('matches/'+mid+'/meta').set({a:taken.uid,b:uid});await db.ref('invites/'+taken.uid).set({mid,uid,name:nm(),skin:SK(),t:now()});if(done)return;
-const go=()=>{if(done)return;const p=pend;pend=null;p&&clearTimeout(p.to);begin(mid,taken.uid,taken.name,taken.skin)};
+await db.ref('matches/'+mid+'/meta').set({a:taken.uid,b:uid});await db.ref('invites/'+taken.uid).set({mid,uid,name:nm(),skin:SK(),rk:RK.pack(),t:now()});if(done)return;
+const go=()=>{if(done)return;const p=pend;pend=null;p&&clearTimeout(p.to);begin(mid,taken.uid,taken.name,taken.skin,null,false,undefined,undefined,taken.rk)};
 pend={mid,go,to:setTimeout(async()=>{if(done||!pend||pend.mid!==mid)return;pend=null;let ok=false;try{ok=(await db.ref('matches/'+mid+'/p/'+taken.uid).once('value')).exists()}catch(e){}
-if(done)return;if(ok){begin(mid,taken.uid,taken.name,taken.skin);return}
+if(done)return;if(ok){begin(mid,taken.uid,taken.name,taken.skin,null,false,undefined,undefined,taken.rk);return}
 /* nobody answered: that waiting entry was a ghost. Search again instead of loading into an empty match */
 claim().catch(()=>{})},4500)}}
 else{if(!queued){queued=1;w.onDisconnect().remove();clearInterval(hb);hb=setInterval(()=>{if(!done&&queued)w.transaction(c=>c&&c.uid===uid?Object.assign({},c,{t:now()}):undefined).catch(()=>{})},6000)}}};
@@ -198,13 +198,13 @@ function pui(){const m=party?party.m:{},ids=Object.keys(m).sort((a,b)=>(a==party
 $('#pin .sub').textContent=party&&party.lead!=user.uid?'Waiting for the party leader to press PLAY.':'The party leader presses PLAY to start the match.';
 {const box=$('#pslots');box.innerHTML='';const amLead=party&&party.lead==user.uid;
 const mkSlot=id=>{const el=document.createElement('div');el.className='slot'+(id?'':' empty');el.innerHTML='<i></i><b></b><small></small>';const ic=el.querySelector('i');
- if(id){ic.style.background=hx(m[id].skin);bustBg(ic,m[id].skin);el.querySelector('b').textContent=m[id].name+(id==user.uid?' (you)':'');el.querySelector('small').textContent=id==party.lead?'👑 LEADER':'MEMBER';
+ if(id){ic.style.background=hx(m[id].skin);bustBg(ic,m[id].skin);el.querySelector('b').textContent=m[id].name+(id==user.uid?' (you)':'');el.querySelector('small').innerHTML=(id==party.lead?'👑 LEADER':'MEMBER')+' '+RK.mini(m[id].rk);
   if(amLead&&id!=user.uid){const a=document.createElement('div');a.className='pact';a.innerHTML='<button data-k="lead" title="Make leader">👑</button><button data-k="kick" title="Remove from party">✕</button>';a.dataset.u=id;el.appendChild(a)}}
  else{ic.className='em';ic.textContent='+';el.querySelector('b').textContent='Open slot'}return el};
 ids.forEach(id=>box.appendChild(mkSlot(id)));if(party&&ids.length<PARTY_MAX)box.appendChild(mkSlot(null));
 const pc=$('#pcount');if(pc)pc.textContent=party?ids.length+' / '+PARTY_MAX+' players':'';
 const md=CFG.mode,chk=party&&ids.length>1?partyCheck(md,ids.length):null,pr=$('#prule');if(pr){pr.style.display=chk?'block':'none';pr.className='prule '+(chk&&chk.ok?'ok':'bad');pr.textContent=chk?(chk.ok?modeOf(md).n+': '+({solo:'everyone plays on their own',queue:'your party queues together',private:'private match – your party fills both sides',room:'your party joins the same room'}[chk.kind]||'ready'):'⚠ '+chk.why):''}}
-const o=ids.find(i=>i!=user.uid),f=$('#friend');f.classList.toggle('has',!!o);f.textContent=ids.length>2?String(ids.length):o?m[o].name.slice(0,2).toUpperCase():'+';f.style.background=o?hx(m[o].skin):'';f.title=o?(ids.length>1?ids.length+' players in your party':'')+'':'Invite to party';Game.partner(o?{name:m[o].name,skin:m[o].skin}:null)}
+const o=ids.find(i=>i!=user.uid),f=$('#friend');f.classList.toggle('has',!!o);f.textContent=ids.length>2?String(ids.length):o?m[o].name.slice(0,2).toUpperCase():'+';f.style.background=o?hx(m[o].skin):'';f.title=o?(ids.length>1?ids.length+' players in your party':'')+'':'Invite to party';Game.partner(o?{name:m[o].name,skin:m[o].skin,rk:m[o].rk}:null)}
 function dropParty(){const p=pOff;pOff=null;party=null;p&&p();pui()}
 function attach(code,lead){const r=db.ref('parties/'+code),inv=db.ref('invites/'+user.uid),me=r.child('m/'+user.uid);let n=0,last=null;
 if(lead)r.onDisconnect().remove();else me.onDisconnect().remove();
@@ -215,8 +215,8 @@ if(was>n&&qStop){qStop();menu();toast('A party member left – search cancelled'
 pui()});
 let live=true;inv.remove().catch(()=>{}).then(()=>{if(!live)return;inv.on('value',s=>{const v=s.val();if(v&&live&&party&&party.code===code&&party.lead!=user.uid){inv.remove();$('#party').classList.remove('on');beginAny(v)}})}); /* stale invites from old matches are wiped before listening */
 pOff=()=>{live=false;r.off();inv.off();if(lead){r.onDisconnect().cancel().catch(()=>{});const oth=Object.keys((last&&last.m)||{}).filter(u=>u!=user.uid).sort();if(oth.length)r.update({lead:oth[0],['m/'+user.uid]:null}).catch(()=>{});else r.remove().catch(()=>{})}else{me.onDisconnect().cancel().catch(()=>{});me.remove().catch(()=>{})}}}
-const mem=()=>({name:nm(),skin:SK()});
-function partyRefresh(){if(party&&party.m[user.uid]){const m=mem(),c=party.m[user.uid];if(c.name!==m.name||c.skin!==m.skin)db.ref('parties/'+party.code+'/m/'+user.uid).set(m).catch(()=>{})}}
+const mem=()=>({name:nm(),skin:SK(),rk:RK.pack(),ac:user.isAnonymous?0:1});
+function partyRefresh(){if(party&&party.m[user.uid]){const m=mem(),c=party.m[user.uid];if(c.name!==m.name||c.skin!==m.skin||JSON.stringify(c.rk)!==JSON.stringify(m.rk))db.ref('parties/'+party.code+'/m/'+user.uid).set(m).catch(()=>{})}}
 const pcode=()=>{let c='';const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';for(let i=0;i<5;i++)c+=A[Math.random()*A.length|0];return c};
 $('#pnew').onclick=async()=>{SFX.click();if(!conn)return toast('You are offline');if(party)return;
 for(let t=0;t<4;t++){const code=pcode();try{await db.ref('parties/'+code).set({lead:user.uid,m:{[user.uid]:mem()}});if(party)return;attach(code,true);return}catch(e){if(t==3)toast('Could not create party: '+(e.message||e).toString().replace('permission_denied','permission denied (publish database.rules.json)'))}}};
@@ -234,6 +234,7 @@ $('#pleave').onclick=()=>{SFX.click();if(qStop){qStop();menu()}dropParty();toast
 $('#friend').onclick=()=>{SFX.click();pui();$('#party').classList.add('on')};
 function go(){const uids=party?Object.keys(party.m):[user.uid],n=uids.length,duo=n>1,md=CFG.mode;
 if(md=='trainer')return beginTrainer(CFG.tdrill||'grid');
+if(md=='ranked')return RK.play();
 if(duo){const pc=partyCheck(md,n);if(!pc.ok)return toast(pc.why);if(party.lead!=user.uid)return toast('Waiting for the party leader to press Play');
  if(pc.kind=='private')return md=='1v1'?pmatch('1v1'):pmatchN(md);
  if(pc.kind=='room')return joinRoom(md,uids.filter(i=>i!=user.uid));
@@ -252,7 +253,7 @@ if(i>=others.length||tot>need)return;ch.push(others[i]);dfs(i+1,tot+others[i].m.
 async function findN(md,uids){const M=modeOf(md);if(!conn){toast('You are offline – '+M.n+' needs real players (bots only play 1v1)');return menu()}
 show('queue');$('#qtxt').textContent='Searching for a '+M.n+' match…';$('#qbot').style.display='none';
 const me=user.uid,q=db.ref('lobby2/q'),mine=q.child(me),inv=db.ref('invites/'+me),duo=uids.length>1;let hb,tm,done=0,formed=null,sec=0;
-const mem=uids.map(u=>u==me?{u,n:nm(),s:SK()}:{u,n:party.m[u].name,s:party.m[u].skin});
+const mem=uids.map(u=>u==me?{u,n:nm(),s:SK(),rk:RK.pack()}:{u,n:party.m[u].name,s:party.m[u].skin,rk:party.m[u].rk});
 /* everything this search started lives in these two functions: stop() cleans it ALL up (timers, listeners, queue entry) and can run any number of times */
 const stop=()=>{done=1;clearInterval(hb);clearInterval(tm);inv.off();$('#qbot').style.display='none';mine.onDisconnect().cancel().catch(()=>{});mine.remove().catch(()=>{});if(qStop===stop)qStop=null;if(qBot===toBot)qBot=null};
 const toBot=()=>{if(done)return;stop();beginBot(md)};
@@ -279,9 +280,9 @@ if(done)return;return begin2(mid,ros,md)}
 mine.onDisconnect().remove();hb=setInterval(()=>mine.transaction(c=>c?{...c,t:now()}:undefined).catch(()=>{}),8000);
 inv.on('value',s=>{const v=s.val();if(v&&!done){inv.remove();beginAny(v)}})}
 catch(e){if(done)return;stop();menu();toast('Matchmaking error: '+String(e.message||e).replace('permission_denied','permission denied (publish database.rules.json)'))}}
-async function pmatchN(md){const ids=Object.keys(party.m).sort((a,b)=>(a==party.lead?-1:0)-(b==party.lead?-1:0)||(a<b?-1:1)),ros=ids.map((u,i)=>({u,n:u==user.uid?nm():party.m[u].name,s:u==user.uid?SK():party.m[u].skin,t:i%2})),mid=ros.map(p=>p.u).join('_')+'_'+now();
+async function pmatchN(md){const ids=Object.keys(party.m).sort((a,b)=>(a==party.lead?-1:0)-(b==party.lead?-1:0)||(a<b?-1:1)),ros=ids.map((u,i)=>({u,n:u==user.uid?nm():party.m[u].name,s:u==user.uid?SK():party.m[u].skin,rk:u==user.uid?RK.pack():party.m[u].rk,t:i%2})),mid=ros.map(p=>p.u).join('_')+'_'+now();
 try{await db.ref('matches/'+mid+'/meta').set({a:ros[0].u,b:ros[1].u});await Promise.all(ros.filter(p=>p.u!==user.uid).map(p=>db.ref('invites/'+p.u).set({mid,ros,md,t:now()})));begin2(mid,ros,md)}catch(e){toast(e.message)}}
-async function pmatch(md){const o=Object.keys(party.m).find(i=>i!=user.uid),mid=`${user.uid}_${o}_${now()}`;try{await db.ref('matches/'+mid+'/meta').set({a:user.uid,b:o});await db.ref('invites/'+o).set({mid,uid:user.uid,name:nm(),skin:SK(),md,t:now()});begin(mid,o,party.m[o].name,party.m[o].skin,null,false,md)}catch(e){toast(e.message)}}
+async function pmatch(md){const o=Object.keys(party.m).find(i=>i!=user.uid),mid=`${user.uid}_${o}_${now()}`;try{await db.ref('matches/'+mid+'/meta').set({a:user.uid,b:o});await db.ref('invites/'+o).set({mid,uid:user.uid,name:nm(),skin:SK(),rk:RK.pack(),md,t:now()});begin(mid,o,party.m[o].name,party.m[o].skin,null,false,md,undefined,party.m[o].rk)}catch(e){toast(e.message)}}
 
 /* ---- open rooms (Box Fights, Zone Wars): 100 rounds, people join and leave any time, no bots.
    rooms/<mode>/<roomId> = {mid, t0, hb, m:{uid:lastSeen}}. One transaction on rooms/<mode> picks the fullest room that still has space (or makes a new one), so two people who press

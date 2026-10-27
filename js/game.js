@@ -409,6 +409,8 @@ function charT(col){return rig(col,false,true)||fallbackRig(col)}
 function rs(){R.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
 function tag(t,col){const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');x.font='bold 36px sans-serif';x.textAlign='center';x.fillStyle=col||'#fff';x.strokeStyle='#000';x.lineWidth=6;x.strokeText(t,128,44);x.fillText(t,128,44);
 const s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(c),depthTest:false}));s.scale.set(2,.5,1);s.position.y=2.4;return s}
+function tagR(t,col,rk,los){if(!rk||!window.RK)return tag(t,col);const c=RK.tagCanvas(t,col,rk),s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(c),depthTest:!!los}));s.scale.set(3.15,.9,1);s.position.y=2.55;return s}
+let RANKED=0,MYRK=null;
 function rayBox(o,d,b){let t0=0,t1=1e9,a,c,q;
 const hw=b.w/2,hd=b.d/2;
 if(Math.abs(d.x)<1e-8){if(o.x<b.x-hw||o.x>b.x+hw)return 1e9}else{a=(b.x-hw-o.x)/d.x;c=(b.x+hw-o.x)/d.x;if(a>c){q=a;a=c;c=q}if(a>t0)t0=a;if(c<t1)t1=c;if(t0>t1)return 1e9}
@@ -821,7 +823,7 @@ let lastSK='',lastST=0;
 function send(force){if(!pRef)return;const n=performance.now(),o={dts:S.dead?(S.dts||0):0,x:+P.x.toFixed(2),y:+P.y.toFixed(2),z:+P.z.toFixed(2),r:+yaw.toFixed(2),pt:+pitch.toFixed(2),w:buildT?-1:S.w,hp:Math.ceil((S.hp+(S.sh||0))/(RM?2:1)),d:S.deaths,dead:S.dead?1:0,rd,lt:S.late?1:0,ws:W.join(','),n:names[uid]||'',s:mySkin,k:S.kills|0,dm:Math.round(S.dmg||0),rk:S.rk|0,rdm:Math.round(S.rdm||0),a:ads>.5?1:0,rl:S.rl?1:0,kb:S.dead?(S.killer||(S.storm?'STORM':null)):null,c:S.cr|0},k=JSON.stringify(o);if(!force&&window.CFG&&CFG.antilag!=0&&k===lastSK&&n-lastST<500)return;lastSK=k;lastST=n;o.hb=++hbN;o.ts=clk();pRef.set(o)}
 function mateUi(){const ms=RP.filter(r=>r.mate),e=$('#mate');if(!ms.length){e.style.display='none';return}e.style.display='flex';
 if(e.children.length!=ms.length)e.innerHTML=ms.map(()=>'<div class="mrow"><span></span><div class="bar"><u></u></div></div>').join('');
-ms.forEach((m,i)=>{const row=e.children[i],off=!!(m.dead||m.left);row.classList.toggle('dead',off);row.firstChild.textContent=m.name;row.querySelector('u').style.width=(off?0:Math.max(0,m.hp))+'%'})}
+ms.forEach((m,i)=>{const row=e.children[i],off=!!(m.dead||m.left);row.classList.toggle('dead',off);row.firstChild.innerHTML=(m.rnk&&window.RK?RK.mini(m.rnk,{h:16}):'')+esc(m.name);row.querySelector('u').style.width=(off?0:Math.max(0,m.hp))+'%'})}
 function playerLeft(r){if(r.left)return;if(!r.bot&&((r.k|0)||(r.dm|0)||(r.dc|0)))gone.push({u:r.u,name:r.name,me:0,mate:!!r.mate,k:r.k|0,dm:Math.round(r.dm||0),d:r.dc|0,out:1});r.left=1;r.dead=1;r.g.visible=false;if(r.bar)r.bar.style.display='none';feed(r.name+' left the match');mateUi();if(RM){rmDrop(r);return}if(!RP.some(x=>!x.mate&&!x.left))end(true,'Opponent left');else checkRound()}
 function onOpp(r,v){if(!v){if(r.seen&&phase!='ended'&&!r.left&&(RM||phase!='over'))playerLeft(r);return}
 const n=performance.now();r.seen=1;r.t=n;if(![v.x,v.y,v.z,v.r].every(Number.isFinite))return;
@@ -936,7 +938,7 @@ gRay(o,d,len-1.3,(b,L)=>{if(b.ray||b.ceil||b.cell)return L;if(!b.bid){if(!tallB(
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function mkRemote(p,mate){const col=mate?0x38f5c8:0xff4d4d,mc=mySkin;let sk=Number.isFinite(p.s)&&p.s>0?p.s:col;if(sk===mc)sk=COS.pack(col,COS.id(mc))+(sk-GUN.base(sk));
 const r=char(sk);Object.assign(r,{u:p.u,name:p.n,team:p.t,mate,c:p.c,tg:new T.Vector3(),opv:new T.Vector3(),wi:1,hp:100,dead:0,odk:0,dc:0,seen:/^BOT/.test(p.u)?1:0,bot:/^BOT/.test(p.u)?1:0,left:0,t:0,fk:0,rc:0,wp:0,lt:0,pa:false,ads:0,pt:0,r:yawAt(p.c),k:0,dm:0,rk:0,rdm:0,prd:-1,pend:0});r.setGun(1);r.g.rotation.y=r.r;r.g.position.set(p.c[0],0,p.c[1]);r.tg.copy(r.g.position);r.opv.copy(r.g.position);
-const showTg=mate||FFA||RM;r.showTg=showTg;if(showTg)r.g.add(tag(p.n,MODE2&&!FFA?(mate?'#7dffb0':'#ff9a9a'):'#fff'));sc.add(r.g);
+r.rnk=p.rk||null;const showTg=mate||FFA||RM;r.showTg=showTg;if(showTg||(RANKED&&p.rk))r.g.add(tagR(p.n,MODE2&&!FFA?(mate?'#7dffb0':'#ff9a9a'):'#fff',p.rk,!showTg));sc.add(r.g);
 r.bar=document.createElement('div');r.bar.className='eb2'+(mate?' mate':'');r.bar.innerHTML='<u></u>';$('#hud').appendChild(r.bar);RP.push(r);return r}
 /* somebody new showed up in the room */
 function addRemote(u,v){if(!RM||!run||u===uid||RP.some(r=>r.u===u&&!r.left))return;v=v||{};
@@ -1026,14 +1028,14 @@ hostDuty()}catch(e){logE(e)}}
    username, kills, damage and K/D for the whole game. Key = the "Scoreboard" binding (Tab by default); CFG.sbm 'hold' (default) or 'toggle'.
    Numbers: me = S.kills / S.dmg / S.deaths · real players = what they broadcast (k, dm, d) · bots = counted locally (botHit / botDmg / takeHit / die). */
 const sbToggle=()=>!!window.CFG&&CFG.sbm==='toggle',sbOk=()=>!!run&&!paused()&&!document.querySelector('.modal.on');
-function sbRows(){const a=[{u:uid,name:names[uid]||'You',me:1,mate:1,k:S.kills|0,dm:Math.round(S.dmg||0),d:S.deaths|0,dead:!!S.dead,w:RM?rwOf(uid):0}];
-for(const r of RP)if(!r.left)a.push({u:r.u,name:r.name,me:0,mate:!!r.mate,bot:!!r.bot,k:r.k|0,dm:Math.round(r.dm||0),d:r.dc|0,dead:!!r.dead,w:RM?rwOf(r.u):0});
+function sbRows(){const a=[{u:uid,rnk:MYRK,name:names[uid]||'You',me:1,mate:1,k:S.kills|0,dm:Math.round(S.dmg||0),d:S.deaths|0,dead:!!S.dead,w:RM?rwOf(uid):0}];
+for(const r of RP)if(!r.left)a.push({u:r.u,rnk:r.rnk,name:r.name,me:0,mate:!!r.mate,bot:!!r.bot,k:r.k|0,dm:Math.round(r.dm||0),d:r.dc|0,dead:!!r.dead,w:RM?rwOf(r.u):0});
 for(const g of gone)if(!a.some(x=>x.u===g.u))a.push(g);
 a.sort((x,y)=>((y.w|0)-(x.w|0))||(y.k-x.k)||(y.dm-x.dm)||(x.d-y.d)||String(x.name).localeCompare(String(y.name)));return a}
 function sbRender(){const e=$('#sb');if(!e||!sbOn)return;const rows=sbRows(),team=MODE2&&!FFA,rt=($('#rnd')&&$('#rnd').textContent)||'',sub=MD.n.toUpperCase()+(rt?' · '+rt:''),
-key=sub+'|'+rows.map(x=>x.u+':'+x.w+'/'+x.k+'/'+x.dm+'/'+x.d+(x.dead?'x':'')+(x.mate?'m':'')).join('|');if(key===sbKey)return;sbKey=key;
+key=sub+'|'+rows.map(x=>x.u+(x.rnk?'r'+x.rnk.r+'a'+x.rnk.a:'')+':'+x.w+'/'+x.k+'/'+x.dm+'/'+x.d+(x.dead?'x':'')+(x.mate?'m':'')).join('|');if(key===sbKey)return;sbKey=key;
 const nf=n=>Math.round(n).toLocaleString();$('#sbs').textContent=sub;
-$('#sbt').classList.toggle('w6',!!RM);$('#sbt').innerHTML='<div class="sbr hd"><span>#</span><span>PLAYER</span>'+(RM?'<span>WINS</span>':'')+'<span>KILLS</span><span>DAMAGE</span><span>K/D</span></div>'+rows.map((x,i)=>'<div class="sbr'+(x.me?' me':'')+(team?(x.mate?' tm':' en'):'')+(x.dead?' dd':'')+(x.out?' out':'')+'"><span>'+(i+1)+'</span><span class="nm">'+esc(x.name)+(x.bot?'<i>BOT</i>':'')+(x.out?'<i>LEFT</i>':'')+'</span>'+(RM?'<span><b>'+x.w+'</b></span>':'')+'<span><b>'+x.k+'</b></span><span><b>'+nf(x.dm)+'</b></span><span>'+(x.d>0?x.k/x.d:x.k).toFixed(2)+'</span></div>').join('')}
+$('#sbt').classList.toggle('w6',!!RM);$('#sbt').innerHTML='<div class="sbr hd"><span>#</span><span>PLAYER</span>'+(RM?'<span>WINS</span>':'')+'<span>KILLS</span><span>DAMAGE</span><span>K/D</span></div>'+rows.map((x,i)=>'<div class="sbr'+(x.me?' me':'')+(team?(x.mate?' tm':' en'):'')+(x.dead?' dd':'')+(x.out?' out':'')+'"><span>'+(i+1)+'</span><span class="nm">'+(x.rnk&&window.RK?RK.mini(x.rnk,{h:18}):'')+esc(x.name)+(x.bot?'<i>BOT</i>':'')+(x.out?'<i>LEFT</i>':'')+'</span>'+(RM?'<span><b>'+x.w+'</b></span>':'')+'<span><b>'+x.k+'</b></span><span><b>'+nf(x.dm)+'</b></span><span>'+(x.d>0?x.k/x.d:x.k).toFixed(2)+'</span></div>').join('')}
 function sbSet(v){v=v&&run?1:0;sbOn=v;const e=$('#sb');if(e)e.classList.toggle('on',!!v);
 if(v){sbKey='';sbRender();if(!sbT)sbT=setInterval(()=>{if(!run||!sbOn||paused())return sbSet(0);sbRender()},250)}else if(sbT){clearInterval(sbT);sbT=0}}
 /* ---- kills / damage ---- */
@@ -1548,8 +1550,8 @@ function start(o){init();trnClear();adReset();['ft-ice','ft-blind','ft-scare'].f
 for(let i=FX.length-1;i>=0;i--)if(!FX[i].ring){fxFree(FX[i].m);FX.splice(i,1)}
 if(window.PAD)PAD.drain();specT=null;lastDead=0;if(vm){vSway.remove(vm.g);disposeTree(vm.g);vm=null}if(me){sc.remove(me.g);disposeTree(me.g)}RP.forEach(r=>{sc.remove(r.g);disposeTree(r.g);if(r.bar)r.bar.remove()});RP=[];oRefs=[];
 /* roster: 1v1 = two players (lower uid is team 0); 2v2 = four players from the matchmaker, team 0 first */
-const MD0=window.modeOf(o.mode),ros=(MD0.room&&o.room)?[{u:uid,n:o.name,s:o.skin,t:0}]:o.ros||(uid<o.opp?[{u:uid,n:o.name,s:o.skin,t:0},{u:o.opp,n:o.oppName,s:o.oppSkin,t:1}]:[{u:o.opp,n:o.oppName,s:o.oppSkin,t:0},{u:uid,n:o.name,s:o.skin,t:1}]);
-MD=window.modeOf(o.mode);FFA=MD.ffa?1:0;RM=(MD.room&&o.room)?1:0;roomCtl=RM?o.room:null;ROUNDS=MD.rounds||100;RSEC=MD.roundSec||120;SHD=RM?100:0;clearInterval(rmInt);BXN=RM?2:ros.length;WIN=MD.win||3;MODE2=ros.length>2?1:0;names={STORM:'the storm'};ros.forEach(p=>names[p.u]=p.n);const mp=ros.find(p=>p.u===uid);myT=mp.t;NT=FFA?ros.length:2;W=new Array(NT).fill(0);BIGMAP=0;$('#bigmap').classList.remove('on');
+const MD0=window.modeOf(o.mode),ros=(MD0.room&&o.room)?[{u:uid,n:o.name,s:o.skin,t:0}]:o.ros||(uid<o.opp?[{u:uid,n:o.name,s:o.skin,t:0,rk:o.rk},{u:o.opp,n:o.oppName,s:o.oppSkin,t:1,rk:o.oppRk}]:[{u:o.opp,n:o.oppName,s:o.oppSkin,t:0,rk:o.oppRk},{u:uid,n:o.name,s:o.skin,t:1,rk:o.rk}]);RANKED=o.ranked?1:0;MYRK=(ros.find(p=>p.u===uid)||{}).rk||o.rk||null;
+MD=window.modeOf(o.mode);FFA=MD.ffa?1:0;RM=(MD.room&&o.room)?1:0;roomCtl=RM?o.room:null;ROUNDS=MD.rounds||100;RSEC=MD.roundSec||120;SHD=RM?100:0;clearInterval(rmInt);BXN=RM?2:ros.length;WIN=(o.ranked&&o.ranked.win)||MD.win||3;MODE2=ros.length>2?1:0;names={STORM:'the storm'};ros.forEach(p=>names[p.u]=p.n);const mp=ros.find(p=>p.u===uid);myT=mp.t;NT=FFA?ros.length:2;W=new Array(NT).fill(0);BIGMAP=0;$('#bigmap').classList.remove('on');
 let hh=0;for(const ch of mid)hh=(hh*31+ch.charCodeAt(0))>>>0;VOTEOPT=null;if(VOTE)voteStop();const MAPX=MD.map=='trainer'?TRNMAP:MD.map=='zone'?ZONEMAP:MD.map=='box'?boxMap(RM?2:ros.length):(VOTEOPT=voteOpts(hh,!!o.halloween),BASEPLATE);buildMap(MAPX,hh);HH=hh;HAL=o.halloween&&MD.map=='arena'?1:0;ZFOG=MAPX.fog;ZN=null;if(MD.map=='zone')zoneInit(hh);else if(ZWM){sc.remove(ZWM,ZRG,ZNG);ZWM=ZRG=ZNG=null}document.body.classList.toggle('ffa',!!FFA);document.body.classList.toggle('rm',!!RM);{const pc=document.querySelector('#pconf .sub');if(pc)pc.textContent=RM?'Leave this room? You can rejoin any time and you keep everything you earned.':'Leave this match? It counts as a forfeit and your opponent wins.'}document.body.classList.toggle('zw',MD.map=='zone');$('#hud').classList.remove('storm');candyCb=o.onCandy||null;roundCb=o.onRound||null;DL.intensity=1;clearCandy();if(HAL&&!VOTEOPT)halDecor(hwLvl());$('#candy').style.display=HAL?'block':'none';feed('Mode: '+MD.n+' · '+MAPX.n+(HAL?' · 🎃 Halloween':''));
 /* spawn corners: team 0 on the west side, team 1 on the east side */
 {const cnt=[0,0],A2=[[-24,-24],[-24,24]],B2=[[24,24],[24,-24]],A3=[[-24,-24],[-24,0],[-24,24]],B3=[[24,24],[24,0],[24,-24]],sz=MD.size||1;
@@ -1564,13 +1566,13 @@ gone=[];sbSet(0);dnClear();Object.assign(S,{w:1,eq:0,nextShot:0,lat:0,rl:0,death
 const base='matches/'+mid;pRef=db.ref(base+'/p/'+uid);shRef=db.ref(base+'/shots');pRef.onDisconnect().remove();RP.forEach(r=>{r.ref=db.ref(base+'/p/'+r.u);oRefs.push(r.ref)});
 let lateJ=false;{const mt=+String(mid).split('_').pop();firstTg=!BOTM&&Number.isFinite(mt)&&Math.abs(clk()-mt)<60000?mt+6000+(VOTEOPT?VOTE_MS:0):0;lateJ=!!firstTg&&clk()-mt>LATE_MS+(VOTEOPT?VOTE_MS:0);if(lateJ)S.joinedLate=1}lateB=[];PQB=[];lateSynced=0;if(VOTEOPT)voteStart(lateJ);if(RM)newRound(1,{rd:0,wait:0,sp:sp0,frz:0,ps:[uid],init:1});else newRound(lateJ);
 RP.forEach(r=>r.ref.on('value',s=>onOpp(r,s.val())));shRef.on('child_added',s=>onShot(s.val()));
-run=true;for(const k in K)K[k]=0;$('#hud').classList.add('on');$('#on').textContent=(MODE2||RM||!RP[0])?'ENEMIES':RP[0].name.toUpperCase();$('#you').textContent=MODE2?'TEAM':'YOU';mateUi();refreshKeys();hud();$('#resume').style.display=FREE()||VOTE?'none':'grid';if(FREE())S.hadLock=1;specUi();SFX.resume();bcool=0;landT=0;SFX.music(CFG.music);
+run=true;for(const k in K)K[k]=0;$('#hud').classList.add('on');{const rb=k=>k&&window.RK?RK.mini(k,{h:20}):'';$('#on').innerHTML=(MODE2||RM||!RP[0])?'ENEMIES':rb(RP[0].rnk)+esc(RP[0].name.toUpperCase());$('#you').innerHTML=MODE2?'TEAM':rb(MYRK)+'YOU'}mateUi();refreshKeys();hud();$('#resume').style.display=FREE()||VOTE?'none':'grid';if(FREE())S.hadLock=1;specUi();SFX.resume();bcool=0;landT=0;SFX.music(CFG.music);
 applyFlat();warm();R.shadowMap.needsUpdate=true;
 if(RM)rmStart(base);
 if(o.trainer)trnBegin(o);
 bgInit();lastSK='';tick=setInterval(send,50);last=performance.now();raf=requestAnimationFrame(frame)}
 let LS,LC,LCam,lraf,CL=[],LP=null,LPk='',PI=null,LHAN=[];
-function lobbyPartner(){if(!LS)return;const key=PI?PI.name+'|'+PI.skin:'';if(key===LPk)return;LPk=key;if(LP){LS.remove(LP.g);disposeTree(LP.g);LP=null}if(PI){LP=char(PI.skin);LP.setGun(-1);LP.g.add(tag(PI.name));LS.add(LP.g)}}
+function lobbyPartner(){if(!LS)return;const key=PI?PI.name+'|'+PI.skin+'|'+JSON.stringify(PI.rk||0):'';if(key===LPk)return;LPk=key;if(LP){LS.remove(LP.g);disposeTree(LP.g);LP=null}if(PI){LP=char(PI.skin);LP.setGun(-1);LP.g.add(tagR(PI.name,'#fff',PI.rk));LS.add(LP.g)}}
 function lobbyHal(){const P2=window.COS.prop,r=rng(77);LHAN.length=0;
 LS.background=skyTex(['#0a0522','#34125a','#9a2f5e','#ff8a2a']);LS.fog=new T.Fog(0x2a1038,14,62);
 LS.children.forEach(m=>{if(m.isHemisphereLight){m.color.setHex(0xffb98a);m.groundColor.setHex(0x4a2a7a);m.intensity=.9}if(m.isDirectionalLight)m.color.setHex(0xffa86a);

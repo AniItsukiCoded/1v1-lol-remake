@@ -40,6 +40,11 @@ skin('knight','Spectral Knight',0xbfe9ff,18,'mythic',{src:'hw'});skin('nking','N
 /* leaderboard rewards (claimed after the event ends) */
 skin('champion','Harvest Champion',0xffd23f,17,'mythic',{src:'hw'});skin('podium','Midnight Pumpkin King',0x7a1fa2,11,'legendary',{src:'hw'});
 skin('moonwitch','Moonlit Witch',0x2f4cff,2,'epic',{src:'hw'});skin('harvestjack','Harvest Jack',0xffd23f,1,'rare',{src:'hw'});
+/* ranked season rewards (src 'rk', never sold: earned at the end of a ranked season, see ranked.js) */
+col('rk_steel','Steel',0x93a4bd,{src:'rk',rar:'rare'});col('rk_aurum','Aurum',0xffc21a,{src:'rk',rar:'rare'});col('rk_glacier','Glacier',0x7de8ff,{src:'rk',rar:'rare'});
+skin('rk_dvisor','Diamond Visor',0x7de8ff,23,'epic',{src:'rk'});skin('rk_ehalo','Emerald Halo',0x3dff9a,21,'epic',{src:'rk'});skin('rk_mcrown','Master Crown',0xc471ff,20,'legendary',{src:'rk'});
+skin('rk_gmangel','Grandmaster Angel',0xff4d5e,25,'legendary',{src:'rk'});skin('rk_arch','Archnemesis',0x2a0016,26,'mythic',{src:'rk'});
+skin('rk_champ1','Ranked Champion',0xffd23f,27,'mythic',{src:'rk'});skin('rk_champ2','Ranked Runner-Up',0xdfe6f5,28,'mythic',{src:'rk'});skin('rk_champ3','Ranked Third Place',0xd98a4a,29,'mythic',{src:'rk'});
 /* halloween gun skins (visuals live in gunskins.js). Each one is its own item; v = a unique "owned" number, k:'gun' */
 const gun=id=>{const g=GUN.by[id];I.push({id,n:g.name,v:GUN.val(g),rar:g.rar,ico:'',k:'gun',w:g.w,gn:g.n,g,col:parseInt(g.c[1].slice(1),16),src:'hw'})};
 GUN.L.forEach(g=>gun(g.id));

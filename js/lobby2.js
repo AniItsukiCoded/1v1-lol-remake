@@ -13,18 +13,19 @@ const blocked=()=>!isOn()||!!document.querySelector('.modal.on')||$('#reveal').c
 function mInfo(){const M=modeOf(CFG.mode);let h=`<b>${M.ic} ${M.n}</b> · ${M.tag}`;
  if(M.id=='trainer'){const cur=DRILLS[CFG.tdrill]?CFG.tdrill:'grid',D=DRILLS[cur];
   h=`<b>${M.ic} ${M.n}</b> · 60 second drills · unlimited ammo · personal bests<div class="tdl">`+DRILL_ORDER.map(k=>{const d=DRILLS[k],pb=(CFG.tb&&CFG.tb[k])|0;return`<button data-d="${k}" class="${cur==k?'on':''}" style="--dc:${d.c}"><span>${d.ic}</span><i>${d.n}</i><em>${pb?pb.toLocaleString():'-'}</em></button>`}).join('')+`</div><small><strong style="color:${D.c}">${D.n}</strong> · ${D.d} <u>${D.tip}</u></small>`}
+ else if(M.ranked){const pl=RK.playlist(),i=RK.mine();h=`<b>${M.ic} ${M.n}</b> · ${M.tag}<div class="tdl rkpick">`+['1v1','2v2','3v3'].map(k=>`<button data-pl="${k}" class="${pl==k?'on':''}" style="--dc:#ff2e63"><span>${modeOf(k).ic}</span><i>${k}</i><em>${k.split('v')[0]} v ${k.split('v')[0]}</em></button>`).join('')+`</div><small>Your rank: <strong>${i.un?'UNRANKED':i.label}</strong> · Season ${RK.season()} · real players only · open the 🏅 Ranked button for the ladder, leaderboard and rewards.</small>`}
  else if(M.room)h+=`<small>${M.min}–${M.max} players · ${M.rounds} rounds · no time limit · 5 seconds between rounds · join any time, a round starts as soon as 2 players are in. Join mid-round and you spawn next round. No bots.</small>`;
  else if(M.ffa)h+=`<small>${M.min}–${M.max} players per match. Real players only – bots are 1v1 only.</small>`;
  else if(M.size>1)h+=`<small>Queue solo and you get matched with teammates, or party up with a friend (the + button in the lobby).</small>`;
  else if(M.map=='box')h+=`<small>Edit and build from the first second. Party up to fight a friend in private.</small>`;
  else h+=`<small>Party up to duel a friend in private, or queue and get a random opponent. Everyone votes for the map before the match.</small>`;
  $('#msinfo').innerHTML=h}
-$('#msinfo').onclick=e=>{const b=e.target.closest('[data-d]');if(!b)return;SFX.click();CFG.tdrill=b.dataset.d;saveLocal();mInfo()};
+$('#msinfo').onclick=e=>{const pb=e.target.closest('[data-pl]');if(pb){SFX.click();RK.setPlaylist(pb.dataset.pl);return}const b=e.target.closest('[data-d]');if(!b)return;SFX.click();CFG.tdrill=b.dataset.d;saveLocal();mInfo()};
 function modeShow(){const M=modeOf(CFG.mode);{const b=$('#msbot');if(b)b.style.display=M.id=='1v1'?'':'none'}$('#modet').textContent=M.n.toUpperCase();$('#msnow').innerHTML=`<span>${M.ic}</span><b>${M.n}</b>`;mInfo();
  document.querySelectorAll('#mstrack .mcard').forEach(c=>{const on=c.dataset.m==CFG.mode;c.classList.toggle('on',on);c.setAttribute('aria-pressed',on)})}
 function cards(){const h=$('#mstrack');if(h.dataset.built)return;h.dataset.built=1;
- h.innerHTML=MODE_ORDER.map(id=>{const M=MODES[id],pl=M.solo?'1 player':M.ffa?M.min+'–'+M.max+' players':M.ppl+' players';
- return`<button class="mcard" data-m="${id}" style="--c1:${M.c1};--c2:${M.c2}"><i class="mbadge">${M.badge}</i><i class="mchk">✓</i>
+ h.innerHTML=MODE_ORDER.map(id=>{const M=MODES[id],pl=M.plt?M.plt:M.solo?'1 player':M.ffa?M.min+'–'+M.max+' players':M.ppl+' players';
+ return`<button class="mcard" data-m="${id}" style="--c1:${M.c1};--c2:${M.c2}"><i class="mbadge">${M.ranked?"SEASON "+RKC.season():M.badge}</i><i class="mchk">✓</i>
 <div class="mart"><span class="mg1"></span><span class="mg2"></span><span class="mbig">${M.art}</span></div>
 <div class="minfo"><small class="mgrp">${M.grp}</small><b>${M.n}</b><p>${M.short||M.tag}</p><div class="mchips"><span><i>👤</i>${pl}</span><span><i>🏆</i>${M.rule}</span><span><i>🗺️</i>${M.where}</span></div></div></button>`}).join('');
  h.querySelectorAll('.mcard').forEach(b=>{b.onclick=()=>pick(b.dataset.m);b.ondblclick=()=>{pick(b.dataset.m,1);$('#msplay').click()}});
