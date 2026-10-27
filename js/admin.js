@@ -22,7 +22,7 @@ async function check(u){let st=false,known=true;pfx='';
 
 /* ---- gift inbox: gifts/<my uid>/<id> = {by,bn,t,candy?,coins?,keys?}. Claimed once (the gift is deleted first, then applied) ---- */
 let gOff=null,seen=new Set(),pend=[],pt=0;
-function listen(u){gOff&&gOff();gOff=null;seen=new Set();if(!u)return;const r=db.ref('gifts/'+u.uid);
+function listen(u){gOff&&gOff();gOff=null;seen=new Set();listenT(u);if(!u)return;const r=db.ref('gifts/'+u.uid);
  const h=r.on('child_added',s=>{const g=s.val(),id=s.key;if(!g||typeof g!='object'||seen.has(id))return;seen.add(id);
   s.ref.remove().then(()=>{const a=EV.admin.gift(g);pend.push({n:String(g.bn||'An admin').slice(0,24),a});clearTimeout(pt);pt=setTimeout(flush,600)},()=>{})},e=>console.warn('gift inbox unavailable:',e&&e.message));
  gOff=()=>r.off('child_added',h)}
@@ -76,35 +76,44 @@ tool('#admxpb','#admxp',v=>EV.admin.addXp(v),v=>'+'+cl(v,1e7).toLocaleString()+'
 tool('#admrd',null,()=>EV.admin.resetDaily(),()=>'Daily reward, treat & quests reset');
 
 /* ================= in-game admin menu (default key Y, owners only) =================
-   In-match tools only (gifts live in the main-menu ADMIN panel). Everything here only takes effect in bot matches and the aim trainer
-   (never in a real match). Settings reset when a new match starts.  FLY: Space = up, Crouch = down, Sprint = faster. */
+   In-match tools only (gifts live in the main-menu ADMIN panel). Works in every match (bots, aim trainer and real players), owners only.
+   Settings are saved in this browser (localStorage 'arena_admin_cfg_v1'). TROLL PLAYERS sends a command through Firebase  trolls/<uid>/<id>;
+   the rules only let uids listed under ownerUids/<uid>=true write there and the victim's client applies it (owners are immune).  FLY: Space = up, Crouch = down, Sprint = faster. */
 let gp=null,gbadge=null;
 const gOpen=()=>!!gp&&gp.classList.contains('on');
 /* toggles: [key, label, hint] */
 const GROUPS=[
  ['AIM',[['silent','🎯 SILENT AIM','shots curve to the nearest enemy'],['auto','🔫 AUTO SHOOT','fires when an enemy is on target'],['hs','💀 ALWAYS HEADSHOT','every hit counts as a headshot'],['wb','🧱 WALLBANG','bullets ignore walls']],
-  [['aim','AIMBOT',[[0,'OFF'],[1,'SMOOTH'],[2,'SNAP']]],['head','AIM AT',[[0,'BODY'],[1,'HEAD']]]]],
+  [['aim','AIMBOT (hold aim / right-click)',[[0,'OFF'],[1,'SMOOTH'],[2,'SNAP']]],['head','AIM AT',[[0,'BODY'],[1,'HEAD']]]]],
  ['GUN',[['ammo','♾️ INF AMMO','never reload, mag always full'],['rapid','⚡ RAPID FIRE','every gun full-auto, super fast'],['norec','🎛️ NO RECOIL / SPREAD','laser-straight bullets'],['ikill','☠️ ONE-HIT KILL','bots die in one shot'],['mats','🧱 INF MATERIALS','build forever']],[]],
  ['PLAYER',[['god','🛡️ GOD MODE','no damage at all'],['fly','🕊️ FLY','Space up · Crouch down'],['nc','👻 NOCLIP','walk through walls']],
   [['spd','MOVE SPEED',[[1,'x1'],[2,'x2'],[3,'x3'],[5,'x5']]],['jmp','JUMP HEIGHT',[[1,'x1'],[2,'x2'],[3,'x3']]],['grav','GRAVITY',[[1,'NORMAL'],[.5,'LOW'],[.25,'MOON'],[.08,'SPACE']]]]],
  ['TROLL',[['esp','👁️ WALLHACK','see enemies through walls'],['freeze','🧊 FREEZE BOTS','bots stop moving & shooting']],[]]
 ];
+const TROLLS=[['freeze','🧊 FREEZE','can\'t move · 5s'],['fling','🚀 FLING','launch into the air'],['spin','🌀 SPIN','camera spins · 4s'],['drunk','🥴 DRUNK','wobbly aim · 8s'],['shake','📳 SHAKE','screen shake · 5s'],['blind','🕶️ BLIND','black screen · 3s'],['rev','🔀 REVERSE','controls flipped · 8s'],['slow','🐌 SLOW','crawl speed · 8s'],['disarm','🚫 DISARM','can\'t shoot · 6s'],['hop','🐇 BUNNY','forced jumping · 6s'],['slap','👋 SLAP','-20 HP (never kills)'],['tp','📍 BRING','teleports to you'],['scare','👻 SCARE','jumpscare']];
+const TROLL_D={freeze:5,spin:4,drunk:8,shake:5,blind:3,rev:8,slow:8,disarm:6,hop:6};
+let gtt=null; /* troll target: {uid,name} | {all:1} */
 const TOGS=[].concat(...GROUPS.map(g=>g[1]));
 function gBuild(){gp=document.createElement('div');gp.id='gadm';
- let h='<div class="gh"><b>🛠 ADMIN</b><small>press Y to close</small><button type="button" data-a="x">✕</button></div><p class="gnote" hidden>Tools only work in bot matches and the aim trainer.</p>';
+ let h='<div class="gh"><b>🛠 ADMIN</b><small>press Y to close</small><button type="button" data-a="x">✕</button></div><p class="gnote" hidden>Admin tools only work inside a match.</p>';
  GROUPS.forEach(g=>{h+='<div class="gs">'+g[0]+'</div><div class="gsw">'+g[1].map(t=>'<button type="button" data-k="'+t[0]+'"><b>'+t[1]+'</b><small>'+t[2]+'</small></button>').join('')+'</div>';
   g[2].forEach(sg=>{h+='<div class="gs2">'+sg[1]+'</div><div class="gtg">'+sg[2].map(o=>'<button type="button" data-sk="'+sg[0]+'" data-sv="'+o[0]+'">'+o[1]+'</button>').join('')+'</div>'})});
+ h+='<div class="gs">TROLL PLAYERS <small>real players in this match · owners are immune</small></div><div class="gtg gpl"></div><div class="gtg"><button type="button" data-tt="all">EVERYONE</button></div><div class="gsw gtr">'+TROLLS.map(t=>'<button type="button" data-tr="'+t[0]+'"><b>'+t[1]+'</b><small>'+t[2]+'</small></button>').join('')+'</div>';
  h+='<div class="gs">BOT ACTIONS <small>bot matches only</small></div><div class="gtg2"><button type="button" class="gtool" data-a="kill">☠️ KILL ALL BOTS</button><button type="button" class="gtool" data-a="bring">🧲 BRING BOTS TO ME</button><button type="button" class="gtool" data-a="tp">🌀 TELEPORT TO A BOT</button></div>'+
-  '<div class="gs">QUICK</div><button type="button" class="gtool" data-a="refill">❤️ REFILL HP + MATERIALS</button><button type="button" class="gtool goff" data-a="reset">↺ TURN EVERYTHING OFF</button>';
+  '<div class="gs">QUICK</div><button type="button" class="gtool" data-a="refill">❤️ REFILL HP + MATERIALS</button><button type="button" class="gtool goff" data-a="reset">↺ TURN EVERYTHING OFF</button><button type="button" class="gtool goff" data-a="uid">📋 COPY MY UID (for Firebase ownerUids)</button>';
  gp.innerHTML=h;document.body.appendChild(gp);
  gp.addEventListener('keydown',e=>{e.stopPropagation();if(e.code=='Escape'||(CTL.acts(e.code)||[]).includes('admin')){e.preventDefault();gClose()}},true);
  gp.addEventListener('keyup',e=>e.stopPropagation(),true);
  gp.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;SFX.click();
   const st=Game.adminState();
   if(b.dataset.a=='x')return gClose();
-  if(!st.practice)return toast('Admin tools only work in bot matches and the aim trainer');
+  if(!st.practice)return toast('Admin tools only work for owners inside a match');
+  if(b.dataset.tt){gtt={all:1};return gMark()}
+  if(b.dataset.u){gtt={uid:b.dataset.u,name:b.textContent};return gMark()}
+  if(b.dataset.tr){trollSend(b.dataset.tr);return}
   if(b.dataset.k){const k=b.dataset.k;Game.adminSet(k,st[k]?0:1);toast(TOGS.find(t=>t[0]==k)[1]+(st[k]?' off':' on'))}
   else if(b.dataset.sk){Game.adminSet(b.dataset.sk,+b.dataset.sv);toast(b.textContent+' set')}
+  else if(b.dataset.a=='uid'){try{navigator.clipboard.writeText(user.uid);toast('UID copied: '+user.uid)}catch(_){toast('UID: '+user.uid)}}
   else if(b.dataset.a=='refill')toast(Game.adminRefill()?'Refilled HP and materials':'Refill failed');
   else if(b.dataset.a=='reset'){TOGS.forEach(t=>Game.adminSet(t[0],0));Game.adminSet('aim',0);Game.adminSet('head',1);Game.adminSet('spd',1);Game.adminSet('jmp',1);Game.adminSet('grav',1);toast('All admin tools off')}
   else{const n=Game.adminAct(b.dataset.a);toast(!n?'No bots in this match':(b.dataset.a=='kill'?'☠️ Eliminated '+n+' bot'+(n==1?'':'s'):b.dataset.a=='bring'?'🧲 Pulled '+n+' bot'+(n==1?'':'s')+' to you':'🌀 Teleported'))}
@@ -116,8 +125,27 @@ function gSync(){if(typeof Game=='undefined')return;const st=Game.adminState(),o
  const show=st.practice&&on.length&&EV.owner()&&Game.busy();
  if(show&&!gbadge){gbadge=document.createElement('div');gbadge.id='gadmb';document.body.appendChild(gbadge)}
  if(gbadge){gbadge.style.display=show?'block':'none';if(show)gbadge.textContent='🛠 '+on.join(' · ')}}
+function gMark(){if(!gp)return;gp.querySelectorAll('[data-tt]').forEach(b=>b.classList.toggle('on',!!(gtt&&gtt.all)));gp.querySelectorAll('.gpl [data-u]').forEach(b=>b.classList.toggle('on',!!(gtt&&gtt.uid===b.dataset.u)))}
+function gPlayers(){const box=gp.querySelector('.gpl');box.textContent='';let l=[];try{l=Game.players().filter(p=>!user||p.uid!==user.uid)}catch(_){}
+ if(!l.length){const i=document.createElement('small');i.textContent='No other real players in this match';i.style.opacity='.6';box.appendChild(i)}
+ l.slice(0,14).forEach(p=>{const b=document.createElement('button');b.type='button';b.dataset.u=p.uid;b.textContent=String(p.name||'Player').slice(0,18);box.appendChild(b)});
+ if(gtt&&gtt.uid&&!l.some(p=>p.uid===gtt.uid))gtt=null;gMark()}
+/* send a troll command to the picked player (or everyone) through Firebase: trolls/<their uid>/<id>. The database rules only accept it from owners. */
+async function trollSend(kind){if(!EV.owner()||!user)return;if(!gtt)return toast('Pick a player (or EVERYONE) first');
+ let ids;try{ids=gtt.all?Game.players().map(p=>p.uid).filter(u=>u!==user.uid).slice(0,40):[gtt.uid]}catch(_){ids=[]}
+ if(!ids.length)return toast('No other real players in this match');
+ const c={by:user.uid,bn:nm().slice(0,24),t:firebase.database.ServerValue.TIMESTAMP,k:kind};if(TROLL_D[kind])c.d=TROLL_D[kind];
+ if(kind=='tp'){const q=Game.adminPos();c.x=q.x;c.y=q.y;c.z=q.z}
+ const r=await Promise.all(ids.map(u=>db.ref('trolls/'+u).push().set(c).then(()=>1,()=>0))),n=r.reduce((a,b)=>a+b,0);
+ toast(n?'😈 '+TROLLS.find(t=>t[0]==kind)[1]+' → '+(gtt.all?n+' player'+(n==1?'':'s'):gtt.name):'Could not send — publish database.rules.json and add your UID under ownerUids (button at the bottom of this menu)')}
+/* inbox: trolls other owners send to me. Deleted first, then applied by the game (owners ignore them). */
+let tOff=null;
+function listenT(u){tOff&&tOff();tOff=null;if(!u)return;const r=db.ref('trolls/'+u.uid),seenT=new Set(),
+ h=r.on('child_added',s=>{const c=s.val(),id=s.key;if(seenT.has(id))return;seenT.add(id);s.ref.remove().catch(()=>{});if(!c||typeof c!='object'||EV.owner())return;try{Game.busy()&&Game.troll(c)}catch(_){}},e=>console.warn('troll inbox unavailable:',e&&e.message));
+ tOff=()=>r.off('child_added',h)}
 function gClose(){if(!gOpen())return;gp.classList.remove('on');Game.adminUi(0)}
-function gameToggle(){if(!EV.owner())return;if(gOpen())return gClose();if(!gp)gBuild();gSync();gp.classList.add('on');Game.adminUi(1)}
+function gameToggle(){if(!EV.owner())return;if(gOpen())return gClose();if(!gp)gBuild();gPlayers();gSync();gp.classList.add('on');Game.adminUi(1)}
 /* the panel only exists inside a match: leaving the match (or losing owner status) closes it */
 setInterval(()=>{if(gOpen()&&(!EV.owner()||!Game.busy())){gp.classList.remove('on');window.ADMOPEN=false}gSync()},500);
+setInterval(()=>{if(gOpen())gPlayers()},4000);
 return{check,listen,owner:()=>EV.owner(),game:gameToggle}})();

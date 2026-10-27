@@ -200,3 +200,6 @@ body.touch .mcard::after,body.touch #mhint i{animation:none}
 #gadm .gtg2{display:grid;grid-template-columns:1fr;gap:6px}#gadm .gtg2 .gtool{margin:0}
 #gadm .gtg button{flex:1 1 auto}
 #gadmb{max-width:70vw}
+
+#gadm .gpl{margin-bottom:6px}#gadm .gpl button.on,#gadm .gtg button[data-tt].on{border-color:#ff7ab8;background:#ff7ab833}
+#gadm .gtr button{border-color:#ff7ab855}#gadm .gtr button:hover{background:#ff7ab822}

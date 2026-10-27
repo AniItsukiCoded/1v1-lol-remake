@@ -10,8 +10,13 @@ const T=THREE,DOM={},$=s=>DOM[s]||(DOM[s]=document.querySelector(s)); /* cached 
 let R,sc,cam,me,db,mid,uid,names,run=false,raf,last=0,pRef,shRef,onEnd,tick,pt,RP=[],oRefs=[],myT=0,W=[0,0],MODE2=0,fireK=0,fcnt=0,aaOn=true,shMode='';
 const B=[],K={},FX=[],S={},P=new T.Vector3(),camP=new T.Vector3();
 const PMAX=1.5;let yaw=0,pitch=.2,recoil=0,shake=0,sp=0,stepT=0,ph=0,wph=0,corners,sp0,hist=[];
-const AD={god:0,fly:0,nc:0,ammo:0,spd:1,jmp:1,grav:1,aim:0,silent:0,auto:0,head:1,hs:0,wb:0,rapid:0,norec:0,ikill:0,mats:0,esp:0,freeze:0},PRAC=()=>!!(BOTM||TRN);
-const adReset=()=>{AD.esp=0;try{adEsp()}catch(_){}AD.espOn=0;for(const k in AD)if(typeof AD[k]=='number'&&k!='t')AD[k]=0;AD.spd=AD.jmp=AD.grav=AD.head=1}; /* admin in-game tools (menu key Y, owners only): only ever take effect in bot matches and the aim trainer */
+const AD={god:0,fly:0,nc:0,ammo:0,spd:1,jmp:1,grav:1,aim:0,silent:0,auto:0,head:1,hs:0,wb:0,rapid:0,norec:0,ikill:0,mats:0,esp:0,freeze:0},PRAC=()=>{try{return !!(typeof EV!='undefined'&&EV.owner&&EV.owner())}catch(_){return false}},
+ FT={}; /* FT = troll effects an owner sent to you: kind -> end time (ms) */
+const AD_KEY='arena_admin_cfg_v1',AD_DEF={god:0,fly:0,nc:0,ammo:0,spd:1,jmp:1,grav:1,aim:0,silent:0,auto:0,head:1,hs:0,wb:0,rapid:0,norec:0,ikill:0,mats:0,esp:0,freeze:0};
+const adSave=()=>{try{const o={};for(const k in AD_DEF)o[k]=AD[k];localStorage.setItem(AD_KEY,JSON.stringify(o))}catch(_){}};
+const adLoad=()=>{try{const o=JSON.parse(localStorage.getItem(AD_KEY)||'null');if(o&&typeof o=='object')for(const k in AD_DEF)if(typeof o[k]=='number'&&isFinite(o[k]))AD[k]=o[k]}catch(_){}};
+const adReset=()=>{for(const k in AD_DEF)AD[k]=AD_DEF[k];adLoad();AD.espOn=1;for(const k in FT)delete FT[k]}; /* a new match: back to the saved settings, troll effects cleared */
+const ftOn=k=>FT[k]>performance.now(); /* admin in-game tools (menu key Y, owners only): only ever take effect in bot matches and the aim trainer */
 let gone=[],sbOn=0,sbT=0,sbKey='',mvf=1,landT=0,onLeave=null,clk=Date.now,BOTM=0,startT=0,rT0=0,firstTg=0,onGhost=null;
 const NR={set(){return Promise.resolve()},push(){},on(){},off(){},remove(){return Promise.resolve()},update(){return Promise.resolve()},child(){return NR},onDisconnect(){return{remove(){},cancel(){},set(){}}}}; /* stand-in for Firebase refs in bot matches */
 let fpCur=false,phase='live',slowK=1,frz=0,rd=1,cdN=-1,ads=0,camD=4.2,deadK=0;
@@ -694,7 +699,7 @@ function adPick(vis){const o=camP;let bs=1e9,bp=null,bok=false;
  return vis&&bp&&!bok?null:bp}
 function adSilentDir(dc){if(!(AD.silent&&PRAC()))return dc;const pt=adPick(false);if(!pt)return dc;const k=camD+.3;
  let o=camP.clone().addScaledVector(dc,k),d=pt.clone().sub(o).normalize();o=camP.clone().addScaledVector(d,k);return pt.clone().sub(o).normalize()}
-function adAimStep(dt){if(!(AD.aim&&PRAC())||EDIT||buildT)return;const p=adPick(false);if(!p)return;const o=camP,dx=p.x-o.x,dy=p.y-o.y,dz=p.z-o.z,
+function adAimStep(dt){if(!(AD.aim&&PRAC())||!K.aim||EDIT||buildT)return;const p=adPick(false);if(!p)return;const o=camP,dx=p.x-o.x,dy=p.y-o.y,dz=p.z-o.z,
  ty=Math.atan2(-dx,-dz),tp=Math.max(-PMAX,Math.min(PMAX,Math.asin(dy/Math.max(1e-6,Math.hypot(dx,dy,dz))))),k=AD.aim==1?Math.min(1,dt*8):1;let ey=ty-yaw;ey=Math.atan2(Math.sin(ey),Math.cos(ey));yaw+=ey*k;pitch+=(tp-pitch)*k}
 function adAuto(){const w=curW();if(!w||w.melee||EDIT||buildT)return;let hit=false;
  if(AD.silent)hit=!!adPick(true);
@@ -708,13 +713,39 @@ function adTick(dt,live){if(!PRAC()){if(AD.espOn){AD.esp=0;try{adEsp()}catch(_){
  AD.t=(AD.t||0)+1;if(AD.mats){mat[0]=mat[1]=mat[2]=999;if((AD.t&31)==0)hud()}
  if((AD.t&15)==0&&(AD.esp||AD.espOn)){try{adEsp()}catch(_){}AD.espOn=AD.esp}
  if(!live||S.dead)return;adAimStep(dt);if(AD.auto)adAuto()}
+
+/* ---- troll effects sent by an owner (arrive through the trolls/<uid> inbox, see admin.js). Owners are immune. ---- */
+let ftEl=null;
+function ftOverlay(id,css,html){let e=document.getElementById(id);if(!e){e=document.createElement('div');e.id=id;document.body.appendChild(e)}e.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:48;display:flex;align-items:center;justify-content:center;'+css;e.innerHTML=html||'';return e}
+function adTroll(c){if(!c||!run||PRAC()||S.dead)return false;const now=performance.now(),d=Math.max(1,Math.min(15,+c.d||5))*1000;
+ switch(c.k){
+  case 'freeze':FT.freeze=now+d;ftOverlay('ft-ice','background:#7fd8ff40;box-shadow:inset 0 0 160px #bff0ff;font:900 34px sans-serif;color:#e8fbff','🧊 FROZEN');break;
+  case 'fling':S.vy=34;S.g=0;shake=Math.max(shake,.8);break;
+  case 'spin':FT.spin=now+d;break;
+  case 'drunk':FT.drunk=now+d;break;
+  case 'shake':FT.shake=now+d;break;
+  case 'blind':FT.blind=now+d;ftOverlay('ft-blind','background:#000','');break;
+  case 'rev':FT.rev=now+d;break;
+  case 'slow':FT.slow=now+d;break;
+  case 'disarm':FT.disarm=now+d;break;
+  case 'hop':FT.hop=now+d;break;
+  case 'slap':{const dm=Math.min(20,Math.max(0,S.hp-1));if(dm>0){S.hp-=dm;SFX.hurt();shake=Math.max(shake,.6);hud();send()}break}
+  case 'tp':if([c.x,c.y,c.z].every(v=>typeof v=='number'&&isFinite(v)&&Math.abs(v)<400)){P.set(c.x+1.5,c.y+.1,c.z);S.vy=0}break;
+  case 'scare':{const e=ftOverlay('ft-scare','background:#000c;font-size:min(60vw,60vh);animation:pop .25s','👻');SFX.death&&SFX.death();setTimeout(()=>e.remove(),1100);shake=Math.max(shake,1);break}
+  default:return false}
+ feed('😈 '+String(c.bn||'An admin').slice(0,24)+' trolled you');return true}
+function ftTick(dt,now){
+ if(FT.spin>now)yaw+=dt*9;
+ if(FT.drunk>now){yaw+=Math.sin(now/280)*dt*1.5;pitch=Math.max(-PMAX,Math.min(PMAX,pitch+Math.cos(now/330)*dt*.5))}
+ if(FT.shake>now)shake=Math.max(shake,.7);
+ if(ftEl===null||(now&31)<2){for(const [id,k] of [['ft-ice','freeze'],['ft-blind','blind']]){const e=document.getElementById(id);if(e&&!(FT[k]>now))e.remove()}}}
 function adBots(){return RP.filter(r=>r.bot&&!r.dead&&!r.left&&r.g)}
 function adAct(a){if(!PRAC())return false;
  if(a=='kill'){const L=adBots();L.forEach(r=>{try{botHit(r,1e6,1,new T.Vector3(r.g.position.x,r.g.position.y+1.7,r.g.position.z))}catch(_){}});return L.length}
  if(a=='bring'){const L=adBots();L.forEach((r,i)=>{const an=yaw+Math.PI*2*i/Math.max(1,L.length),x=P.x+Math.sin(an)*3.2,z=P.z+Math.cos(an)*3.2;r.tg.set(x,P.y,z);if(r.g)r.g.position.set(x,P.y,z)});return L.length}
  if(a=='tp'){const L=adBots().sort((x,y)=>x.g.position.distanceTo(P)-y.g.position.distanceTo(P));if(!L.length)return 0;const t=L[0].g.position;P.set(t.x+Math.sin(yaw)*2,t.y+.1,t.z+Math.cos(yaw)*2);S.vy=0;return 1}
  return false}
-function shoot(){const w=curW(),st=curS(),n=performance.now();if(PRAC()){if(AD.ammo&&!w.melee&&st.mag<w.mag){st.mag=w.mag;S.rl=0;clearTimeout(S.rlT)}if(AD.rapid){if(n-(S.rapT||0)<45)return;S.rapT=n;S.nextShot=0;S.lat=0}}if(phase!='live'||S.dead||S.rl||n<S.nextShot||n<S.eq)return;
+function shoot(){const w=curW(),st=curS(),n=performance.now();if(FT.disarm>n)return;if(PRAC()){if(AD.ammo&&!w.melee&&st.mag<w.mag){st.mag=w.mag;S.rl=0;clearTimeout(S.rlT)}if(AD.rapid){if(n-(S.rapT||0)<45)return;S.rapT=n;S.nextShot=0;S.lat=0}}if(phase!='live'||S.dead||S.rl||n<S.nextShot||n<S.eq)return;
 if(!w.auto&&S.lat)return;
 if(!w.melee&&st.mag<=0){SFX.empty();S.nextShot=n+250;reload();return}
 if(!w.melee&&!TRN&&!(AD.ammo&&PRAC()))st.mag--;S.nextShot=n+w.rate;S.lat=1;window.PAD&&PAD.rumble(w.id=='shotgun'?.8:w.melee?.3:.12,w.id=='shotgun'?.3:.35,w.id=='shotgun'?90:45);if(!(AD.norec&&PRAC())){recoil=Math.min(1.2,recoil+w.rec);shake+=w.shk}fireK=Math.min(1,fireK+(w.kk||0));S.pumpT=n;if(w.melee)S.swingT=n;
@@ -726,7 +757,7 @@ if(ht){const f=w.fall,m=1-(1-f[2])*Math.max(0,Math.min(1,(ht.t-f[0])/(f[1]-f[0])
 if(!ht&&c.id&&l<mx)bd[c.id]=(bd[c.id]||0)+w.bdmg;else if(!ht&&w.melee&&l<mx&&!harv){harv=1;mat[msel]=Math.min(999,mat[msel]+25);SFX.hit();hud()}
 D.push(r3(v.x),r3(v.y),r3(v.z));L.push(Math.round(l*10)/10);if(!w.melee)tracer(muL,o.clone().addScaledVector(v,l),0xfff2a0,w.pel>1?.025:.04)}
 const bda=Object.keys(bd).map(k=>[k,bd[k]]);bda.forEach(([id,dm])=>damageBuild(id,dm));
-const claims=[];for(const k in HT){const e=HT[k],dm=Math.round(e.dm*10)/10;e.r.hitT=n;e.r.rc=Math.min(1.2,(e.r.rc||0)+.3);if(e.r.bot)botHit(e.r,dm,e.hd,e.p);else{claims.push({u:k,dm,hd:e.hd});hitFx(e.p,e.hd);rmDealt(e.r,dm,e.hd,e.p)}}
+const claims=[];for(const k in HT){const e=HT[k],dm=Math.round(e.dm*10)/10;e.r.hitT=n;e.r.rc=Math.min(1.2,(e.r.rc||0)+.3);if(e.r.bot)botHit(e.r,dm,e.hd,e.p);else{claims.push({u:k,dm:(AD.ikill&&PRAC()?9999:dm),hd:(AD.ikill&&PRAC()?1:e.hd)});hitFx(e.p,e.hd);rmDealt(e.r,dm,e.hd,e.p)}}
 if(!w.melee&&w.id=='ar')casing(muL.clone().addScaledVector(d,-.5),rt);if(!w.melee){flash(me);vm&&flash(vm)}SFX.gun(w.id);$('#cross').classList.add('f');setTimeout(()=>$('#cross').classList.remove('f'),90);
 shRef.push({by:uid,rd,ts:clk(),h:claims,w:S.w,o:[r3(o.x),r3(o.y),r3(o.z)],m:[r3(mu.x),r3(mu.y),r3(mu.z)],D,L,bd:bda,pk:Math.round(P.y*10)/10});hud();
 if(!w.melee&&st.mag<=0&&st.res>0)setTimeout(()=>{if(run&&!S.rl&&S.w==WEAPONS.indexOf(w)&&curS().mag<=0)reload()},w.rate+150)}
@@ -1395,11 +1426,11 @@ function frame0(t){if(!run)return;raf=requestAnimationFrame(frame);if(window.CFG
 if(Qs.se>1)R.shadowMap.needsUpdate=(++fcnt%Qs.se)==0;
 if(phase=='freeze'){const n=Math.ceil((frz-now)/1000);if(n!=cdN){cdN=n;if(n>0){$('#cd').textContent=n;$('#cd').classList.remove('on');void $('#cd').offsetWidth;$('#cd').classList.add('on');SFX.tick()}}
 if(now>=frz){phase='live';$('#cd').textContent='';msg('FIGHT!');SFX.go();S.eq=0;if(CELLG)cellDrop()}}
-if(VOTE&&!VOTE.done)voteTick(now);const live=phase=='live';if(live)checkRound();turnStep(dt);adTick(dt,live);csk=csk0();
-if(!S.dead){const mv0=live||phase=='over',bh0=S.cr?1.15:1.8;if(AD.nc&&PRAC()){S.nc=1;S.ncT=now}if(!S.nc&&mv0&&hits(P,bh0)){S.nc=1;S.ncT=now}crUpd(dt,mv0);const bh=S.cr?1.15:1.8,nc=!!S.nc;let ox=P.x,oy=P.y,oz=P.z,og=S.g,wh=nc?false:hits(P,bh),mv=live||phase=='over',f=mv?Math.max(-1,Math.min(1,(K.fwd?1:0)-(K.back?1:0)+(K.ay||0))):0,r=mv?Math.max(-1,Math.min(1,(K.right?1:0)-(K.left?1:0)+(K.ax||0))):0,l=Math.max(1,Math.hypot(f,r)),spd=(K.sprint&&!K.aim?10:6.5)*(K.aim?.6:1)*(S.cr==1?.55:1)*(PRAC()?AD.spd:1),vx=(-Math.sin(yaw)*f+Math.cos(yaw)*r)/l*spd,vz=(-Math.cos(yaw)*f-Math.sin(yaw)*r)/l*spd;
+if(VOTE&&!VOTE.done)voteTick(now);const live=phase=='live';if(live)checkRound();turnStep(dt);adTick(dt,live);ftTick(dt,now);csk=csk0();
+if(!S.dead){const mv0=live||phase=='over',bh0=S.cr?1.15:1.8;if(AD.nc&&PRAC()){S.nc=1;S.ncT=now}if(!S.nc&&mv0&&hits(P,bh0)){S.nc=1;S.ncT=now}crUpd(dt,mv0);const bh=S.cr?1.15:1.8,nc=!!S.nc;let ox=P.x,oy=P.y,oz=P.z,og=S.g,wh=nc?false:hits(P,bh),mv=live||phase=='over',f=mv&&!ftOn('freeze')?(ftOn('rev')?-1:1)*Math.max(-1,Math.min(1,(K.fwd?1:0)-(K.back?1:0)+(K.ay||0))):0,r=mv&&!ftOn('freeze')?(ftOn('rev')?-1:1)*Math.max(-1,Math.min(1,(K.right?1:0)-(K.left?1:0)+(K.ax||0))):0,l=Math.max(1,Math.hypot(f,r)),spd=(K.sprint&&!K.aim?10:6.5)*(K.aim?.6:1)*(S.cr==1?.55:1)*(PRAC()?AD.spd:1)*(ftOn('slow')?.35:1),vx=(-Math.sin(yaw)*f+Math.cos(yaw)*r)/l*spd,vz=(-Math.cos(yaw)*f-Math.sin(yaw)*r)/l*spd;
 if(S.cr==2&&!(AD.fly&&PRAC())){vx=S.slx*S.slV;vz=S.slz*S.slV}
 P.x+=vx*dt;if(!nc&&hits(P,bh))P.x-=vx*dt;P.z+=vz*dt;if(!nc&&hits(P,bh))P.z-=vz*dt;P.x=Math.max(-LIM,Math.min(LIM,P.x));P.z=Math.max(-LIM,Math.min(LIM,P.z));
-if(f)mvf=f<0?-1:1;if(mv&&K.jump&&S.g){S.vy=9*(PRAC()?AD.jmp:1);S.g=0;SFX.jump()}S.vy=Math.max(-32,S.vy-25*(PRAC()?AD.grav:1)*dt);if(AD.fly&&PRAC()){S.vy=mv?((K.jump?1:0)-(K.crouch?1:0))*(K.sprint?14:8):0;S.g=0}if(S.vy>0&&!nc&&headHit(P,S.vy,dt))S.vy=0;const y0=P.y;P.y+=S.vy*dt;let gh=gnd(P,y0);if(S.g&&S.vy<=0&&P.y>gh&&P.y-gh<.4){P.y=gh}if(P.y<=gh&&S.vy<=0){if(!S.g&&!(AD.fly&&PRAC())){if(S.vy<-4)landT=.3;if(S.vy<-8)SFX.land();if(MD.map=='zone'&&live&&!S.dead&&S.vy<-FALLV)fallHit(-S.vy)}P.y=gh;S.vy=0;S.g=1}else if(P.y>gh+.05)S.g=0;
+if(f)mvf=f<0?-1:1;if(mv&&!ftOn('freeze')&&(K.jump||ftOn('hop'))&&S.g){S.vy=9*(PRAC()?AD.jmp:1);S.g=0;SFX.jump()}S.vy=Math.max(-32,S.vy-25*(PRAC()?AD.grav:1)*dt);if(AD.fly&&PRAC()){S.vy=mv?((K.jump?1:0)-(K.crouch?1:0))*(K.sprint?14:8):0;S.g=0}if(S.vy>0&&!nc&&headHit(P,S.vy,dt))S.vy=0;const y0=P.y;P.y+=S.vy*dt;let gh=gnd(P,y0);if(S.g&&S.vy<=0&&P.y>gh&&P.y-gh<.4){P.y=gh}if(P.y<=gh&&S.vy<=0){if(!S.g&&!(AD.fly&&PRAC())){if(S.vy<-4)landT=.3;if(S.vy<-8)SFX.land();if(MD.map=='zone'&&live&&!S.dead&&S.vy<-FALLV)fallHit(-S.vy)}P.y=gh;S.vy=0;S.g=1}else if(P.y>gh+.05)S.g=0;
 sp+=(Math.hypot(vx,vz)-sp)*Math.min(1,dt*10);stepT-=dt;if(sp>3&&S.g&&stepT<0){SFX.step();stepT=K.sprint?.28:.4}
 if(!nc&&!wh&&P.y>oy+1e-4&&hits(P,bh)){P.x=ox;P.y=oy;P.z=oz;if(S.vy>0)S.vy=0;S.g=og} /* climbing stairs into a ceiling: the head bump blocks you (like Fortnite) instead of squeezing you through it */
 if(S.nc){if(!hits(P,bh)||now-S.ncT>7000){S.nc=0;if(hits(P,bh))unstick()}}else unstick();if(MD.map=='box'){if(P.y>CEILH-1.9){P.y=CEILH-1.9;if(S.vy>0)S.vy=0}if(Math.abs(P.x)>LIM+.4||Math.abs(P.z)>LIM+.4){P.x=Math.max(-LIM,Math.min(LIM,P.x));P.z=Math.max(-LIM,Math.min(LIM,P.z))}}if((live||phase=='over')&&K.shoot&&!EDIT){if(buildT)place(buildT);else shoot()}}
@@ -1513,7 +1544,7 @@ function warm(){try{if(!WARMG){WARMG=new T.Group();const add=m=>{const x=new T.M
 add(new T.MeshStandardMaterial({color:0x888888,roughness:.85,flatShading:true,transparent:true,opacity:.5,emissive:0xff3b3b,emissiveIntensity:.5}));
 add(new T.MeshStandardMaterial({color:0x888888,roughness:.5,metalness:.3}));add(new T.MeshStandardMaterial({color:0xc98f55,map:matTex(0),roughness:.85,flatShading:true,transparent:true,opacity:.5,emissive:0x2a6bff,emissiveIntensity:.5}));add(new T.MeshStandardMaterial({color:0xc98f55,map:matTex(1),roughness:.85,flatShading:true}));add(new T.MeshBasicMaterial({color:0xfff2a0,transparent:true}));add(flashMat());add(new T.MeshBasicMaterial({color:0x66b3ff,transparent:true,opacity:.42,depthWrite:false}))}
 sc.add(WARMG);R.compile(sc,cam);sc.remove(WARMG);if(vm)R.compile(vsc,cam)}catch(e){}}
-function start(o){init();trnClear();adReset();cancelAnimationFrame(lraf);cancelAnimationFrame(raf);clearInterval(tick);clr(pt);clearTimeout(S.rlT);ferr=0;BOTM=!!o.bot;clk=o.clock||Date.now;onGhost=o.onGhost||null;rT0=0;startT=performance.now();db=BOTM?{ref:()=>NR}:o.db;uid=o.uid;mid=o.mid;onEnd=o.onEnd;onLeave=o.onLeave;clearBuilds();
+function start(o){init();trnClear();adReset();['ft-ice','ft-blind','ft-scare'].forEach(i=>{const e=document.getElementById(i);e&&e.remove()});cancelAnimationFrame(lraf);cancelAnimationFrame(raf);clearInterval(tick);clr(pt);clearTimeout(S.rlT);ferr=0;BOTM=!!o.bot;clk=o.clock||Date.now;onGhost=o.onGhost||null;rT0=0;startT=performance.now();db=BOTM?{ref:()=>NR}:o.db;uid=o.uid;mid=o.mid;onEnd=o.onEnd;onLeave=o.onLeave;clearBuilds();
 for(let i=FX.length-1;i>=0;i--)if(!FX[i].ring){fxFree(FX[i].m);FX.splice(i,1)}
 if(window.PAD)PAD.drain();specT=null;lastDead=0;if(vm){vSway.remove(vm.g);disposeTree(vm.g);vm=null}if(me){sc.remove(me.g);disposeTree(me.g)}RP.forEach(r=>{sc.remove(r.g);disposeTree(r.g);if(r.bar)r.bar.remove()});RP=[];oRefs=[];
 /* roster: 1v1 = two players (lower uid is team 0); 2v2 = four players from the matchmaker, team 0 first */
@@ -1585,4 +1616,4 @@ look(dx,dy){if(!run||paused())return;const k=.0042*(window.CFG?CFG.sens:1)*(cam.
 aimHold(v){if(!run||!hold())return;if(EDIT||buildT){if(v){down('aim',false);up('aim')}}else K.aim=v?1:0},
 tapAim(){if(!run||!hold())return;if(EDIT||buildT){down('aim',false);up('aim')}else K.aim=K.aim?0:1},
 pause(){if(!run||phase=='ended')return;for(const k in K)K[k]=0;padSprint=0;$('#pause').classList.add('on');$('#pconf').style.display='none';$('#pbtns').style.display='block'}};
-return{players:()=>RP.filter(r=>r.u&&!r.bot).map(r=>({uid:r.u,name:r.name})),practice:()=>!!(BOTM||TRN),adminState:()=>Object.assign({},AD,{practice:PRAC(),bots:PRAC()?adBots().length:0}),adminSet:(k,v)=>{if(!PRAC()||!(k in AD)||k=='t'||k=='espOn')return false;AD[k]=v;if(k=='fly'&&v){S.g=0}if(k=='esp'){try{adEsp()}catch(_){}AD.espOn=AD.esp}return true},adminAct:adAct,adminRefill:()=>{if(!(BOTM||TRN))return false;S.hp=100;S.sh=0;mat=[999,999,999];hud();return true},adminUi:v=>{window.ADMOPEN=!!v;if(v){for(const k in K)K[k]=0;try{document.exitPointerLock&&document.exitPointerLock()}catch(_){}}else if(run&&!FREE()){try{R.domElement.requestPointerLock()}catch(_){}}},ev:s=>window.DEBUG?eval(s):undefined /* debug builds only (?debug=1): lets the test rig read / write any variable inside this closure */,input,start,lobby,leave,resume,quality,qinfo,thumb,busy:()=>!!run,refreshKeys,padLost(){if(run&&!paused()&&phase!='ended')input.pause()},specStep,toggleMap,thumbCached:v=>THC.get(+v||0),gunIcon:(wi,cols,sz,sk)=>gunIcon(WEAPONS[wi],cols,sz,sk),partner(i){PI=i;lobbyPartner()},kick(){LC&&LC.kick&&LC.kick()}}})();
+return{players:()=>RP.filter(r=>r.u&&!r.bot).map(r=>({uid:r.u,name:r.name})),practice:()=>!!(BOTM||TRN),adminState:()=>Object.assign({},AD,{practice:PRAC(),bots:PRAC()?adBots().length:0}),adminSet:(k,v)=>{if(!PRAC()||!(k in AD)||k=='t'||k=='espOn')return false;AD[k]=v;if(k=='fly'&&v){S.g=0}if(k=='esp'){try{adEsp()}catch(_){}AD.espOn=AD.esp}adSave();return true},troll:adTroll,adminPos:()=>({x:+P.x.toFixed(2),y:+P.y.toFixed(2),z:+P.z.toFixed(2)}),adminAct:adAct,adminRefill:()=>{if(!PRAC())return false;S.hp=100;S.sh=0;mat=[999,999,999];hud();return true},adminUi:v=>{window.ADMOPEN=!!v;if(v){for(const k in K)K[k]=0;try{document.exitPointerLock&&document.exitPointerLock()}catch(_){}}else if(run&&!FREE()){try{R.domElement.requestPointerLock()}catch(_){}}},ev:s=>window.DEBUG?eval(s):undefined /* debug builds only (?debug=1): lets the test rig read / write any variable inside this closure */,input,start,lobby,leave,resume,quality,qinfo,thumb,busy:()=>!!run,refreshKeys,padLost(){if(run&&!paused()&&phase!='ended')input.pause()},specStep,toggleMap,thumbCached:v=>THC.get(+v||0),gunIcon:(wi,cols,sz,sk)=>gunIcon(WEAPONS[wi],cols,sz,sk),partner(i){PI=i;lobbyPartner()},kick(){LC&&LC.kick&&LC.kick()}}})();
