@@ -1,0 +1,8 @@
+/* settings v44 */
+#ssearch{width:100%;box-sizing:border-box;margin:0 0 8px;padding:10px 14px;border-radius:12px;border:2px solid #ffffff2e;background:#0a0526;color:#fff;font:inherit;font-weight:700}
+#ssearch:focus{outline:none;border-color:#4d8bff}
+#settings.srch #stabs{opacity:.35;pointer-events:none}
+#settings .sset>h3[data-q]{margin:14px 0 4px;font-size:13px;letter-spacing:2px;opacity:.8}
+#pbmap .pm{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:6px 10px;margin-top:4px;border-radius:10px;background:#ffffff10}
+#pbmap .pm b{min-width:70px;text-align:center}
+.tb.cr{width:calc(var(--u)*.78);height:calc(var(--u)*.78);right:calc(max(16px,env(safe-area-inset-right)) + var(--u)*1.7);bottom:calc(max(14px,env(safe-area-inset-bottom)) + var(--u)*2.7);font-size:calc(var(--u)*.42)}

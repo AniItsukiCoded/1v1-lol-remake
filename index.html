@@ -122,7 +122,7 @@
 <div class="admr"><button id="admall" class="mini alt">👥 EVERYONE ONLINE</button><button id="admref" class="mini alt">↻ ONLINE PLAYERS</button></div>
 <div class="join"><input id="admq" placeholder="Search a username (starts with…)" maxlength="24" autocomplete="off"><button id="admfind" class="btn alt">FIND</button></div>
 <div id="admlist"></div>
-<div class="admg"><div><small>⭐ XP</small><input id="admx" type="number" min="0" max="10000000" value="0" inputmode="numeric"></div><div><small>🍬 CANDY</small><input id="admc" type="number" min="0" max="10000000" value="0" inputmode="numeric"></div><div><small>🪙 COINS</small><input id="admo" type="number" min="0" max="10000000" value="0" inputmode="numeric"></div><div><small>🗝️ KEYS</small><input id="admk" type="number" min="0" max="1000" value="0" inputmode="numeric"></div></div>
+<div class="admg"><div><small>⭐ XP</small><input id="admx" type="number" min="0" max="1000000" value="0" inputmode="numeric"></div><div><small>🍬 CANDY</small><input id="admc" type="number" min="0" max="1000000" value="0" inputmode="numeric"></div><div><small>🪙 COINS</small><input id="admo" type="number" min="0" max="1000000" value="0" inputmode="numeric"></div><div><small>🗝️ KEYS</small><input id="admk" type="number" min="0" max="100" value="0" inputmode="numeric"></div></div>
 <label class="admck"><input id="admrk" type="checkbox" checked> 🍬 Candy counts toward the leaderboard &amp; goals (untick = spendable only)</label>
 <button id="admsend" class="btn">SEND GIFT</button>
 <p class="sub l">Players get it the next time they are in the game (it lands in their inbox, so offline players are fine).</p>
@@ -130,9 +130,17 @@
 <p class="sub l">You always have every skin, infinite candy / coins / keys, and you never show on a leaderboard.</p>
 <div class="row"><span>LOL Pass tier (0-30)</span><input class="adn" id="admlol" type="number" min="0" max="30" value="30"><button id="admlolb" class="mini">SET</button></div>
 <div class="row"><span>Spooky Pass tier (0-30)</span><input class="adn" id="admspk" type="number" min="0" max="30" value="30"><button id="admspkb" class="mini">SET</button></div>
-<div class="row"><span>Add XP (level)</span><input class="adn" id="admxp" type="number" min="0" max="10000000" value="1000"><button id="admxpb" class="mini">ADD</button></div>
+<div class="row"><span>Add XP (level)</span><input class="adn" id="admxp" type="number" min="0" max="1000000" value="1000"><button id="admxpb" class="mini">ADD</button></div>
 <div class="row"><span>Reset daily reward, treat &amp; quests</span><button id="admrd" class="mini alt">RESET</button></div>
-<p class="sub l">Add or remove admins in the Firebase Realtime Database: <b>fyusaugczduirdgyfdr</b> &rarr; (email before the @) = 1 or 0.</p>
+<h3>📋 IP LOGS <small>(owners only)</small></h3>
+<p class="sub l">Username, IP, approximate location, provider, device, visits and cheat flags of every player (guests too). Logged under the Terms of Service.</p>
+<div class="join"><input id="iplq" placeholder="Filter: name, IP, city, country, UID…" maxlength="40" autocomplete="off"><button id="iplload" class="btn alt">LOAD LOGS</button></div>
+<p class="sub l" id="iplcount"></p>
+<div id="iplist"></div>
+<h3>☢️ DANGER ZONE</h3>
+<p class="sub l">RESET ALL deletes every player's coins, candy, XP, skins, passes, rankings, leaderboards and pending gifts for everyone. Accounts, usernames and IP logs stay.</p>
+<button id="admreset" class="btn" style="background:linear-gradient(180deg,#e0334a,#8c1224)">RESET ALL DATA</button>
+<p class="sub l">Owners are set in the Firebase console: Realtime Database &rarr; <b>ownerUids</b> &rarr; &lt;account UID&gt; = true (UID: Authentication &rarr; Users). Nobody can change it from the game.</p>
 <button class="btn close">DONE</button></div></div></div>
 <div id="queue" class="screen"><div class="card"><div id="qrk"></div><div class="spin"></div><h2 id="qtxt">Searching for opponent…</h2><button id="qbot" class="btn" style="display:none">PLAY VS BOT NOW</button><button id="cancel" class="btn alt">Cancel</button></div></div>
 <div id="afk" class="screen"><div id="afkfx"></div>
@@ -157,8 +165,9 @@
 <div id="end" class="screen"><div class="card endc"><div id="vroy"><div class="vrb"><span class="vrn">#1</span><span class="vrt"><b>VICTORY</b><b>ROYALE</b></span></div></div><small id="rtag">MATCH OVER</small><h1 id="res"></h1><div id="winner"></div>
 <div id="fin"><div class="fp"><i id="en1"></i><b id="e1">0</b></div><em>—</em><div class="fp"><b id="e2">0</b><i id="en2"></i></div></div>
 <div id="rsub"></div><button id="again" class="btn">PLAY AGAIN</button><button id="home" class="btn alt">Menu</button></div></div>
+<script src="js/ac.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="js/skin.js"></script><script src="js/controls.js"></script><script src="js/crosshair.js"></script><script src="js/config.js"></script><script src="js/modes.js"></script><script src="js/audio.js"></script><script src="js/cosmetics.js"></script><script src="js/gunskins.js"></script><script src="js/events.js"></script><script src="js/touch.js"></script><script src="js/pad.js"></script><script src="js/weapons.js"></script><script src="js/game.js"></script><script src="js/main.js"></script><script src="js/passes.js"></script><script src="js/lobby2.js"></script><script src="js/rankcore.js"></script><script src="js/ranked.js"></script><script src="js/leaders.js"></script><script src="js/admin.js"></script><script src="js/settings2.js"></script><script src="js/settings3.js"></script><script src="js/party.js"></script><script src="js/trainer.js"></script><script src="js/guard.js"></script></body></html>
+<script src="js/skin.js"></script><script src="js/controls.js"></script><script src="js/crosshair.js"></script><script src="js/config.js"></script><script src="js/tos.js"></script><script src="js/modes.js"></script><script src="js/audio.js"></script><script src="js/cosmetics.js"></script><script src="js/gunskins.js"></script><script src="js/events.js"></script><script src="js/touch.js"></script><script src="js/pad.js"></script><script src="js/weapons.js"></script><script src="js/game.js"></script><script src="js/main.js"></script><script src="js/passes.js"></script><script src="js/lobby2.js"></script><script src="js/rankcore.js"></script><script src="js/ranked.js"></script><script src="js/leaders.js"></script><script src="js/admin.js"></script><script src="js/settings2.js"></script><script src="js/settings3.js"></script><script src="js/party.js"></script><script src="js/trainer.js"></script><script src="js/guard.js"></script></body></html>
