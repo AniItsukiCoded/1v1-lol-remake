@@ -17,11 +17,13 @@ const verified=()=>!!(ver&&typeof user!='undefined'&&user&&!user.isAnonymous&&us
 const tmo=(p,ms)=>Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(new Error('timeout')),ms))]);
 
 /* ---- is this account an owner? asks the server (ownerUids/<uid>); runs on every sign-in BEFORE the cloud save loads so the perks apply to it ---- */
-async function check(u){let st=false,known=true;ver=false;verUid=null;
- try{if(u&&!u.isAnonymous){const v=(await tmo(db.ref('ownerUids/'+u.uid).once('value'),6000)).val();st=v===true}}
- catch(e){known=false;console.warn('Owner check failed (is database.rules.json published?):',e&&e.message)}
+let chk=false,okState=false; /* chk = a check is running right now; okState = the last check got a real answer from the server */
+async function check(u){let st=false,known=true;chk=true;okState=false;ver=false;verUid=null;
+ EV.setOwner(false,false,TK); /* drop any owner state left over from a previous account BEFORE waiting on the network */
+ try{if(u&&!u.isAnonymous){const v=(await tmo(db.ref('ownerUids/'+u.uid).once('value'),8000)).val();st=v===true||v===1||v==='true'||v==='1';if(!st)console.info('[owner check] not an owner. UID: '+u.uid+' (add ownerUids/'+u.uid+' = true in the Firebase console)')}}
+ catch(e){known=false;console.warn('Owner check failed (is database.rules.json published?):',e&&e.message);try{toast('Owner check failed: '+String(e&&e.message||e).slice(0,70))}catch(_){}}
  if(st){ver=true;verUid=u.uid}
- EV.setOwner(st,known,TK);if(!st)$('#admin').classList.remove('on');return st}
+ EV.setOwner(st,known,TK);if(!st)$('#admin').classList.remove('on');okState=known;chk=false;return st}
 
 /* ---- gift inbox: gifts/<my uid>/<id> = {by,bn,t,candy?,coins?,keys?}. Claimed once (the gift is deleted first, then applied) ---- */
 let gOff=null,seen=new Set(),pend=[],pt=0;
@@ -193,4 +195,4 @@ function gameToggle(){if(!verified()){if(EV.owner())AC.trip('game admin unverifi
 /* the panel only exists inside a match: leaving the match (or losing owner status) closes it */
 setInterval(()=>{if(gOpen()&&(!verified()||!Game.busy())){gp.classList.remove('on');window.ADMOPEN=false}gSync()},500);
 setInterval(()=>{if(gOpen())gPlayers()},4000);
-return Object.freeze({check,listen,owner:()=>verified(),verified,game:gameToggle})})();
+return Object.freeze({check,listen,owner:()=>verified(),verified,ready:()=>!chk&&okState,game:gameToggle})})();

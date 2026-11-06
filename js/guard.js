@@ -18,16 +18,16 @@ if(document.fullscreenElement)lock();
 /* sane ceilings for NORMAL accounts. Gifts are capped at 1,000,000 per gift (rules + client), so a legit account stays far below these. */
 const LIM={coins:5e6,xp:5e6,candy:5e6,keys:500,tot:5e6,tier:30};
 const shown=el=>{if(!el)return false;const c=getComputedStyle(el);return c.display!=='none'&&c.visibility!=='hidden'&&el.offsetParent!==null||el.classList.contains('on')};
-let boot=Date.now(),sig=null;
+let boot=Date.now(),sig=null,bad_n=0;
 const bad=(w,o)=>{AC.trip(w,o);return true};
 setInterval(()=>{
  if(AC.locked())return;
  if(typeof EV=='undefined'||typeof ADM=='undefined'||typeof user=='undefined'||typeof CFG=='undefined')return;
  /* the core objects must still be the frozen originals */
  if(!Object.isFrozen(EV)||!Object.isFrozen(EV.admin)||!Object.isFrozen(ADM)||!Object.isFrozen(AC)||!Object.isFrozen(TOS))return bad('core object tampered');
+ if(!ADM.ready()){bad_n=0;return} /* an owner check is running / failed: judge nothing (a slow network must never lock or wipe a real owner) */
  const o=EV.owner(),v=ADM.verified();
- if(o&&!v)return bad('fake owner (server did not confirm)');
- if(o&&(!user||user.isAnonymous))return bad('owner flag without a real signed-in account');
+ if(o&&(!v||!user||user.isAnonymous)){if(++bad_n>=3)return bad(!v?'fake owner (server did not confirm)':'owner flag without a real signed-in account');return}else bad_n=0;
  if(!o&&!user&&shown(document.querySelector('#menu')))return bad('menu without sign-in');
  if(!v){
   const ap=document.querySelector('#admin'),gp=document.querySelector('#gadm'),ab=document.querySelector('#admb');
