@@ -36,7 +36,7 @@ function css(){if(document.getElementById('tosCss'))return;const s=document.crea
  '#tos button{flex:1;min-width:150px;border:0;border-radius:12px;padding:13px 16px;font:400 20px "Lilita One",Nunito,sans-serif;letter-spacing:.04em;cursor:pointer;color:#fff;background:linear-gradient(180deg,#3ddc84,#1c9a57)}'+
  '#tos button:disabled{opacity:.35;cursor:not-allowed;filter:grayscale(.6)}#tos button.alt{background:#ffffff1f}'+
  '#tos .tm{min-height:18px;color:#ff8a96;font-weight:800;font-size:13px}'+
- '#tosl{position:fixed;left:10px;bottom:8px;z-index:30;font:800 11px Nunito,system-ui,sans-serif;color:#ffffff99;background:#0006;border:0;border-radius:8px;padding:5px 9px;cursor:pointer}#tosl:hover{color:#fff}';
+ '#tosl,#uidl{position:fixed;left:10px;bottom:8px;z-index:30;font:800 11px Nunito,system-ui,sans-serif;color:#ffffff99;background:#0006;border:0;border-radius:8px;padding:5px 9px;cursor:pointer}#tosl:hover,#uidl:hover{color:#fff}';
  document.head.appendChild(s)}
 function build(readOnly){css();if(ov)ov.remove();ov=document.createElement('div');ov.id='tos';
  const c=document.createElement('div');c.className='tc';
@@ -90,6 +90,9 @@ async function log(u){
   await Promise.all([r2.child('ip').set(clean(v.ip,64)).catch(()=>{}),r2.child('loc').set(clean(loc,160)).catch(()=>{}),r2.child('t').set(TS).catch(()=>{}),once('f_'+u.uid+'_'+k,()=>r2.child('f').set(TS).catch(()=>{}))]);
  }catch(e){console.warn('log failed',e&&e.message)}}
 /* small "Terms of Service" link, bottom-left of every screen */
-function link(){css();if(document.getElementById('tosl'))return;const b=document.createElement('button');b.id='tosl';b.type='button';b.textContent='Terms of Service';b.onclick=open;document.body.appendChild(b)}
+function link(){css();if(document.getElementById('tosl'))return;const b=document.createElement('button');b.id='tosl';b.type='button';b.textContent='Terms of Service';b.onclick=open;document.body.appendChild(b);
+ const u=document.createElement('button');u.id='uidl';u.type='button';u.textContent='My ID';u.title='Copy my account ID (UID) – needed to add an owner in Firebase';u.style.cssText='left:128px';u.className='tosb';
+ u.onclick=()=>{const id=(typeof user!='undefined'&&user&&!user.isAnonymous)?user.uid:'';if(!id){try{toast('Sign in to your real account first (not guest) to get its ID')}catch(_){}return}
+  try{navigator.clipboard.writeText(id).then(()=>toast('Account ID copied: '+id),()=>prompt('Your account ID (copy it):',id))}catch(_){prompt('Your account ID (copy it):',id)}};document.body.appendChild(u)}
 if(document.body)link();else addEventListener('DOMContentLoaded',link);
 return Object.freeze({ensure,log,open,accepted:()=>acc})})();
