@@ -4,7 +4,7 @@
    2) Watchdog (every 700 ms): the page may only claim owner status after the SERVER confirmed it (ADM.verified(), see admin.js). Anything else =
       fake owner -> AC.trip() -> whole site locked, any click closes the tab. Also trips on: owner not signed in / guest account acting as owner, admin
       panels visible to a non-owner, the core objects (EV / ADM / AC) being replaced or unfrozen, and impossible currency / XP totals on normal accounts
-      (those also get their progress wiped). */
+      (those get their progress wiped and logged, without a lockdown). */
 (()=>{
 const lock=()=>{try{navigator.keyboard&&navigator.keyboard.lock&&navigator.keyboard.lock(['KeyW','KeyT','KeyN']).catch(()=>{})}catch(_){}},
  unlock=()=>{try{navigator.keyboard&&navigator.keyboard.unlock&&navigator.keyboard.unlock()}catch(_){}};
@@ -34,7 +34,7 @@ setInterval(()=>{
   if((ap&&ap.classList.contains('on'))||(gp&&gp.classList.contains('on'))||(ab&&ab.style.display!=='none'&&shown(ab)))return bad('admin UI shown to a non-owner');
   /* impossible totals on a normal account */
   const E=CFG.ev||{},B=CFG.bp||{};
-  if(user&&!user.isAnonymous&&(CFG.coins>LIM.coins||CFG.xp>LIM.xp||E.candy>LIM.candy||E.keys>LIM.keys||E.tot>LIM.tot||E.tier>LIM.tier||B.xp>LIM.xp))return bad('impossible stats: coins '+CFG.coins+' xp '+CFG.xp+' candy '+E.candy,{wipe:true});
+  if(user&&!user.isAnonymous&&(CFG.coins>LIM.coins||CFG.xp>LIM.xp||E.candy>LIM.candy||E.keys>LIM.keys||E.tot>LIM.tot||E.tier>LIM.tier||B.xp>LIM.xp)){AC.flag('impossible stats: coins '+CFG.coins+' xp '+CFG.xp+' candy '+E.candy,{wipe:true});return}
  }
 },700);
 })();

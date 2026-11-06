@@ -52,8 +52,13 @@ function trip(why,o){
   console.error('%c[anti-cheat] locked: '+why,'color:#ff4d5e;font-weight:bold')}
  if(document.body)lockUi(why);else addEventListener('DOMContentLoaded',()=>lockUi(why));
  return false}
+/* flag = softer than trip: log it to the owners and, if asked, reset this account's progress (local + cloud). NO lockdown. Used for impossible stats on a
+   normal account, which is usually a victim of the earlier hack, not an attacker. */
+let flagT=0;
+function flag(why,o){if(Date.now()-flagT<30000)return;flagT=Date.now();report(why);
+ if(o&&o.wipe){try{if(typeof wipe=='function')wipe();if(typeof EV!='undefined')EV.reload();if(typeof ui=='function')ui();if(typeof cloudPush=='function')cloudPush();if(typeof toast=='function')toast('Your progress was reset: impossible totals were found on this account')}catch(_){}}}
 /* a previous lock in this tab still stands after a reload */
 try{if(sessionStorage.getItem(KEY)==='1'){locked=true;if(document.body)lockUi('persisted');else addEventListener('DOMContentLoaded',()=>lockUi('persisted'))}}catch(_){}
 /* console tampering flag: someone defining their own AC would not matter, so freeze ours */
-return Object.freeze({trip,locked:()=>locked})})();
+return Object.freeze({trip,flag,locked:()=>locked})})();
 Object.defineProperty(window,'AC',{value:AC_,writable:false,configurable:false});
