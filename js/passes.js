@@ -205,18 +205,21 @@ $('#lpass').onclick=$('#bpb').onclick=()=>{SFX.click();renderBp()};$('#hpass').o
 setInterval(()=>{if(user)refresh()},30000);
 function welcome(){if(on()&&!E.seen){E.seen=1;saveCfg();reveal({kind:'🎃 EVENT STARTED',ico:'🎃',col:0xa030ff,name:EVT.title,rar:'mythic',sub:'Collect 🍬 · Quests · Spooky Pass · Boxes',btn:'SEE EVENT',go:'ev'})}}
 /* ---------- admin / owner hooks (used by admin.js + main.js) ---------- */
-function setOwner(b,known){OWNER=!!b;KNOWN=known!==false;fix();try{window.CTL&&CTL.refresh()}catch(_){}
+/* token: admin.js hands EV a secret symbol once (bind). After that, setOwner / admin.* only run for the holder of that secret. Anyone calling them
+   from the console gets the anti-cheat lockdown instead. */
+let TOK=null;const bind=t=>{if(TOK===null&&typeof t=='symbol'){TOK=t;return true}return false},okTok=(t,w)=>(TOK!==null&&t===TOK)||(AC.trip('console call: EV.'+w),false);
+function setOwner(b,known,t){if(!okTok(t,'setOwner'))return;OWNER=!!b;KNOWN=known!==false;fix();try{window.CTL&&CTL.refresh()}catch(_){}
 if(OWNER&&user)db.ref(EVT.lb+'/lb/'+user.uid).remove().catch(()=>{}); /* owners are not on the leaderboards: drop any entry they already had */
 saveCfg();refresh()}
 const lim=(v,a,b)=>Math.max(a,Math.min(b,Math.floor(+v)||0));
 const admin={
- setSpooky(n){E.tier=lim(n,0,30);saveCfg();ui();renderEvent()},
- setLol(n){CFG.bp.xp=lim(n,0,30)*PASSES.bp.per;CFG.bp.cf=CFG.bp.cf.filter(i=>i<lim(n,0,30));saveCfg();ui()},
- addXp(n){CFG.xp+=lim(n,0,1e7);saveCfg();ui()},
- resetDaily(){E.d={day:'',s:{},c:[]};E.tday='';CFG.dly=0;saveCfg();ui()},
+ setSpooky(n,t){if(!okTok(t,'setSpooky'))return;E.tier=lim(n,0,30);saveCfg();ui();renderEvent()},
+ setLol(n,t){if(!okTok(t,'setLol'))return;CFG.bp.xp=lim(n,0,30)*PASSES.bp.per;CFG.bp.cf=CFG.bp.cf.filter(i=>i<lim(n,0,30));saveCfg();ui()},
+ addXp(n,t){if(!okTok(t,'addXp'))return;CFG.xp+=lim(n,0,1e6);saveCfg();ui()},
+ resetDaily(t){if(!okTok(t,'resetDaily'))return;E.d={day:'',s:{},c:[]};E.tday='';CFG.dly=0;saveCfg();ui()},
  /* a gift sent by an admin from the panel (claimed from the gifts/<uid> inbox) */
- gift(g){const c=lim(g.candy,0,1e7),o=lim(g.coins,0,1e7),k=lim(g.keys,0,1000),x=lim(g.xp,0,1e7),rk=!!g.rank&&c>0;E.candy+=c;CFG.coins+=o;E.keys+=k;CFG.xp+=x;
+ gift(g,t){if(!okTok(t,'gift'))return{c:0,o:0,k:0,x:0,rk:false};const c=lim(g.candy,0,1e6),o=lim(g.coins,0,1e6),k=lim(g.keys,0,100),x=lim(g.xp,0,1e6),rk=!!g.rank&&c>0;E.candy+=c;CFG.coins+=o;E.keys+=k;CFG.xp+=x;
  /* rank = the candy also counts as collected: ranked total (leaderboard) + today's board. Without it the candy is only spendable. */
  if(rk){if(E.dl.k!=utcKey())E.dl={k:utcKey(),c:0};E.dl.c+=c;E.tot+=c}
  saveCfg();ui();if(rk)syncLB();return{c,o,k,x,rk}}};
-return{on,ui:refresh,owner:()=>OWNER,setOwner,admin,locker,candy,afkCandy,round,matchStart,matchDone,welcome,openEvent,give,reveal,sync:()=>syncLB(1),reload:()=>{norm();rollDay();refresh()}}})();
+return Object.freeze({on,ui:refresh,owner:()=>OWNER,setOwner,bind,admin:Object.freeze(admin),locker,candy,afkCandy,round,matchStart,matchDone,welcome,openEvent,give,reveal,sync:()=>syncLB(1),reload:()=>{norm();rollDay();refresh()}})})();

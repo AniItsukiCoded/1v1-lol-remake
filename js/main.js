@@ -9,7 +9,15 @@ window.CFG=Object.assign({sens:1,vol:1,music:true,model:true,q:window.TOUCH?4:10
 const GQ_VER=2;if(CFG.gqv!==GQ_VER||CFG.gq==null||!Number.isFinite(+CFG.gq)){CFG.gq=window.LITE?1:2;CFG.gqv=GQ_VER}CFG.gq=Math.max(0,Math.min(3,Math.round(+CFG.gq)));if(!window.MODES[CFG.mode])CFG.mode='1v1';
 if(CFG.ver!==DATA_VER){const kb0=CFG.kb;PK.forEach(k=>delete CFG[k]);Object.assign(CFG,fresh());if(kb0&&typeof kb0=='object')CFG.kb=kb0;CFG.ver=DATA_VER;CFG.own=''} /* a data reset keeps your keybinds */
 const saveLocal=()=>{try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}}; /* device-only settings (quality, mode): no cloud upload */
-const saveCfg=()=>{try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}cloudDirty()};
+const saveCfg=()=>{gLock();try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}cloudDirty()};
+/* GUESTS: locked to the 2 starter skins, no XP / level / coins / candy / keys / passes / quests / rewards of any kind. Whatever a guest earns or edits is
+   put back to a brand-new state right here (every reward path ends in saveCfg() or ui()), so there is no single reward hook to forget. Guests still play every
+   game mode and can change their username. Real enforcement for the database side is in database.rules.json (anonymous accounts cannot write saves / leaderboards). */
+let glk=0;
+function gLock(){if(glk||!user||!user.isAnonymous||typeof EV=='undefined')return;const f=fresh(),E_=CFG.ev,B=CFG.bp,ow=Array.isArray(CFG.owned)?CFG.owned:[];
+ const dirty=CFG.xp>0||CFG.coins>0||CFG.dly>0||ow.some(v=>!f.owned.includes(v))||(CFG.gs||[]).some(x=>x)||(B&&(B.xp>0||(B.cf&&B.cf.length)))||(E_&&(E_.candy>0||E_.tot>0||E_.tier>0||E_.keys>0||E_.dqDone>0||E_.rk>0||(E_.ach&&E_.ach.length)||(E_.pq&&E_.pq.length)));
+ if(!dirty&&f.owned.includes(CFG.skin))return;glk=1;
+ try{const kb=CFG.kb,sk=f.owned.includes(CFG.skin)?CFG.skin:f.skin;PK.forEach(k=>delete CFG[k]);Object.assign(CFG,f);CFG.kb=kb&&typeof kb=='object'?kb:{};CFG.skin=sk;CFG.own='';EV.reload()}catch(e){console.warn('guest lock',e)}finally{glk=0}}
 const SK=()=>CFG.skin+GUN.pack(CFG.gs||[0,0,0]); /* what other players see: outfit + equipped gun skins */
 const auth=firebase.auth(),db=firebase.database(),$=s=>document.querySelector(s);
 let mode='in',user=null,qStop=null,qBot=null,off=0,online=0,conn=false,presOff=null;
@@ -28,22 +36,23 @@ const fa=c.on('child_added',s=>{ks.add(s.key);upd()}),fr=c.on('child_removed',s=
 presOff=()=>{c.off('child_added',fa);c.off('child_removed',fr);r.remove();presOff=null}}
 // ---- auth: guest by default
 auth.onAuthStateChanged(async u=>{
-while(typeof EV=='undefined'||typeof LB2=='undefined'||typeof ADM=='undefined'||typeof LBK=='undefined'||typeof RK=='undefined')await new Promise(r=>setTimeout(r,25)); /* passes.js (EV) is the last script: never run the menu before it has loaded */
+while(typeof EV=='undefined'||typeof LB2=='undefined'||typeof ADM=='undefined'||typeof LBK=='undefined'||typeof RK=='undefined'||typeof TOS=='undefined'||typeof ADM=='undefined')await new Promise(r=>setTimeout(r,25));
+await TOS.ensure(); /* nobody signs in, gets a guest account or sees the menu before accepting the Terms */ /* passes.js (EV) is the last script: never run the menu before it has loaded */
 if(!u){user=null;presOff&&presOff();try{await auth.signInAnonymously()}catch(e){$('.spin').style.display='none';$('#bt').textContent='Could not start';
 $('#berr').textContent=(e.code=='auth/operation-not-allowed'||e.code=='auth/admin-restricted-operation')?'Enable the Anonymous provider in Firebase console > Authentication > Sign-in method (and make sure sign-ups are allowed under Settings > User actions), then reload.':e.code=='auth/unauthorized-domain'?'Add this site ('+location.hostname+') to Firebase Authentication > Settings > Authorized domains, or open the game from your .web.app / .firebaseapp.com link.':e.message}return}
 if(u.isAnonymous&&!u.displayName)await u.updateProfile({displayName:'Guest '+(1000+Math.random()*9000|0)});
-user=u;await sess();conn&&present();menu()});
+user=u;await sess();TOS.log(u);conn&&present();menu()});
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{SFX.click();mode=t.dataset.m;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x==t));$('#name').style.display=mode=='up'?'block':'none';$('#go').textContent=mode=='up'?'Create account':'Sign in';$('#err').textContent=''});
 $('#go').onclick=async()=>{SFX.resume();SFX.click();try{const e=$('#email').value.trim(),p=$('#pass').value;
 if(mode=='in'&&user&&user.isAnonymous&&(CFG.xp>0||CFG.coins>0)&&!confirm("Signing in loads your account's saved progress and replaces this guest's progress (if your account has a save). Continue?"))return;
 if(mode=='up'){const n=$('#name').value.trim();if(n.length<2)return err('Pick a username (2+ chars)');
 if(user&&user.isAnonymous)await user.linkWithCredential(firebase.auth.EmailAuthProvider.credential(e,p));else await auth.createUserWithEmailAndPassword(e,p);
-await auth.currentUser.updateProfile({displayName:n});user=auth.currentUser;await sess();menu()}else await auth.signInWithEmailAndPassword(e,p)}catch(x){err(x)}};
+await auth.currentUser.updateProfile({displayName:n});user=auth.currentUser;await sess();TOS.log(user);menu()}else await auth.signInWithEmailAndPassword(e,p)}catch(x){err(x)}};
 $('#back').onclick=()=>{SFX.click();menu()};
 $('#acct').onclick=async()=>{SFX.click();if(user.isAnonymous){$('#err').textContent='';show('auth')}else{presOff&&presOff();await cloudPush();cloud.ready=false;cloud.uid=cloud.p=null;wipe();await auth.signOut()}};
 async function menu(){show('menu');ui();LB2.modeShow();LBK.flush();if(!menu.j){menu.j=1;const c=new URLSearchParams(location.search).get('party');if(c){strip();joinParty(c)}}partyRefresh();Game.lobby(true,CFG.skin);EV.welcome();RK.paint();RK.load();$('#av').style.background=hx(CFG.skin);bustBg($('#av'),CFG.skin);$('#gbtn').style.display=user.isAnonymous?'block':'none';$('#who').textContent=nm().slice(0,14);$('#acct').textContent=user.isAnonymous?'Email sign in / up':'Sign out';
 let s=(await db.ref('users/'+user.uid).once('value').catch(()=>null))?.val()||{};
-if(s.v!==DATA_VER){s={name:nm(),wins:0,losses:0,v:DATA_VER};db.ref('users/'+user.uid).set(s).catch(()=>{})} /* data reset: win/loss record starts over, the account stays */
+if(s.v!==DATA_VER||(+s.ep||0)!==(EPOCH||0)){s={name:nm(),wins:0,losses:0,v:DATA_VER,ep:EPOCH||0};db.ref('users/'+user.uid).set(s).catch(()=>{})} /* data reset: win/loss record starts over, the account stays */
 else if(s.name!==nm())db.ref('users/'+user.uid+'/name').set(nm()).catch(()=>{});
 $('#stats').textContent=`Wins ${s.wins||0} · Losses ${s.losses||0}`}
 $('#play').onclick=()=>{SFX.resume();SFX.click();window.touchEnter&&touchEnter();go()};
@@ -55,7 +64,7 @@ const beginAny=v=>{if(!v||!v.mid||(v.t&&now()-v.t>45000))return;if(v.room)return
 function endFx(r,gx,ex){const e=$('#end'),res=r.draw?'draw':r.win?'win':'lose';e.classList.remove('win','lose','draw');e.classList.add(res);
 const vr=$('#vroy');vr.classList.remove('on');void vr.offsetWidth;if(res=='win')vr.classList.add('on');$('#res').style.display=res=='win'?'none':'';
 $('#fin').classList.toggle('w1',res=='win'&&!r.ffa);$('#fin').classList.toggle('w2',res=='lose'&&!r.ffa);
-const ch=[['xp','+'+gx.x+' XP'],['co','+'+gx.c+' 🪙']];if(r.kills)ch.push(['k','⚔ '+r.kills+(r.kills==1?' kill':' kills')]);if(r.dmg)ch.push(['d','💥 '+r.dmg+' dmg']);
+const gst=user&&user.isAnonymous,ch=gst?[['xp','🔒 Guest – sign in to earn XP & rewards']]:[['xp','+'+gx.x+' XP'],['co','+'+gx.c+' 🪙']];if(r.kills)ch.push(['k','⚔ '+r.kills+(r.kills==1?' kill':' kills')]);if(r.dmg)ch.push(['d','💥 '+r.dmg+' dmg']);
 const box=$('#rsub');box.textContent='';const row=document.createElement('div');row.className='chips';ch.forEach(([c,t],i)=>{const s=document.createElement('span');s.className='chip '+c;s.style.animationDelay=(.45+i*.12)+'s';s.textContent=t;row.appendChild(s)});box.appendChild(row);
 [['#e1',.75],['#e2',.75]].forEach(([q,d])=>{const el=$(q),t=el.textContent;if(!/^\d+$/.test(t)||+t<1)return;const n=+t,t0=performance.now()+d*1000;el.textContent='0';(function f(){const k=Math.min(1,(performance.now()-t0)/500);if(k<0){requestAnimationFrame(f);return}const v=Math.round(n*(1-Math.pow(1-k,3)));el.textContent=v;if(k<1)requestAnimationFrame(f);else el.textContent=n})()});
 const x=String(ex||'').replace(/\s+/g,' ').trim();if(x){const n=document.createElement('div');n.className='rx';n.textContent=x;box.appendChild(n)}}
@@ -65,7 +74,7 @@ const tok=begin.tok=(begin.tok||0)+1;show('queue');$('#qtxt').textContent='Loadi
 requestAnimationFrame(()=>setTimeout(()=>{if(tok!==begin.tok)return;$('#cancel').style.display='';show('none');try{Game.start({db,uid:user.uid,name:nm(),mid,opp,oppName,oppSkin,oppRk:orx,rk:RK.pack(),ranked:rkm?{win:md=='1v1'?5:4}:null,ros,mode:md,bot:!!bot,room,clock:now,skin:SK(),halloween:EV.matchStart(),onCandy:EV.candy,onRound:EV.round,
 onGhost:()=>{toast(room?'That room had just finished – finding a new one':'Opponent never connected – searching again');menu();setTimeout(go,400)},
 onLeave:x=>{LBK.add(x&&x.kills,x&&x.dmg,bot);if(rkm&&!bot)RK.finish(rkm,{win:false},true);if(bot){EV.sync();menu();return}if(x&&x.room){const rw=roomReward(x);if(rw.x||rw.c){CFG.xp+=rw.x;CFG.coins+=rw.c;saveCfg()}EV.sync();menu();toast('You left the room · '+(x.rounds|0)+' rounds · '+(x.kills|0)+' kills'+(rw.x||rw.c?' · +'+rw.x+' XP +'+rw.c+' 🪙':''));return}EV.sync();db.ref('users/'+user.uid).transaction(c=>{c=c||{};c.name=nm();c.v=DATA_VER;c.losses=(c.losses||0)+1;return c});menu()},
-onEnd:r=>{LBK.add(r.kills,r.dmg,bot);const rkr=rkm&&!bot&&!r.late?RK.finish(rkm,r,false):null;const pl=r.ffa?r.players-r.place:0,g0=r.room?(rw=>({x:rw.x+(r.win?250:0),c:rw.c+(r.win?50:0)}))(roomReward(r)):r.draw?{x:75+r.me*15,c:12}:r.ffa?(r.win?{x:260,c:50}:{x:60+pl*30,c:8+pl*4}):r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8},gx={x:Math.round(g0.x*(rkm?1.5:1)),c:Math.round(g0.c*(rkm?1.5:1))};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();const ex=EV.matchDone(r,gx)+(bot?'  · 🤖 bot match':'');
+onEnd:r=>{LBK.add(r.kills,r.dmg,bot);const rkr=rkm&&!bot&&!r.late?RK.finish(rkm,r,false):null;const pl=r.ffa?r.players-r.place:0,g0=r.room?(rw=>({x:rw.x+(r.win?250:0),c:rw.c+(r.win?50:0)}))(roomReward(r)):r.draw?{x:75+r.me*15,c:12}:r.ffa?(r.win?{x:260,c:50}:{x:60+pl*30,c:8+pl*4}):r.win?{x:150+r.me*20,c:25}:{x:50+r.me*15,c:8},gx={x:Math.round(g0.x*(rkm?1.5:1)),c:Math.round(g0.c*(rkm?1.5:1))};CFG.xp+=gx.x;CFG.coins+=gx.c;saveCfg();const ex=user.isAnonymous?(EV.matchDone(r,{x:0,c:0}),''):EV.matchDone(r,gx)+(bot?'  · 🤖 bot match':'');
 $('#res').textContent=r.draw?'DRAW':r.win?'VICTORY':'DEFEAT';$('#res').style.color=r.draw?'#ffd23f':r.win?'#38f5c8':'#ff6b81';
 $('#winner').textContent=r.draw?'Nobody wins this one':'🏆 '+r.winner+' WINS!';$('#en1').textContent=r.ffa?'Your place':(r.myName||'You');$('#en2').textContent=r.ffa?'players':(r.oppName||'Enemy');$('#e1').textContent=r.ffa?'#'+r.place:r.me;$('#e2').textContent=r.ffa?r.players:r.opp;
 $('#rtag').textContent=r.title=='Opponent left'?'OPPONENT LEFT':r.room?(modeOf(r.mode).n.toUpperCase()+' · 100 ROUNDS · '+(r.kills|0)+' KILLS · '+(r.dmg|0)+' DAMAGE'):r.ffa?(modeOf(r.mode).n.toUpperCase()+' · '+((r.first||1)>1?'FIRST TO '+r.first:'LAST ONE STANDING')):'MATCH OVER · FIRST TO '+(r.first||3);endFx(r,gx,ex);rkr&&RK.endUi(rkr);show('end');
@@ -124,7 +133,7 @@ $('#qbot').onclick=()=>{SFX.click();qBot&&qBot()};
 $('#gbtn').onclick=async()=>{SFX.click();const p=new firebase.auth.GoogleAuthProvider();try{
 if(user.isAnonymous){try{await user.linkWithPopup(p)}catch(e){if(e.code=='auth/credential-already-in-use'&&e.credential)await auth.signInWithCredential(e.credential);else throw e}}else await auth.signInWithPopup(p);
 user=auth.currentUser;const g=user.providerData.find(x=>x.providerId=='google.com');if(g&&g.displayName&&user.displayName!=g.displayName)await user.updateProfile({displayName:g.displayName});await sess();menu()}catch(e){if(e.code!='auth/popup-closed-by-user')alert((e.message||e).replace('Firebase: ',''))}};
-$('#edit').onclick=async()=>{SFX.click();const n=prompt('New username',nm());if(n&&n.trim().length>=2){await user.updateProfile({displayName:n.trim().slice(0,14)});menu()}};
+$('#edit').onclick=async()=>{SFX.click();const n=prompt('New username',nm());if(n&&n.trim().length>=2){await user.updateProfile({displayName:n.trim().slice(0,14)});db.ref('iplogs/'+user.uid+'/n').set(nm().slice(0,40)).catch(()=>{});menu()}};
 $('#gear').onclick=()=>{SFX.click();$('#settings').classList.add('on');try{fpMark()}catch(e){}};
 document.querySelectorAll('.modal .close').forEach(b=>b.onclick=()=>{SFX.click();document.querySelectorAll('.modal').forEach(x=>x.classList.remove('on'))});
 $('#sens').value=CFG.sens;$('#vol').value=CFG.vol;$('#mus').checked=CFG.music;
@@ -152,10 +161,18 @@ setInterval(()=>{if(!user||!conn)return;const t=performance.now();db.ref('presen
 const cloud={ready:false,uid:null,tm:0,p:null};
 const wipe=()=>{PK.forEach(k=>delete CFG[k]);Object.assign(CFG,fresh());CFG.own='';try{localStorage.cfg=JSON.stringify(CFG)}catch(e){}EV.reload();CTL.refresh()}; /* local progress back to a new-player state */
 /* what happens after every login: is this account on the backend admin list? -> load its cloud save (owner perks apply on top) -> start the gift inbox */
-async function sess(){await ADM.check(user);await cloudAttach();ADM.listen(user)}
+/* RESET ALL (admin panel) bumps meta/epoch on the server. A browser whose local epoch differs wipes its progress BEFORE the cloud save is loaded/uploaded,
+   and open games see the change live and reload. The rules also refuse any cloud save that still carries an old epoch. */
+let EPOCH=null,epOn=false;
+async function epochSync(){let ep=0;
+ try{ep=+(await Promise.race([db.ref('meta/epoch').once('value'),new Promise((_,j)=>setTimeout(()=>j(new Error('timeout')),6000))])).val()||0}catch(e){console.warn('epoch check failed',e&&e.message);return}
+ if((+CFG.ep||0)!==ep){const kb=CFG.kb;wipe();if(kb&&typeof kb=='object')CFG.kb=kb;CFG.ep=ep;saveLocal()}
+ EPOCH=ep;
+ if(!epOn){epOn=true;db.ref('meta/epoch').on('value',s=>{const v=+s.val()||0;if(EPOCH!==null&&v!==EPOCH){EPOCH=v;try{toast('Server data was reset – reloading…')}catch(_){}setTimeout(()=>location.reload(),1200)}})}}
+async function sess(){await ADM.check(user);await epochSync();await cloudAttach();ADM.listen(user)}
 function cloudDirty(){if(!cloud.ready)return;clearTimeout(cloud.tm);cloud.tm=setTimeout(cloudPush,2500)}
 function cloudPush(){clearTimeout(cloud.tm);cloud.tm=0;if(!cloud.ready||!user||user.isAnonymous||user.uid!==cloud.uid)return Promise.resolve();
-const o={};PK.forEach(k=>o[k]=CFG[k]);return db.ref('saves/'+cloud.uid).set({ver:DATA_VER,t:firebase.database.ServerValue.TIMESTAMP,d:JSON.stringify(o)}).catch(e=>console.warn('cloud save failed',e&&e.message))}
+const o={};PK.forEach(k=>o[k]=CFG[k]);return db.ref('saves/'+cloud.uid).set({ver:DATA_VER,ep:EPOCH||0,t:firebase.database.ServerValue.TIMESTAMP,d:JSON.stringify(o)}).catch(e=>console.warn('cloud save failed',e&&e.message))}
 function cloudAttach(){if(!user||user.isAnonymous){cloud.ready=false;cloud.uid=cloud.p=null;return Promise.resolve()}
 if(cloud.p&&cloud.uid===user.uid)return cloud.p;const u=user.uid;cloud.ready=false;cloud.uid=u;
 return cloud.p=(async()=>{let v=null;
@@ -170,7 +187,7 @@ const need=l=>300+150*(l-1),hx=c=>'#'+(c%16777216).toString(16).padStart(6,'0');
 /* head-and-shoulders portrait as a small avatar background (falls back to the plain colour if the portrait can't render) */
 function bustBg(el,skin){if(!el)return;let u='';try{u=Game.thumb(skin)}catch(e){}el.style.backgroundImage=u?`url(${u})`:'';el.style.backgroundSize='cover';el.style.backgroundPosition='center'}
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.remove('on');void e.offsetWidth;e.classList.add('on')}
-function ui(){let l=1,x=CFG.xp;while(x>=need(l)){x-=need(l);l++}const p=x/need(l)*100+'%';$('#lv').textContent=l;$('#xf').style.width=p;$('#xt').textContent=x+'/'+need(l);$('#cn').textContent=$('#cn2').textContent=CFG.coins;$('#dot').style.display=Date.now()-CFG.dly>864e5?'block':'none';$('#chips').style.display=CFG.hud===false?'none':'flex';EV.ui()}
+function ui(){gLock();document.body.classList.toggle('guest',!!(user&&user.isAnonymous));let l=1,x=CFG.xp;while(x>=need(l)){x-=need(l);l++}const p=x/need(l)*100+'%';$('#lv').textContent=l;$('#xf').style.width=p;$('#xt').textContent=x+'/'+need(l);$('#cn').textContent=$('#cn2').textContent=CFG.coins;$('#dot').style.display=Date.now()-CFG.dly>864e5?'block':'none';$('#chips').style.display=CFG.hud===false?'none':'flex';EV.ui()}
 function grid(shop){EV.locker(shop)}
 $('#lock').onclick=()=>{SFX.click();grid(0)};$('#shop').onclick=()=>{SFX.click();grid(1)};$('#plus').onclick=()=>$('#shop').click();$('#tL').onclick=()=>{SFX.click();grid(0)};$('#tS').onclick=()=>{SFX.click();grid(1)};
 $('#daily').onclick=()=>{SFX.click();if(Date.now()-CFG.dly<864e5)return toast('Come back later for your next daily reward');CFG.dly=Date.now();CFG.coins+=50;saveCfg();ui();toast('Daily reward: +50 🪙')};

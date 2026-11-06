@@ -203,3 +203,15 @@ body.touch .mcard::after,body.touch #mhint i{animation:none}
 
 #gadm .gpl{margin-bottom:6px}#gadm .gpl button.on,#gadm .gtg button[data-tt].on{border-color:#ff7ab8;background:#ff7ab833}
 #gadm .gtr button{border-color:#ff7ab855}#gadm .gtr button:hover{background:#ff7ab822}
+
+/* ---- admin: IP logs ---- */
+#iplist{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow:auto;margin:8px 0 12px;padding-right:2px}
+#iplist .ipr{background:#ffffff12;border-radius:12px;padding:10px 12px;font-size:12.5px;font-weight:700;line-height:1.45;word-break:break-word}
+#iplist .ipt{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:15px}
+#iplist .iptag{font-size:10px;font-weight:900;letter-spacing:.08em;padding:2px 7px;border-radius:99px;background:#ffffff26}
+#iplist .iptag.g{background:#ffb02033;color:#ffd23f}#iplist .iptag.a{background:#3ddc8433;color:#7dffb0}#iplist .iptag.w{background:#ff4d5e44;color:#ff9aa5}
+#iplist .ipk{font-weight:900;color:#7de8ff;font-size:14px}#iplist .ipd{opacity:.65;font-size:11px}#iplist .ipf{color:#ff9aa5}#iplist .ipu{opacity:.45;font-size:10.5px}
+/* ---- guests: only the starter skins, modes and username. Everything that earns / spends is hidden. ---- */
+body.guest #daily,body.guest #shop,body.guest #bpb,body.guest #afkb,body.guest #evb,body.guest #evban,body.guest #hpass,body.guest #lpass,body.guest #coins,body.guest #candyc,body.guest #lvl,body.guest #plus{display:none!important}
+body.guest #stats::after{content:"🔒 Guest: starter skins only · sign in to level up, earn rewards & unlock skins";display:block;margin-top:4px;font-size:11px;font-weight:800;color:#ffd23f;max-width:220px;line-height:1.3}
+body.guest #tS{display:none!important}
