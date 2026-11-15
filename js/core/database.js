@@ -1,0 +1,3114 @@
+/* ==========================================================================
+ * js/core/database.js
+ * DB layer: Firebase Realtime Database + Auth (users, rooms, DMs, friends, messages, VIP, ...)
+ * Loaded by js/loader.js (load order lives in js/manifest.js).
+ * All js files share one global scope, so functions/consts here are visible to the others.
+ * ========================================================================== */
+'use strict';
+
+const DB=(()=>{
+  // live cache
+  const C={users:{},priv:{},usernames:{},rooms:{},roomMembers:{},dmMembers:{},friends:{},friendReqIn:{},friendReqOut:{},dmReqIn:{},lastRead:{},pingSeen:{},messages:{},myRoomIds:[],online:0,onlineIds:[],presenceIds:[],banned:{},muted:{},blocked:{},blockedBy:{},reactions:{},vip:{},mvp:{},spinWin:null,flair:{},roles:{},lastSpin:0};
+  let myId=null,myUid=null,ready=false;
+  const listeners=new Set();
+  const unsubs=[];         // base listeners
+  let msgUnsub=null,msgKey=null;
+  let reactUnsub=null;   // follows whichever conversation is open, alongside msgUnsub
+  let _svOff=0,_annSeen=null;const LIVE_ANN_MS=10000;   // live announcements: server clock offset, last shown id, on-screen time
+  let _rcBase,_rcShownAt=0;   // owner "Reconnect everyone" request tracking
+  let presUnsub=null,presenceSelfRef=null;   // scoped "who's here" presence for the open context
+  let presenceRef=null,sessUnsub=null,mySessionToken=null,sessionConfirmed=false,kicked=false;
+  let rcPending=false,signingOut=false,lastHeal=0;   // rcPending: owner's online check is waiting on this client; signingOut: don't re-mark online while logging out   // single-active-session enforcement
+  const previewUnsubs={};
+  const roomUnsubs={};
+  const fetchingUsers=new Set();
+  /* ---------- v54.1: profiles are read ONE ACCOUNT AT A TIME ----------
+     Until v54.1 this file opened a listener on the whole `users` branch, which worked because
+     the rules carried `users/.read = auth != null`. That single grant was two problems at once:
+       * privacy  - it handed every signed-in account everybody's email and private settings
+       * quota    - avatars are stored inline, so a sign-in downloaded ~18 MB (the migration notes in package.json ("comments" -> "migrations"))
+     `users/.read` is gone. A read must now name one account, so the cache is filled on demand.
+
+     Each account that appears on screen gets its own listener, so statuses, avatars and display
+     names stay LIVE exactly as before - the difference is that we only pay for the people
+     actually being looked at. The set is capped and least-recently-used entries are dropped,
+     which is what stops a long session from slowly re-creating the old cost one person at a time.
+     Your own record is never evicted. */
+  const userWatch=new Map();          // id -> {off, used}
+  const USER_WATCH_MAX=400;
+  /* v54.3a: a monotonic tick, NOT Date.now(). A member list calls getUser() for every row in one
+     synchronous pass, so hundreds of entries shared a single millisecond and "least recently
+     used" picked essentially at random - the set churned through the whole list and most rows
+     never kept a subscription. With 1,208 members that meant constant attach/detach and names
+     that never arrived. */
+  let _watchTick=0;
+  /* Everything about one account that is drawn SOMEWHERE OTHER than the member list. Two
+     records with the same signature differ only in status / customStatus, which is a presence
+     change. Built by joining the fields rather than JSON.stringify so the megabyte-sized
+     settings.bgImage is never serialised: of `settings`, only the two bubble colours are ever
+     rendered for somebody else. */
+  function _userRenderSig(u){
+    if(!u)return '\u0000';
+    const s=u.style||{},t=u.settings||{};
+    return [u.username,u.deleted?1:0,s.displayName,s.avatar,s.accent,s.deco,s.banner,
+      s.pronouns,s.description,s.bubble,s.text,s.bnc,s.radius,s.hiddenTags,
+      t.meBubble,t.meText].join('\u0001');
+  }
+  /* Which topic one account's record changing belongs to.
+     Three answers, cheapest first:
+       'presence'  only status / customStatus moved, OR the profile is new to this client but
+                   that person is not drawn anywhere except the member list — which the
+                   presence path redraws anyway.
+       'users'     their name, avatar or bubble colours changed AND they are drawn somewhere a
+                   full render owns: a message row in the conversation that is open, a DM row in
+                   the sidebar, or the account panel (me).
+
+     The `.some` below walks the open conversation's cached messages — at most a few hundred,
+     a few microseconds — to avoid a ~10 ms full rebuild. That trade is the whole point: the
+     member list arriving at 600 profiles one snapshot at a time used to mean 600 rebuilds. */
+  function _userTopic(id,prev,next){
+    if(_userRenderSig(prev)===_userRenderSig(next))return 'presence';
+    if(id===Number(myId))return 'users';
+    try{
+      const arr=C.messages[msgKey];
+      if(arr&&arr.some(m=>Number(m.senderId)===id))return 'users';
+      const fr=C.friends[myId];
+      if(fr&&fr.indexOf(id)>-1)return 'users';
+      if(C.dmMembers&&C.dmMembers[dmKey(myId,id)])return 'users';
+    }catch(_){return 'users'}      // anything unexpected takes the safe, expensive path
+    return 'presence';
+  }
+  function watchUser(id){
+    id=Number(id);
+    if(!Number.isFinite(id)||id<=0)return;
+    const w=userWatch.get(id);
+    if(w){w.used=++_watchTick;return}
+    if(userWatch.size>=USER_WATCH_MAX){
+      let oldest=null,t=Infinity;
+      userWatch.forEach((v,k)=>{if(k!==myId&&v.used<t){t=v.used;oldest=k}});
+      if(oldest!=null){try{userWatch.get(oldest).off()}catch(_){}userWatch.delete(oldest)}
+    }
+    const off=onValue(R('users/'+id),s=>{
+      if(s.exists()){
+        const prev=C.users[id];
+        const next=s.val();
+        C.users[id]=next;
+        /* The highest-value tag in the file. Up to 400 of these listeners are live at once, and
+           every one of them used to emit the same contentless "something changed", so one
+           person flipping to Do Not Disturb was indistinguishable from a message arriving and
+           rebuilt the entire chat.
+
+           The distinction that matters is WHAT about the record changed:
+             status / customStatus -> 'presence'. It moves a dot, a member-list group and a
+                                     custom-status line. It appears on no message row.
+             anything else         -> 'users'. A name, an avatar or a bubble colour is drawn on
+                                     every message that person has ever sent, so the full
+                                     render is the honest answer.
+           _userRenderSig() is what tells the two apart, and it deliberately leaves `settings`
+           mostly alone: that node can hold a megabyte of background image, and only the two
+           bubble colours out of it are ever drawn by somebody else. */
+        if(ready)emit(_userTopic(id,prev,next));
+      }
+      /* A snapshot that does not exist is left alone on purpose — see the denied-read note
+         below; "no data" and "not allowed" must not both turn a real account into a ghost. */
+    },err=>{
+      // A denied read is not the same as "no such person" - leave whatever is cached alone,
+      // or the member list would start calling real accounts Deleted User.
+      console.warn('profile read denied',id,err&&err.code);
+    });
+    userWatch.set(id,{off,used:++_watchTick});
+  }
+  function stopUserWatch(){userWatch.forEach(v=>{try{v.off()}catch(_){}});userWatch.clear();_dirById=null}
+
+  /* ---------- v54.1: each account moves its OWN private data, once ----------
+     scripts/migrate_privacy.js does the whole table in one go, and it is the thing to run.
+     This is the belt-and-braces version: the moment somebody signs in, their own browser
+     copies their own email and settings into userPrivate/$id and clears the public copies.
+     Nobody else's data is touched, and nothing here needs elevated access, because the only
+     records involved are the ones this account already owns.
+
+     Why both: a 3,100-row migration is a deliberate, backed-up operation you run when you are
+     ready. This closes the gap for whoever signs in before that, and makes the migration's
+     job smaller. Copy FIRST, verify, only then clear - if any step fails the public copy is
+     left exactly where it was and the next sign-in tries again. */
+  /* ---- v54.5: the personal content filter and the background music default OFF ----
+     Changing defaultSettings() alone would not have reached anybody who already exists: the
+     Settings page writes the whole settings blob when you press Save, so almost every account
+     has an incidental `filterLocal:true` / `music.enabled:true` stored from back when those
+     were the defaults - a value nobody chose, which would have kept overriding the new default
+     for ever.
+
+     So this clears those two stored values ONCE per account, the next time it signs in, and
+     writes a marker so it never runs again. After that the account falls through to the new
+     default, and anyone who actually wants either one turns it on and that choice sticks -
+     the marker means it is never cleared a second time.
+
+     Only this account's own records are touched, nothing else in the blob is read or written,
+     and a failure is silent and simply retried on the next sign-in.
+
+     TWO DELIBERATE CHOICES ABOUT WHERE AND HOW
+       The marker lives INSIDE settings, not beside it: userPrivate/$id/$other is
+       `.validate:false`, so a new sibling key there would be refused by the rules, while
+       settings/$other already allows a scalar. No rules change is needed for any of this.
+
+       The two values are set to false rather than deleted, because settings/music carries
+       `.validate: newData.hasChildren()` - removing its only child on an account that has no
+       volume or shuffle stored would leave an empty node and the whole update would bounce,
+       taking the marker with it. false is what the new default resolves to anyway. */
+  let _defaultsReset=false;
+  const OPTIN_RESET_KEY='optinReset545';
+  async function resetOptedInDefaults(){
+    if(_defaultsReset||!myId)return;
+    _defaultsReset=true;
+    const id=myId;
+    try{
+      const priv=(await get(R('userPrivate/'+id))).val()||{};
+      const s=(priv.settings&&typeof priv.settings==='object')?priv.settings:null;
+      if(s&&s[OPTIN_RESET_KEY])return;                       // already done for this account
+      const patch={};
+      if(s){
+        if(s.filterLocal===true)patch['userPrivate/'+id+'/settings/filterLocal']=false;
+        if(s.music&&typeof s.music==='object'&&s.music.enabled===true)
+          patch['userPrivate/'+id+'/settings/music/enabled']=false;
+      }
+      patch['userPrivate/'+id+'/settings/'+OPTIN_RESET_KEY]=1;
+      await update(ref(rtdb),patch);
+      /* Keep the in-memory copy in step so the change applies now rather than on next load. */
+      if(C.priv&&C.priv.settings){
+        const ps=C.priv.settings;
+        if(ps.filterLocal===true)ps.filterLocal=false;
+        if(ps.music&&ps.music.enabled===true)ps.music.enabled=false;
+        ps[OPTIN_RESET_KEY]=1;
+        if(C.users[id])C.users[id]={...C.users[id],settings:ps};
+        emit();
+      }
+    }catch(e){
+      _defaultsReset=false;                                  // let the next sign-in try again
+      console.warn('[defaults] could not reset the opt-in defaults yet',e&&(e.code||e.message));
+    }
+  }
+
+  let _privMoved=false;
+  async function movePrivateDataIfNeeded(){
+    if(_privMoved||!myId)return;
+    _privMoved=true;
+    const id=myId;
+    try{
+      const pub=C.users[id]||(await get(R('users/'+id))).val()||{};
+      const email=typeof pub.email==='string'?pub.email:null;
+      const settings=(pub.settings&&typeof pub.settings==='object')?pub.settings:null;
+      if(!email&&!settings)return;
+
+      const priv=(await get(R('userPrivate/'+id))).val()||{};
+      const patch={};
+      // Never overwrite a private value that is already there - the private copy wins.
+      if(email&&typeof priv.email!=='string')patch['userPrivate/'+id+'/email']=email;
+      if(settings&&!priv.settings)patch['userPrivate/'+id+'/settings']=settings;
+      if(Object.keys(patch).length)await update(ref(rtdb),patch);
+
+      // Verify the copy landed before removing anything.
+      const after=(await get(R('userPrivate/'+id))).val()||{};
+      const clear={};
+      if(email&&typeof after.email==='string')clear['users/'+id+'/email']=null;
+      if(settings&&after.settings)clear['users/'+id+'/settings']=null;
+      if(Object.keys(clear).length){
+        await update(ref(rtdb),clear);
+        console.info('[privacy] moved this account\'s private fields out of the public profile');
+      }
+    }catch(e){
+      // Not fatal and not worth bothering the person about: the migration script covers it.
+      console.warn('[privacy] could not move private fields yet',e&&(e.code||e.message));
+    }
+  }
+  // Kept under its old name because a dozen call sites use it. It now subscribes rather than
+  // doing a one-shot read, so a profile that changes while it is on screen still updates.
+  function fetchUserIfMissing(id){
+    if(id==null)return;
+    watchUser(id);
+  }
+  /* emit() tells the UI "something changed" and every listener re-renders. Roughly 25 Firebase
+     listeners are live at once, and a single action (sending a message, someone coming online,
+     signing in) makes several of them fire in the same tick — which used to mean several full
+     re-renders back to back, and a visible stutter on login and in busy chats.
+     So emit() is coalesced: however many times it is called, the listeners run once, on the next
+     frame. In a hidden tab requestAnimationFrame is paused, so a timer is used instead — ping
+     notifications and the ban self-purge have to keep working while the tab is in the background. */
+  /* v54.8: emit() now carries a TOPIC, and that is the whole performance story.
+     Coalescing was already here and was already right — many listeners firing in one tick ran
+     the subscribers once, on the next frame. What was missing is WHAT changed. Every subscriber
+     got the same contentless "something happened", so every subscriber did its maximum work:
+     a single person going idle rebuilt the entire chat, because nothing could tell that render
+     that only presence had moved.
+
+     listen() derives the topic from the path it is watching, so every existing listener is
+     tagged without a call-site change. An untagged emit() still means "assume everything", so
+     anything not yet tagged behaves exactly as it did before — the pessimistic direction.
+
+     The object handed to subscribers:
+       topics.has('messages')         did this flush include a message change?
+       topics.only('presence','user') was it ONLY these? (false if anything untagged fired)
+       topics.list                    every topic in the flush, for diagnostics */
+  let _emitPending=false;
+  const _emitTopics=new Set();
+  const UNKNOWN='*';
+  function _makeTopics(set){
+    const unknown=set.has(UNKNOWN);
+    return{
+      list:Array.from(set),
+      unknown,
+      has:k=>unknown||set.has(k),
+      only(){
+        if(unknown)return false;
+        const allowed=Array.prototype.slice.call(arguments);
+        for(const t of set)if(allowed.indexOf(t)===-1)return false;
+        return set.size>0;
+      }
+    };
+  }
+  function _flushEmit(){
+    _emitPending=false;
+    const topics=_makeTopics(new Set(_emitTopics));
+    _emitTopics.clear();
+    Perf.hit('flushes');
+    listeners.forEach(f=>{Perf.hit('onChangeCbs');try{f(topics)}catch(e){console.error(e)}});
+  }
+  const emit=topic=>{
+    _emitTopics.add(topic||UNKNOWN);
+    Perf.hit('emits');
+    if(_emitPending)return;
+    _emitPending=true;
+    if(document.visibilityState==='hidden')setTimeout(_flushEmit,0);
+    else requestAnimationFrame(_flushEmit);
+  };
+  const dmKey=(a,b)=>'dm_'+[a,b].sort((x,y)=>x-y).join('_');
+  // MVP: mvp/$id holds the time (ms) the role was granted; true/1 also count. Never expires — only an owner removes it.
+  const mvpOn=id=>{const v=C.mvp[Number(id)];return v===true||v===1||(typeof v==='number'&&v>0)};
+  const mvpAccess=id=>isOwner(id)||mvpOn(id);
+  const FAKE='@itsuki.local';
+  /* ---------- v54.1: what the publicly readable login map is allowed to say ----------
+     usernameLogin/$name has to be readable by nobody-in-particular, because username sign-in
+     must resolve a name to a Firebase Auth email BEFORE anyone is authenticated. It used to
+     store that email verbatim, which published the real address of every account that signed
+     up with one.
+
+     Two shapes replace it:
+       {alias:'bob'}  -> sign in as bob@itsuki.local. The local part is STORED, not derived from
+                         the key, because renaming an account does not change its Auth email:
+                         the alias stays pinned to the username it signed up under.
+       {server:true}  -> the Auth email is a real address. The browser never learns it; it asks
+                         /api/login, or the person signs in with their email directly, which has
+                         always worked.
+     A record still holding {email:...} is read exactly as before, so nothing breaks before the
+     migration runs. */
+  const aliasLocalPart=email=>{
+    const e=String(email||'').toLowerCase();
+    return e.endsWith(FAKE)?e.slice(0,-FAKE.length):null;
+  };
+  // What to write at usernameLogin/<key> for an account whose Auth email is `authEmail`.
+  const loginRec=authEmail=>{
+    const local=aliasLocalPart(authEmail);
+    return local&&CFG.USERNAME_RE.test(local)?{alias:local}:{server:true};
+  };
+  /* The Auth email an account signs in with, worked out from whatever is on file. Needed by
+     the rename and restore paths, which have to carry the login identity across a name change.
+     Sources in order of authority:
+       1. the signed-in Firebase user itself (always right, when it is this account)
+       2. userPrivate/$id/email   - readable by that account and by a site owner
+       3. users/$id/email         - the legacy copy, still there until the migration runs
+       4. the existing login-map record, in any of its three shapes
+       5. the alias built from the account's oldest known username
+     v54.1: step 4 has to understand {alias:'bob'}, or renaming a migrated account would lose
+     the pin to its real Auth email and lock the person out of username sign-in. */
+  async function resolveAuthEmail(id,keys){
+    const live=auth.currentUser;
+    if(live&&Number(id)===myId&&live.email)return live.email;
+    try{const p=(await get(R('userPrivate/'+id+'/email'))).val();if(typeof p==='string'&&p)return p}catch(_){}
+    const pub=C.users[id]||{};
+    if(typeof pub.email==='string'&&pub.email)return pub.email;
+    for(const k of (keys||[])){
+      if(!k)continue;
+      try{
+        const rec=(await get(R('usernameLogin/'+k))).val()||{};
+        if(typeof rec.email==='string'&&rec.email)return rec.email;
+        if(typeof rec.alias==='string'&&rec.alias)return rec.alias.toLowerCase()+FAKE;
+      }catch(_){}
+    }
+    const first=(keys||[]).filter(Boolean)[0];
+    return first?first+FAKE:null;
+  }
+
+  /* Sign in without the browser ever learning the account's real email address.
+     POST /api/login {username,password} -> {token} (a Firebase custom token for that UID).
+     The server resolves the username with admin access, checks the password against Firebase
+     itself, and mints the token. Returns null when the endpoint is not configured or not
+     deployed, so the caller can fall back to "sign in with your email instead".
+     This is the ONLY place a password leaves the page for anywhere other than Google, which is
+     why it is opt-in: LOGIN_API is empty unless you set it. See the security notes in package.json ("comments" -> "security"). */
+  async function serverLogin(username,password){
+    const base=String(CFG.LOGIN_API||'').replace(/\/$/,'');
+    if(!base)return null;
+    let j;
+    try{
+      const r=await fetch(base+'/api/login',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({username,password})
+      });
+      j=await r.json().catch(()=>({}));
+      if(!r.ok){
+        // A wrong password is a real answer and must be shown as one, not swallowed as
+        // "endpoint unavailable" - otherwise people get told to use an email they may not have.
+        if(r.status===401||r.status===403)throw new Error(j.error||'Incorrect username or password.');
+        if(r.status===429)throw new Error(j.error||'Too many attempts. Wait a minute and try again.');
+        return null;
+      }
+    }catch(e){
+      if(e&&e.message&&!/fetch|network|load failed/i.test(e.message))throw e;
+      return null;   // network/CORS/not deployed: let the caller offer the email route
+    }
+    if(!j||!j.token)return null;
+    try{await signInWithCustomToken(auth,j.token)}
+    catch(e){throw new Error(authMsg(e))}
+    await new Promise(r=>setTimeout(r,0));
+    await DB.settle();
+    return DB.currentUser();
+  }
+
+  /* The topic of a watched path is its first segment: 'users/7/style' -> 'users', 'owners' ->
+     'owners'. Derived rather than passed in, so adding a listener cannot forget to tag itself,
+     and so a path and its topic can never disagree. */
+  function topicOf(path){
+    const head=String(path||'').split('/')[0];
+    return head||UNKNOWN;
+  }
+  function listen(path,cb){
+    const topic=topicOf(path);
+    const u=onValue(R(path),s=>{cb(s.val());if(ready)emit(topic)},err=>console.warn('listen denied',path,err.code));
+    unsubs.push(u);return u;
+  }
+  /* ---- v54.8: wipe every ACCOUNT-SCOPED cache -------------------------------
+     stopAll() used to clear the listeners and C.priv and leave the rest of C in place. Each
+     entry below is data about ONE account, so what survived was the previous account's:
+     C.users held their profile (and so their avatar, display name and status), C.vip / C.mvp /
+     C.flair / C.roles their perks, C.friends / C.dmReqIn / C.lastRead / C.pingSeen their social
+     state. Signing into another account in the same tab therefore showed the OLD account's
+     profile and perks until each listener's first snapshot landed — the "profile state shared
+     between accounts" and "old roles reused" symptoms, and the thing that made an owner panel
+     look live for a moment after signing in as somebody else.
+
+     The database rules were never fooled by any of it (they read the live node every time), so
+     this was always a display and trust problem rather than an escalation. It is still wrong,
+     and a blank panel that fills in is strictly better than a stale one that looks real.
+
+     C.usernames is deliberately KEPT: it is the public name->id directory, identical for every
+     account, and re-downloading it on each switch is a real cost for no benefit. */
+  function resetAccountCaches(){
+    C.users={};C.priv={};C.messages={};C.reactions={};
+    C.rooms={};C.roomMembers={};C.dmMembers={};C.myRoomIds=[];
+    C.friends={};C.friendReqIn={};C.friendReqOut={};C.dmReqIn={};
+    C.lastRead={};C.pingSeen={};C.lastReadLoaded=false;
+    C.banned={};C.muted={};C.blocked={};C.blockedBy={};
+    C.vip={};C.mvp={};C.flair={};C.roles={};C.spinWin=null;C.lastSpin=0;
+    C.online=0;C.onlineIds=[];C.presenceIds=[];
+    /* Rank tables are site-wide rather than per-account, but their LOADED flags must go back to
+       false so ownersKnown() reports "not known yet" for the new session instead of letting the
+       previous session's load stand in for this one. */
+    OWNERS_CACHE={};OWNERS_LOADED=false;
+    MODS_CACHE={};MODS_LOADED=false;
+    ADMINS_CACHE={};ADMINS_LOADED=false;
+    BANNED_LOADED=false;
+    try{if(typeof pingStateReset==='function')pingStateReset()}catch(_){}
+    try{if(typeof friendNotifStateReset==='function')friendNotifStateReset()}catch(_){}
+    try{if(typeof profileCacheReset==='function')profileCacheReset()}catch(_){}
+    /* The settings panel belongs to the account that opened it, so it closes with that account
+       rather than staying on screen with the previous person's preferences in its inputs. */
+    try{if(typeof closeSettingsPanel==='function')closeSettingsPanel()}catch(_){}
+    try{if(typeof idleStateReset==='function')idleStateReset()}catch(_){}
+  }
+  function stopAll(){SECRET_OWNER_ID=null;SECRET_LOADED=false;stopUserWatch();resetAccountCaches();unsubs.splice(0).forEach(u=>u());Object.keys(previewUnsubs).forEach(k=>{previewUnsubs[k]();delete previewUnsubs[k]});Object.keys(roomUnsubs).forEach(k=>{roomUnsubs[k]();delete roomUnsubs[k]});if(msgUnsub){msgUnsub();msgUnsub=null}if(reactUnsub){try{reactUnsub()}catch(_){}reactUnsub=null}if(presUnsub){try{presUnsub()}catch(_){}presUnsub=null}if(presenceSelfRef){try{remove(presenceSelfRef).catch(()=>{})}catch(_){}presenceSelfRef=null}if(sessUnsub){try{sessUnsub()}catch(_){}sessUnsub=null}presenceRef=null;mySessionToken=null;sessionConfirmed=false;kicked=false;hideKickOverlay();C.presenceIds=[];C.lastReadLoaded=false;msgKey=null;chanPreviewKeys.clear()}
+
+  // ---- Single-active-session enforcement --------------------------------
+  // onlineUsers/$id is one shared boolean per account, not one per tab. The old
+  // code had every open tab race to set it true and register its OWN
+  // onDisconnect().remove() on that same shared path — so closing any one tab,
+  // even an old one that had long since been superseded by a newer login, could
+  // wipe out "online" for an account that was still very much connected
+  // elsewhere. Fix: only the most-recently-claimed client is allowed to touch
+  // that path at all. Every (re)login writes a random token to sessions/$id;
+  // whichever token lands there last is the winner. A client that loses the
+  // claim cancels its own onDisconnect (so it can never again clear
+  // onlineUsers, even when it eventually closes) and shows a pause screen with
+  // a Reconnect button that re-claims the session — which in turn kicks
+  // whichever client is currently active.
+  function genSessionToken(){return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)}
+  /* One id for the lifetime of this page. Every session claim carries it.
+     Without it the takeover check compared tokens alone, and this client's own earlier claim —
+     a second startListeners() pass, a re-fired auth state, a slow write landing after a newer
+     one — came back as "somebody else took the account" and froze the tab behind the
+     Disconnected overlay. A takeover is only a takeover when it comes from a DIFFERENT client. */
+  const MY_CLIENT_ID=genSessionToken();
+  /* Self-heal: onlineUsers/$id is one shared boolean per account and only got written on (re)connect. If anything cleared it
+     while this client was still live (another tab/device closing, a network blip, a re-login race) the person showed as
+     "Offline" everywhere until they refreshed. Now a live client notices its own marker is missing and puts it back. */
+  function healPresence(){
+    if(myId==null||kicked||rcPending||signingOut||!presenceRef||!ready)return;
+    if(C.onlineIds.indexOf(myId)>-1)return;
+    const t=Date.now();if(t-lastHeal<8000)return;lastHeal=t;
+    armPresence();armScopedPresence();
+  }
+  setInterval(()=>{try{healPresence()}catch(_){}},30000);
+  function armPresence(){
+    if(!presenceRef)return;
+    onDisconnect(presenceRef).remove();
+    if(kicked)return;
+    set(presenceRef,true).catch(e=>{
+      // The write requires idToUid/$myId===auth.uid, which for a brand-new signup
+      // may not have landed yet (it's linked separately, right after startListeners()
+      // fires this the first time via .info/connected) — that link write resolves a
+      // beat later and nothing used to retry the presence write once it did, so a
+      // fresh account could silently never show as online for the rest of that
+      // session. Log it and retry shortly instead of swallowing it outright.
+      console.warn('presence write failed, will retry',e.code||e.message);
+      setTimeout(()=>{if(!kicked&&presenceRef)set(presenceRef,true).catch(e2=>console.warn('presence retry failed',e2.code||e2.message))},1500);
+    });
+  }
+  // Re-arms the SCOPED "who's here" marker (presence/$key/$myId) — the one behind
+  // "Online in Global Chat" / "Online in this DM" / "Online in this room". This is
+  // separate from the account-level onlineUsers marker above. It used to only get
+  // set once, when you switched context (watchMessages) — so a real network drop
+  // (Firebase's onDisconnect fires server-side the instant the socket closes) left
+  // it missing forever afterward: the client never re-wrote it once the connection
+  // came back, so you'd look offline in that room/DM until you actually switched
+  // chats again. Called from the same '.info/connected' handler as armPresence so
+  // both markers recover together on every reconnect.
+  function armScopedPresence(){
+    if(!presenceSelfRef)return;
+    onDisconnect(presenceSelfRef).remove();
+    if(kicked)return;
+    set(presenceSelfRef,true).catch(e=>{
+      console.warn('scoped presence write failed, will retry',e.code||e.message);
+      setTimeout(()=>{if(!kicked&&presenceSelfRef)set(presenceSelfRef,true).catch(()=>{})},1500);
+    });
+  }
+  // (Re)join the scoped presence node for whichever chat is currently open. Used both
+  // by watchMessages (switching context) and by the un-kick path below — takeoverKick()
+  // tears presenceSelfRef/presUnsub all the way down to null, so simply un-setting
+  // 'kicked' isn't enough to bring the room/DM's "who's online" list back; we have to
+  // actually re-create them for the chat that's still open (msgKey doesn't change
+  // across a kick/un-kick, so watchMessages' own "already on this key" guard would
+  // otherwise skip rejoining until the person switched chats and back).
+  function rejoinScopedPresence(){
+    if(!msgKey||myId==null)return;
+    if(presUnsub){try{presUnsub()}catch(_){}presUnsub=null}
+    presenceSelfRef=R('presence/'+msgKey+'/'+myId);
+    armScopedPresence();
+    presUnsub=onValue(R('presence/'+msgKey),s=>{
+      C.presenceIds=s.val()?Object.keys(s.val()).map(Number):[];
+      C.presenceIds.forEach(fetchUserIfMissing);
+      if(ready)emit('presence');
+    },()=>{});
+  }
+  // Session debug logging — console only (no on-page panel).
+  function sessLog(...args){
+    const msg=args.map(a=>{try{return typeof a==='object'?JSON.stringify(a):String(a)}catch(_){return String(a)}}).join(' ');
+    console.log('[session]',msg);
+  }
+
+  function watchSession(){
+    if(sessUnsub){try{sessUnsub()}catch(_){}sessUnsub=null}
+    sessUnsub=onValue(R('sessions/'+myId),s=>{
+      const val=s.val();
+      sessLog('snapshot',val,'| mine=',mySessionToken,'| confirmed=',sessionConfirmed,'| kicked=',kicked);
+      if(!val||!val.token)return;
+      if(val.token===mySessionToken){
+        sessionConfirmed=true;
+        if(kicked){sessLog('reconnect confirmed, un-kicking');kicked=false;hideKickOverlay();armPresence();rejoinScopedPresence()}
+        return;
+      }
+      // A different TOKEN but the same CLIENT is just an older claim of ours catching up
+      // (overlapping startListeners passes, or two writes landing out of order). That is this
+      // same tab, so it must never kick us — re-assert instead, and undo a kick we caused.
+      if(val.client&&val.client===MY_CLIENT_ID){
+        sessLog('stale claim from this same client — ignoring, re-claiming');
+        if(kicked){kicked=false;hideKickOverlay();armPresence();rejoinScopedPresence()}
+        claimSession();
+        return;
+      }
+      // Only act once we've actually confirmed OUR claim landed — otherwise the
+      // very first snapshot (still holding a stale value from a previous
+      // session) would wrongly look like an instant takeover on every login.
+      // Older clients wrote no `client` field; for those fall back to the token-only rule.
+      if(sessionConfirmed&&!kicked){sessLog('takeover by another client -> KICKING this client');takeoverKick()}
+    },e=>sessLog('LISTEN DENIED on sessions/'+myId,e.code||e.message));
+  }
+  function claimSession(){
+    mySessionToken=genSessionToken();sessionConfirmed=false;
+    sessLog('claiming id=',myId,'token=',mySessionToken);
+    return set(R('sessions/'+myId),{token:mySessionToken,client:MY_CLIENT_ID,at:serverTimestamp()})
+      .then(()=>sessLog('claim write acknowledged by server'))
+      .catch(e=>sessLog('CLAIM WRITE FAILED:',e.code||e.message));
+  }
+  function takeoverKick(){
+    if(kicked)return;kicked=true;
+    sessLog('takeoverKick() firing — showing overlay now');
+    if(presenceRef){try{onDisconnect(presenceRef).cancel()}catch(_){}}
+    if(presenceSelfRef){try{onDisconnect(presenceSelfRef).cancel()}catch(_){}remove(presenceSelfRef).catch(()=>{});presenceSelfRef=null}
+    if(presUnsub){try{presUnsub()}catch(_){}presUnsub=null}
+    showKickOverlay();
+  }
+
+  function startListeners(){
+    stopAll();BANNED_LOADED=false;_rcBase=undefined;signingOut=false;rcPending=false;
+    presenceRef=R('onlineUsers/'+myId);
+    claimSession();watchSession();
+    /* v54.1: the whole-table listener that used to live here is gone - see watchUser() above.
+       What replaces it is two much smaller things:
+         * one listener on MY OWN record, which has to be live (name changes, own avatar, status)
+         * the username directory, which is the only thing that needs to cover everybody
+
+       The directory is name -> id and nothing else, so it is a few tens of KB for 3,100
+       accounts rather than ~18 MB. Every feature that used to walk the whole user table -
+       @mention autocomplete, friend search, the member count, looking somebody up in the shop -
+       is built out of it now, and the full record of anyone actually shown is fetched by id. */
+    watchUser(myId);
+    listen('usernames',v=>{
+      C.usernames=v||{};
+      _dirById=null;                 // the reverse map is rebuilt on next use
+      try{
+        DB._dirCount=Object.keys(C.usernames).length;
+        DB._dirBytes=JSON.stringify(C.usernames).length;
+      }catch(_){}
+    });
+    /* My own private record: email and settings. Readable and writable by me alone - that is
+       the whole point of the v54.1 split. Settings used to sit in users/$id/settings, where
+       every signed-in account could read them. */
+    listen('userPrivate/'+myId,v=>{
+      C.priv=v||{};
+      if(C.users[myId])C.users[myId]={...C.users[myId],settings:C.priv.settings||C.users[myId].settings};
+    });
+    movePrivateDataIfNeeded();
+    resetOptedInDefaults();
+    listen('banned',v=>{
+      C.banned=v||{};BANNED_LOADED=true;
+      checkBanLock(myId,C.banned);
+    });
+    listen('muted',v=>{C.muted=v||{};if(typeof updateMuteLock==='function')updateMuteLock();});
+    /* A rank changing in the backend has to repaint the UI that draws it.
+       customroles/ already did this; owners/, mods/, admin/ and mvp/ did not, which is why
+       removing someone from owners/ in the Firebase console left them still showing as Owner -
+       in the member-list group, in their name chip and on the #id tag beside their messages -
+       until something unrelated happened to trigger a render. Everything that reads a rank
+       reads it live, so one repaint is all that was ever missing. */
+    const rankUIChanged=()=>{
+      if(ready)emit();
+      if(typeof DiscordShell!=='undefined'){try{DiscordShell.refresh()}catch(_){}}
+      try{if(typeof renderChat==='function'&&typeof view!=='undefined'&&view.page==='chatPage'){renderedKey=null;renderChat()}}catch(_){}
+    };
+    listen('owners',v=>{OWNERS_CACHE=v||{};OWNERS_LOADED=true;checkBanLock(myId,C.banned);if(typeof checkForcedVersion==="function")checkForcedVersion();if(typeof refreshVipUI==='function'){try{refreshVipUI()}catch(_){}}rankUIChanged();});
+    {const sid=myId;   // own entry only; a denied/missing read just means "not a secret owner"
+      const done=on=>{SECRET_OWNER_ID=on?sid:null;SECRET_LOADED=true;checkBanLock(myId,C.banned);if(typeof checkForcedVersion==="function")checkForcedVersion();if(typeof refreshVipUI==='function'){try{refreshVipUI()}catch(_){}}rankUIChanged()};
+      unsubs.push(onValue(R('secretowner/'+sid),sn=>done(sn.val()===1),()=>done(false)));}
+    /* v54.8: authorization epoch. api/ownership.js bumps authEpoch/$id whenever a site grant is
+       taken away from that account. owners/ and secretowner/ are already watched live above, so
+       the PERMISSION itself updates without this — what this adds is the rest of the cleanup:
+       refresh the ID token (so the next API call cannot present one minted before the change)
+       and shut any owner-only screen that is currently open, rather than leaving a panel whose
+       buttons will now all bounce off the rules.
+
+       First snapshot is ignored on purpose: it is the value as it already stood at sign-in. */
+    {let epochSeen=null;
+      unsubs.push(onValue(R('authEpoch/'+myId),sn=>{
+        const v=Number(sn.val())||0;
+        if(epochSeen===null){epochSeen=v;return}
+        if(v===epochSeen)return;
+        epochSeen=v;
+        try{if(auth.currentUser)auth.currentUser.getIdToken(true).catch(()=>{})}catch(_){}
+        try{if(typeof onAuthorizationRevoked==='function')onAuthorizationRevoked()}catch(_){}
+        rankUIChanged();
+      },()=>{}));}
+    listen('mods',v=>{MODS_CACHE=v||{};MODS_LOADED=true;rankUIChanged();});
+    listen('admin',v=>{ADMINS_CACHE=v||{};ADMINS_LOADED=true;rankUIChanged();});
+    // Custom roles: decorative only, written from the backend, never by the client (see js/moderation/roles.js).
+    listen('customroles',v=>{
+      CUSTOM_ROLES_CACHE=(v&&typeof v==='object')?v:{};CUSTOM_ROLES_LOADED=true;
+      if(ready)emit();
+      if(typeof DiscordShell!=='undefined'){try{DiscordShell.refresh()}catch(_){}}
+    });
+    listen('appVersion',v=>{APP_VERSION_CACHE=v||null;APP_VERSION_LOADED=true;if(typeof checkForcedVersion==="function")checkForcedVersion();});
+    /* dmMembers is the whole node (its own .read is "any signed-in account" - see the note
+       further down where it is handed out). Every conversation I am a member of gets its
+       preview watched, not just the ones with friends: since v54.5 a DM can exist with
+       somebody who is not a friend, and without this their messages would arrive with no
+       unread badge and no row in the DM list until the page was reloaded. */
+    listen('dmMembers',v=>{
+      C.dmMembers=v||{};
+      try{
+        Object.keys(C.dmMembers).forEach(k=>{
+          if(C.dmMembers[k]&&C.dmMembers[k][myId])watchPreview(k);
+        });
+      }catch(_){}
+      if(ready)emit();
+    });
+    listen('vip',v=>{C.vip=v||{};if(typeof refreshVipUI==='function'){try{refreshVipUI()}catch(_){}}});
+    /* MVP repaints too: it owns a member-list group, the trophy next to a name, the image-banner
+       perk and - new in v53 - two server boost slots, all of which must disappear the moment the
+       rank is taken away. */
+    listen('mvp',v=>{C.mvp=(v&&typeof v==='object')?v:{};if(typeof refreshVipUI==='function'){try{refreshVipUI()}catch(_){}}rankUIChanged();});
+    listen('flair',v=>{C.flair=v||{}});
+    listen('roles',v=>{C.roles=v||{};if(typeof refreshSpinUI==='function'){try{refreshSpinUI()}catch(_){}}});
+    /* HALLOWEEN:START */ listen('halloween/claimed',v=>{window.HW_CLAIMED=v||{};if(typeof hwRefresh==='function'){try{hwRefresh()}catch(_){}}});listen('halloween/progress/'+myId,v=>{window.HW_PROG=v||{};window.HW_LOADED=true;if(typeof hwRefresh==='function'){try{hwRefresh()}catch(_){}}});listen('halloween/equipped',v=>{window.HW_EQ=v||{};if(typeof hwRefresh==='function'){try{hwRefresh()}catch(_){}}});listen('halloween/intro/'+myId,v=>{window.HW_INTRO=Number(v)||0;window.HW_INTRO_LOADED=true;if(typeof hwMaybeIntro==='function'){try{hwMaybeIntro()}catch(_){}}}); /* HALLOWEEN:END */
+    listen('lastSpin/'+myId,v=>{C.lastSpin=Number(v)||0;if(typeof refreshSpinUI==='function'){try{refreshSpinUI()}catch(_){}}});
+    listen('spinWin/'+myId,v=>{C.spinWin=(v&&typeof v==='object')?v:null;if(typeof refreshSpinUI==='function'){try{refreshSpinUI()}catch(_){}}});
+    listen('friendRequests/'+myId,v=>C.friendReqIn=v||{});
+    /* Message requests addressed to me. Readable by me alone (see the node's own .read), so
+       this is the only place they arrive from. The rows I have already ignored stay in the
+       node on purpose - the rules consult them to stop that person re-raising the request -
+       and are filtered out of dmRequestsIn() rather than deleted. */
+    listen('dmRequests/'+myId,v=>{C.dmReqIn=v||{};if(ready)emit()});
+    listen('lastRead/'+myId,v=>{C.lastRead=v||{};C.lastReadLoaded=true});
+    listen('pingSeen/'+myId,v=>{C.pingSeen=v||{}});
+    // Rooms: rather than trying to read the whole 'rooms'/'roomMembers' trees (which
+    // security rules almost never allow for a giant shared list), keep a small
+    // per-user index of which room IDs I'm in, then watch just those rooms.
+    listen('userRooms/'+myId,v=>{
+      C.myRoomIds=Object.keys(v||{});
+      C.myRoomIds.forEach(watchRoom);
+      // also preview each room's last 30 messages so unread badges work for
+      // rooms I'm not currently looking at (mirrors the DM preview below)
+      C.myRoomIds.forEach(watchPreview);
+    });
+    // watch each friend's DM (latest 30 msgs) so unread badges work while another chat is open
+    listen('friends/'+myId,v=>{
+      const ids=v?Object.keys(v).map(Number):[];
+      C.friends[myId]=ids;
+      ids.forEach(f=>watchPreview(dmKey(myId,f)));
+    });
+    listen('sentRequests/'+myId,v=>{C.friendReqOut[myId]=Object.keys(v||{}).map(t=>({from:myId,to:Number(t),status:'pending'}))});
+    // Always preview Global & Announcements too (readable by anyone signed in), so an
+    // @everyone/@me ping landing there can still be noticed — and desktop-notified — even
+    // while I'm not currently looking at that room.
+    watchPreview(CFG.GLOBAL_ROOM);
+    watchPreview(CFG.ANNOUNCEMENTS_ROOM);
+    watchPreview(CFG.SHITPOST_ROOM);
+    // Blocking: my own blocked list, and the mirror list of who has blocked me (blockedBy/myId/*
+    // is written by whoever blocks me, so I can filter their messages and they can filter mine).
+    listen('blocked/'+myId,v=>{C.blocked[myId]=v?Object.keys(v).map(Number):[]});
+    listen('blockedBy/'+myId,v=>{C.blockedBy[myId]=v?Object.keys(v).map(Number):[]});
+    // Presence: mark myself online while connected, and let the server auto-remove me
+    // the instant this connection drops (tab close, network loss, crash) via onDisconnect.
+    // Re-armed on every (re)connect, per Firebase's recommended presence pattern.
+    listen('.info/connected',connected=>{if(connected){armPresence();armScopedPresence()}});
+    listen('onlineUsers',v=>{
+      C.onlineIds=v?Object.keys(v).map(Number):[];
+      C.online=C.onlineIds.length;
+      C.onlineIds.forEach(id=>fetchUserIfMissing(id));
+      if(ready)emit('presence');   // refresh online pills/lists the moment someone goes offline
+      healPresence();
+    });
+    // Owner "Reconnect everyone": the owner clears every online marker and bumps reconnectRequest. Everyone with
+    // a live client gets a prompt and only shows as online again if they press Reconnect. The first value we
+    // receive is just the baseline (an old request), only later changes count.
+    listen('reconnectRequest',v=>{
+      const at=v&&typeof v.at==='number'?v.at:0;
+      if(_rcBase===undefined){_rcBase=at;return}
+      if(!at||at===_rcBase)return;
+      _rcBase=at;
+      if(Date.now()-_rcShownAt<10000)return;      // serverTimestamp fires twice (estimate, then real value)
+      _rcShownAt=Date.now();
+      if(kicked)return;
+      if(v.by===myId){armPresence();armScopedPresence();return}   // the owner who ran it stays online
+      rcPending=true;
+      if(typeof onReconnectCheck==='function')setTimeout(()=>onReconnectCheck(),0);
+    });
+    // Owner "Announcement": a short broadcast every signed-in client shows as a non-blocking banner for 10s.
+    // liveAnnouncement = {id,at,by,text,kind}. We only show one that is still fresh (<10s old by SERVER time), so
+    // reloading later never replays an old one, and the sender's serverTimestamp double-fire is de-duped by id.
+    listen('.info/serverTimeOffset',v=>{_svOff=Number(v)||0});
+    listen('liveAnnouncement',v=>{
+      if(!v||typeof v!=='object'||typeof v.text!=='string'||!v.id||v.id===_annSeen)return;
+      const age=Date.now()+_svOff-(Number(v.at)||0);
+      if(!(age>=-5000&&age<LIVE_ANN_MS-800))return;      // too old (or no timestamp yet) -> ignore
+      _annSeen=v.id;
+      {const _ah=typeof onLiveAnnouncement==='function'?onLiveAnnouncement:(typeof ownerAnnouncementBanner==='function'?ownerAnnouncementBanner:null);   // a dedicated live-announce.js wins if the repo has one
+        if(_ah)setTimeout(()=>_ah(v,Math.max(1500,LIVE_ANN_MS-Math.max(0,age))),0)}
+    });
+    // heal my DM memberships as soon as friends load, so messages from a friend always become readable
+    
+  }
+  function watchRoom(id){
+    if(roomUnsubs[id])return;
+    const u1=onValue(R('rooms/'+id),s=>{C.rooms[id]=s.val();if(ready)emit()},()=>{});
+    const u2=onValue(R('roomMembers/'+id),s=>{C.roomMembers[id]=s.val()||{};if(ready)emit()},()=>{});
+    roomUnsubs[id]=()=>{u1();u2()};
+  }
+  const fetchingRooms=new Set();
+  // Fallback for a room I know the ID of (e.g. just joined) but whose per-room
+  // listener hasn't reported back yet.
+  function fetchRoomIfMissing(id){
+    if(id==null||C.rooms[id]||fetchingRooms.has(id))return;
+    fetchingRooms.add(id);
+    Promise.all([get(R('rooms/'+id)),get(R('roomMembers/'+id))]).then(([rs,ms])=>{
+      if(rs.exists()){C.rooms[id]=rs.val();C.roomMembers[id]=ms.val()||{};if(ready)emit()}
+    }).catch(()=>{}).finally(()=>fetchingRooms.delete(id));
+  }
+  function watchPreview(key){
+    if(previewUnsubs[key]||key===msgKey)return;
+    const q=query(R('messages/'+key),orderByChild('at'),limitToLast(30));
+    previewUnsubs[key]=onValue(q,s=>{
+      if(key===msgKey)return;               // the full listener owns the open chat
+      const arr=[];s.forEach(c=>{arr.push({...c.val(),id:c.key,images:c.val().images||[],files:c.val().files||[],pings:c.val().pings||[],text:c.val().text||''})});
+      C.messages[key]=arr;if(ready)emit('messages');
+      NSFW.sweep(key,arr);
+    },()=>{});
+  }
+
+  /* ==========================================================================
+   * v54.9 — SERVER CHANNELS GET PREVIEWS TOO.
+   *
+   * THE BUG THIS FIXES, which is larger than it looks.
+   *
+   * watchPreview() was called for exactly three things: the built-in ICH rooms (global,
+   * announcements, shitpost), the legacy rooms, and DMs. Never for a channel of a custom
+   * server. So C.messages['ch_…'] was EMPTY for every server channel that was not the one
+   * currently open — and two features read precisely that:
+   *
+   *   unreadIn(key,uid)            counts C.messages[key] against lastRead. With nothing
+   *                                cached it returns 0, so every server channel's unread badge
+   *                                was permanently zero, the `.unread` styling never appeared,
+   *                                and the server rail's badge (which sums unreadIn over the
+   *                                server's channels) was always zero too.
+   *   checkPingNotifications()     builds its key list from every text channel of every server
+   *                                you are in and then reads DB.messages(key) for each. It was
+   *                                walking a list of conversations it had no data for, so a
+   *                                mention in a server channel produced no sound and no desktop
+   *                                notification unless that channel happened to be open.
+   *
+   * Which also means the per-server and per-channel notification preferences had nothing to act
+   * on outside the ICH channels and DMs.
+   *
+   * WHY IT IS BOUNDED
+   *   Somebody in fifteen servers with twenty channels each would otherwise open three hundred
+   *   listeners, and v54.8 spent a release making the listener count something that can be
+   *   reasoned about. So:
+   *     - only text channels of servers you are a member of are considered (the caller decides
+   *       that, since the channel list is DModel's);
+   *     - the total is capped at CHAN_PREVIEW_MAX, and channels you have actually read before
+   *       (a lastRead entry) are preferred over ones you never have — so the cap bites on the
+   *       channels you demonstrably do not follow;
+   *     - a key that leaves the set has its listener dropped immediately.
+   *   The listeners live in previewUnsubs, so stopAll(), listenerCount() and
+   *   listenerBreakdown() already account for them with no further change.
+   * ========================================================================== */
+  const CHAN_PREVIEW_MAX=120;
+  const chanPreviewKeys=new Set();
+  function syncChannelPreviews(keys){
+    if(myId==null)return;
+    let want=[...new Set((keys||[]).filter(k=>typeof k==='string'&&k))];
+    if(want.length>CHAN_PREVIEW_MAX){
+      /* Read-before beats never-read, then it is arbitrary but stable. A channel you have never
+         opened is the one whose badge you are least likely to be waiting on. */
+      const seen=k=>(C.lastRead&&C.lastRead[k]!==undefined&&C.lastRead[k]!==null)?0:1;
+      want=want.slice().sort((a,b)=>seen(a)-seen(b)||(a<b?-1:1)).slice(0,CHAN_PREVIEW_MAX);
+    }
+    const next=new Set(want);
+    /* Drop the ones that are gone — a channel deleted, or a server left. */
+    chanPreviewKeys.forEach(k=>{
+      if(next.has(k))return;
+      chanPreviewKeys.delete(k);
+      if(previewUnsubs[k]){try{previewUnsubs[k]()}catch(_){}delete previewUnsubs[k]}
+      delete C.messages[k];
+    });
+    next.forEach(k=>{
+      if(chanPreviewKeys.has(k))return;
+      chanPreviewKeys.add(k);
+      watchPreview(k);
+    });
+  }
+  // The message listener follows whichever chat is open
+  let pruning=false;
+  async function pruneBatch(key,limit,days){
+    // one extra minute of margin so clock skew can never make the server reject a whole batch
+    const cutoff=Date.now()+SKEW-days*864e5-60000;
+    const snap=await get(query(R('messages/'+key),orderByChild('at'),endAt(cutoff),limitToFirst(limit)));
+    if(!snap.exists())return 0;
+    const msgs={},rx={};let n=0;
+    snap.forEach(c=>{msgs['messages/'+key+'/'+c.key]=null;rx['reactions/'+key+'/'+c.key]=null;n++});
+    // reactions first (their rule checks the message still exists), best-effort; then the messages themselves
+    try{await update(ref(rtdb),rx)}catch(_){}
+    await update(ref(rtdb),msgs);
+    return n;
+  }
+  const MSG_LIMIT=100,MSG_STEP=100,msgLimit={};
+  function attachMsgListener(key){
+    if(msgUnsub){msgUnsub();msgUnsub=null}
+    const q=query(R('messages/'+key),orderByChild('at'),limitToLast(msgLimit[key]||MSG_LIMIT));
+    msgUnsub=onValue(q,s=>{
+      const arr=[];s.forEach(c=>{arr.push({...c.val(),id:c.key})});
+      C.messages[key]=arr.map(m=>({...m,images:m.images||[],files:m.files||[],pings:m.pings||[],text:m.text||''}));
+      if(ready)emit('messages');
+      NSFW.sweep(key,C.messages[key]);
+    },err=>console.warn('messages denied',key,err.code));
+  }
+  function watchMessages(key){
+    // VIP Lounge: don't even attach the listener unless I qualify (the rules would just deny it).
+    if(key===CFG.VIP_ROOM&&!DB.vipInfo(myId))key=null;
+    if(key===CFG.MVP_ROOM&&!mvpAccess(myId))key=null;
+    if(key===msgKey)return;
+    if(msgUnsub){msgUnsub();msgUnsub=null}
+    if(reactUnsub){try{reactUnsub()}catch(_){}reactUnsub=null}
+    // Presence: leave whichever context I was in and join the new one, so
+    // "who's online" can be scoped to global/this room/this DM instead of
+    // showing literally every online user everywhere. Mirrors the typing
+    // pattern: onDisconnect handles tab close/crash, we handle a plain
+    // context switch ourselves. Needs a matching 'presence' rule (see reply).
+    if(presUnsub){try{presUnsub()}catch(_){}presUnsub=null}
+    if(presenceSelfRef){try{remove(presenceSelfRef).catch(()=>{})}catch(_){}presenceSelfRef=null}
+    C.presenceIds=[];
+    msgKey=key;
+    if(!key){if(ready)emit();return}
+    rejoinScopedPresence();
+    msgLimit[key]=MSG_LIMIT;           // every fresh open starts light: only the newest messages
+    attachMsgListener(key);
+    // Reactions live at their own top-level path (reactions/$key/$msgId/$emoji/$userId)
+    // rather than under messages/$key/$msgId, since the message rules only let the
+    // ORIGINAL SENDER edit their own message — reactions need to be addable by anyone
+    // in the conversation, so they get their own node with its own rules.
+    reactUnsub=onValue(R('reactions/'+key),s=>{
+      C.reactions[key]=s.val()||{};
+      if(ready)emit('reactions');
+    },()=>{C.reactions[key]={}});
+  }
+  // Reactions for one message, as [{emoji, ids:[...], mine}], ordered by first-added.
+  function reactionsFor(key,msgId){
+    const raw=(C.reactions[key]||{})[msgId];
+    if(!raw)return[];
+    return Object.keys(raw).map(emoji=>{
+      const ids=Object.keys(raw[emoji]||{}).map(Number);
+      return{emoji,ids,mine:ids.includes(myId)};
+    }).filter(r=>r.ids.length>0);
+  }
+  // Toggle: adds my reaction if I haven't reacted with this emoji yet, removes it if I have.
+  async function toggleReaction(key,msgId,emoji){
+    if(myId==null)return;
+    if(DB.isBanned(myId))throw new Error('Your account has been banned.');
+    const path='reactions/'+key+'/'+msgId+'/'+emoji+'/'+myId;
+    const already=!!((((C.reactions[key]||{})[msgId]||{})[emoji]||{})[myId]);
+    // optimistic local update
+    C.reactions[key]=C.reactions[key]||{};
+    C.reactions[key][msgId]=C.reactions[key][msgId]||{};
+    C.reactions[key][msgId][emoji]=C.reactions[key][msgId][emoji]||{};
+    if(already)delete C.reactions[key][msgId][emoji][myId];
+    else C.reactions[key][msgId][emoji][myId]=true;
+    emit();
+    try{
+      if(already)await remove(R(path));
+      else await set(R(path),true);
+    }catch(e){
+      // roll back on failure
+      C.reactions[key]=C.reactions[key]||{};
+      C.reactions[key][msgId]=C.reactions[key][msgId]||{};
+      C.reactions[key][msgId][emoji]=C.reactions[key][msgId][emoji]||{};
+      if(already)C.reactions[key][msgId][emoji][myId]=true;
+      else delete C.reactions[key][msgId][emoji][myId];
+      emit();
+      throw new Error(e.code==='PERMISSION_DENIED'?'Could not react to that message.':'Reaction failed ('+(e.code||e.message)+')');
+    }
+  }
+
+  // rebuild the {id: user} map in the shape the UI expects
+  /* v54.3a: name -> id reversed, rebuilt whenever the directory changes.
+     The directory is the only thing the client holds for ALL accounts, so it is the only place
+     an unloaded profile's real username can come from. Without it, every account whose record
+     has not been fetched yet renders through dispName(null) as "Deleted User" - which in ICH's
+     UI is exactly what a BANNED account looks like. On a 1,200-member list that reads as "every
+     account got banned", which is what it looked like in production. */
+  let _dirById=null;
+  function dirName(id){
+    if(!_dirById){
+      _dirById={};
+      Object.keys(C.usernames||{}).forEach(n=>{_dirById[String(C.usernames[n])]=n});
+    }
+    return _dirById[String(id)]||null;
+  }
+
+  const userView=id=>{
+    const u=C.users[id];
+    if(!u){
+      /* Not loaded yet. If the directory knows this id, hand back a stub carrying the REAL
+         username rather than undefined, so nothing downstream has to guess at a name.
+         `_stub:true` marks it so anything making a moderation decision can tell the difference
+         between "not loaded" and "loaded and really deleted". */
+      const nm=dirName(id);
+      if(nm==null)return undefined;
+      return {id:Number(id),username:nm,deleted:false,_stub:true,
+        style:{},settings:defaultSettings(),pronouns:'',description:'',banner:'',
+        hiddenTags:'',friends:[],lastRead:{},createdAt:0};
+    }
+    const mine=Number(id)===myId;
+    const st=u.style||{};
+    const base=defaultSettings();
+    // v54.1: my own settings live in userPrivate/$id/settings. The legacy users/$id/settings
+    // is still read as a fallback so an account that has not been migrated yet keeps its
+    // preferences; movePrivateDataIfNeeded() moves them on the next sign-in.
+    const own=mine?((C.priv&&C.priv.settings)||u.settings||{}):{};
+    const settings={...base,...own,pings:{...base.pings,...(own.pings||{})}};
+    // public bubble style: what EVERYONE sees for this person
+    settings.meBubble=st.bubble||own.meBubble||base.meBubble;
+    settings.meText=st.text||own.meText||base.meText;
+    settings.avatar=st.avatar||(mine?own.avatar:'')||'';
+    /* v54.4: my own private copy wins (it is the one the settings screen edits), then the public
+       mirror, then the default. Without the middle term, other people's banners were invisible. */
+    settings.bannerColor=(mine&&own.bannerColor)||st.bnc||own.bannerColor||base.bannerColor;
+    if(st.radius!=null&&!mine)settings.radius=st.radius;
+    return{...u,pronouns:String(st.pronouns||''),description:String(st.description||'').slice(0,descMaxFor(id)),banner:String(st.banner||''),hiddenTags:String(st.hiddenTags||''),id:Number(id),friends:mine?(C.friends[myId]||[]):[],
+      lastRead:mine?C.lastRead:{},settings};
+  };
+
+  // Signed-in state
+  let authResolve,authDone=false;const authReady=new Promise(r=>authResolve=r);
+  let sessionDone=Promise.resolve();
+  let sessionError=false;                 // true when we could NOT confirm profile state (network etc.)
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  // retry a read a few times so a transient hiccup never looks like "no account"
+  async function getRetry(path,tries=4){
+    let last;
+    for(let i=0;i<tries;i++){
+      try{return await get(R(path))}catch(e){last=e;await sleep(350*(i+1))}
+    }
+    throw last;
+  }
+  let sessionSeq=0;
+  onAuthStateChanged(auth,user=>{
+    const seq=++sessionSeq;
+    sessionDone=(async()=>{
+      stopAll();ready=false;myId=null;sessionError=false;myUid=user?user.uid:null;
+      if(user){
+        try{
+          /* A returning visitor's login is restored from the browser, and the very first reads can
+             come back EMPTY while the database connection is still attaching the new auth token.
+             "Empty" used to be believed on the spot, which dropped a perfectly good account onto the
+             "Choose a username" screen (or, with the retry below missing, the sign-in page). So an
+             empty answer is asked again a couple of times before it is believed. */
+          let s=await getRetry('uidToId/'+user.uid);
+          for(let k=0;k<3&&!s.exists()&&seq===sessionSeq;k++){await sleep(400*(k+1));s=await getRetry('uidToId/'+user.uid)}
+          if(seq!==sessionSeq)return;
+          if(s.exists()){
+            const id=s.val();
+            let prof=await getRetry('users/'+id);
+            for(let k=0;k<3&&!prof.exists()&&seq===sessionSeq;k++){await sleep(400*(k+1));prof=await getRetry('users/'+id)}
+            if(seq!==sessionSeq)return;
+            if(prof.exists()){
+              myId=id;C.users[id]=prof.val();startListeners();
+              // link this login to its numeric ID for the database rules, but only if it's
+              // not already linked — the rules reject this write once idToUid/$id exists,
+              // and firing it unconditionally on every login just spams a permission_denied
+              // warning into the console every single time (harmless functionally, but it
+              // was polluting the write-error diagnostic below by looking like a real failure).
+              get(R('idToUid/'+id)).then(existing=>{
+                if(!existing.exists())return set(R('idToUid/'+id),user.uid).then(()=>{
+                  // Presence (armPresence, fired from .info/connected inside startListeners()
+                  // above) may have already tried and failed to write onlineUsers/$id before
+                  // this link existed — the rule requires idToUid/$id===auth.uid. Now that it's
+                  // linked, re-arm so a brand-new account shows online immediately instead of
+                  // waiting on the retry timer or the next reconnect.
+                  armPresence();
+                });
+              }).catch(()=>{});
+              // NOTE: no immediate banned-check here — it used stale pre-login C.banned
+              // and ran before owners/ had loaded, so it could wrongly lock an owner's
+              // menu. startListeners() above re-evaluates the ban lock correctly once
+              // both banned/ and owners/ are live (see checkBanLock()).
+            }
+            // uidToId exists but profile is missing -> genuinely unfinished signup (needsProfile)
+          }
+        }catch(e){console.error('session load failed',e);sessionError=true}
+      }
+      if(seq!==sessionSeq)return;
+      ready=true;authDone=true;authResolve();emit();
+    })();
+  });
+
+  return{
+    authReady,
+    // Re-claims this client's session (kicking whichever client is currently
+    // active). Doesn't flip the UI itself — watchSession() above notices the
+    // confirmed claim and hides the overlay / re-arms presence from there, so
+    // the button reacts the same way whether the claim lands in 50ms or 3s.
+    reconnectSession:()=>{if(myId!=null)claimSession()},
+    // Owner only: mark everyone offline, then ask every live client to confirm they're really here.
+    async requestReconnectAll(){
+      if(!isOwner(myId))throw new Error('Only owners can do this.');
+      const ids=C.onlineIds.slice();
+      if(ids.length){const patch={};ids.forEach(id=>{patch[id]=null});await update(R('onlineUsers'),patch)}
+      await set(R('reconnectRequest'),{at:serverTimestamp(),by:myId});
+      armPresence();armScopedPresence();
+      return ids.length;
+    },
+    // Owner only: broadcast a live announcement (10s banner on every client) and, optionally, keep a copy in the Announcements chat.
+    async sendLiveAnnouncement(text,{kind='info',alsoPost=true}={}){
+      if(!isOwner(myId))throw new Error('Only owners can send announcements.');
+      text=String(text||'').replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g,'').replace(/\n{3,}/g,'\n\n').trim().slice(0,300);
+      if(!text)throw new Error('Type an announcement first.');
+      if(!['info','event','warn'].includes(kind))kind='info';
+      const id=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+      let live=true;
+      try{await set(R('liveAnnouncement'),{id,at:serverTimestamp(),by:myId,text,kind})}
+      catch(e){live=false;console.warn('liveAnnouncement denied',e&&e.code)}
+      let posted=false;
+      if(alsoPost){try{await DB.sendMessage(CFG.ANNOUNCEMENTS_ROOM,{senderId:myId,text:text,images:[],pings:[]});posted=true}catch(e){console.warn('announcement chat post failed',e&&e.message)}}
+      if(!live&&!posted)throw new Error('Could not send ('+'database rules blocked liveAnnouncement'+').');
+      return{live,posted};
+    },
+    // Called when a user presses "Reconnect" on the owner's check: show as online again.
+    confirmOnline(){rcPending=false;if(myId!=null&&!kicked){armPresence();armScopedPresence()}},
+    settle:async()=>{await Promise.race([authReady,sleep(12000)]);await sessionDone;},
+    onChange:f=>{listeners.add(f);return()=>listeners.delete(f)},
+    /* v54.8: how many Firebase listeners this client holds, so a leak can be SEEN rather than
+       suspected. The three groups are counted separately because they leak for different
+       reasons: `unsubs` should be stable after sign-in, `previews`/`rooms` grow with what you
+       are in, and `users` is the LRU-capped profile watch set. */
+    syncChannelPreviews,
+    listenerCount(){
+      return unsubs.length+Object.keys(previewUnsubs).length+Object.keys(roomUnsubs).length+
+        userWatch.size+(msgUnsub?1:0)+(reactUnsub?1:0)+(presUnsub?1:0)+(sessUnsub?1:0);
+    },
+    listenerBreakdown(){
+      return{
+        base:unsubs.length,previews:Object.keys(previewUnsubs).length,
+        rooms:Object.keys(roomUnsubs).length,users:userWatch.size,
+        open:(msgUnsub?1:0)+(reactUnsub?1:0)+(presUnsub?1:0)+(sessUnsub?1:0),
+        total:this.listenerCount()
+      };
+    },
+    dmKey,watchMessages,
+    // VIP status: owners always count; otherwise a permanent flag or an unexpired 'until'.
+    vipInfo:(id,pub,ignoreHidden)=>{id=Number(id);
+      /* pub=true: display use, a secret owner falls through to their normal VIP status. ignoreHidden=true (profile card): the person's
+         "hide this tag" choice only affects their NAME, so the profile still shows what they really have. */
+      const shownOwner=OWNERS_CACHE[id]===1&&(ignoreHidden||!tagHidden(id,'owner'));
+      if(isOwner(id)&&!(pub&&!shownOwner))return{kind:'owner'};
+      // MVP includes free permanent VIP. Hiding the MVP tag only affects display (pub), never access.
+      if(mvpOn(id)&&!(pub&&!ignoreHidden&&tagHidden(id,'mvp')))return{kind:'mvp',since:DB.mvpSince(id)};
+      if(pub&&!ignoreHidden&&tagHidden(id,'vip'))return null;
+      const v=C.vip[id];if(!v)return null;
+      if(v.perm===true)return{kind:'perm'};
+      if(typeof v.until==='number'&&v.until>Date.now()+SKEW)return{kind:'day',until:v.until};
+      return null},
+    flairOf:(id)=>{const f=C.flair[Number(id)];return(f&&typeof f.until==='number'&&f.until>Date.now()+SKEW)?f.preset:null},
+    rolesOf:(id)=>C.roles[Number(id)]||{},
+    /* Custom roles (decorative, backend-only). customRoles() = every role, highest rank first;
+       customRolesOf(id) = the ones that person has; topCustomRole(id) = the one shown on their name. */
+    customRoles:()=>customRoleList(),
+    customRolesOf:(id)=>customRolesOf(id),
+    topCustomRole:(id)=>topCustomRole(id),
+    customRolesLoaded:()=>CUSTOM_ROLES_LOADED,
+    /* v54.7: when a timed grant runs out (0 = permanent). The owner panel shows the term
+       beside the grant; everything else just asks customRolesOf(), which already drops a
+       grant whose term has passed. */
+    customRoleExpiry:(roleId,id)=>{
+      const r=customRoleList().find(x=>x.id===String(roleId));
+      return r?crExpiresAt(r,id):0;
+    },
+    isMvp:mvpOn,
+    mvpAccess,
+    mvpSince:(id)=>{const v=C.mvp[Number(id)];return(typeof v==='number'&&v>1)?v:0},
+    mvpIds:()=>Object.keys(C.mvp).map(Number).filter(mvpOn),
+    // a real (unexpired) VIP record, ignoring MVP's built-in VIP — used so owners can still remove a separate VIP
+    hasVipRole:(id)=>{const v=C.vip[Number(id)];return !!(v&&(v.perm===true||(typeof v.until==='number'&&v.until>Date.now()+SKEW)))},
+    spinWindow:()=>C.spinWin,
+    /* TAG-VISIBILITY:START */
+    hiddenTagsOf:(id)=>{const u=C.users[Number(id)];const h=u&&u.style&&u.style.hiddenTags;return(typeof h==='string'&&h)?h.split(',').filter(t=>HIDEABLE_TAGS.indexOf(t)!==-1):[]},
+    // Which hideable tags this person really has (ignores their own hide choices) — drives the Account section.
+    tagsOwned:(id)=>{id=Number(id);const out=[];
+      if(OWNERS_CACHE[id]===1)out.push('owner');
+      if(mvpOn(id))out.push('mvp');
+      if(isMod(id))out.push('mod');
+      const v=C.vip[id];if(v&&(v.perm===true||(typeof v.until==='number'&&v.until>Date.now()+SKEW)))out.push('vip');
+      const r=C.roles[id]||{};const f=C.flair[id];
+      if((f&&typeof f.until==='number'&&f.until>Date.now()+SKEW)||NAME_STYLE_PRESETS.some(p=>r[p]===true))out.push('flair');
+      if(r.confetti===true)out.push('confetti');
+      return out},
+    /* TAG-VISIBILITY:END */
+    lastSpinAt:()=>C.lastSpin||0,
+    reactionsFor,toggleReaction,
+    isLoggedIn:()=>!!myUid,
+    // Only true when we CONFIRMED there is no profile. A failed/slow read is never treated as "no username".
+    // `ready` matters: while the saved login is still being re-checked after a reopen, myId is null
+    // for a moment, and that used to read as "signed in but no username yet".
+    needsProfile:()=>!!myUid&&ready&&!sessionError&&!(myId&&C.users[myId]),
+    // true once the first "who is signed in?" check has finished (settle() gives up after 12s even if it has not)
+    authResolved:()=>authDone,
+    hadSessionError:()=>sessionError,
+
+    /* --- Users --- */
+    usernameTaken(name,exceptId){
+      const id=C.usernames[name.toLowerCase()];
+      return id!==undefined&&id!==exceptId;
+    },
+    async checkUsernameFree(name){
+      const key=name.toLowerCase();
+      // signed out: the public lookup node is readable; signed in: the real index is authoritative
+      const path=myUid||auth.currentUser?'usernames/'+key:'usernameLogin/'+key;
+      const s=await get(R(path));return !s.exists();
+    },
+    currentUser(){return myId?userView(myId):null},
+    /* v54.3a: a stub is truthy, so the old `if(!v)` would have stopped fetching the real
+       record entirely. Fetch whenever what we have is not the real thing. */
+    getUser:id=>{const v=userView(id);if(!v||v._stub)fetchUserIfMissing(id);return v},
+    /* Same view, WITHOUT subscribing. For code that walks every account - a member list filter,
+       a sort comparator - where opening a listener per row is the whole problem. Only the rows
+       actually drawn should call getUser(). */
+    peekUser:id=>userView(id),
+    /* ---------- v54.1: the directory, not the whole table ----------
+       This used to be Object.keys(C.users), which only worked because the client had just
+       downloaded all 3,100 records (and their avatars) into memory. It is now built from the
+       username directory - name -> id, a few tens of KB - and every entry whose full record
+       has not been fetched yet comes back as a light stub carrying the id and the username.
+
+       That is all four callers actually need: @mention autocomplete, friend search by name,
+       the member count, and looking somebody up in the shop. Anything that needs the rest of
+       a record (avatar, status, badges) should go through getUser(id), which subscribes to
+       that one account and re-renders when it arrives. */
+    allUsers:()=>{
+      const out=[],seen=new Set();
+      Object.keys(C.usernames).forEach(name=>{
+        const id=Number(C.usernames[name]);
+        if(!Number.isFinite(id)||seen.has(id))return;
+        seen.add(id);
+        const full=userView(id);
+        out.push(full||{id,username:name,deleted:false,style:{},settings:defaultSettings(),
+                        pronouns:'',description:'',banner:'',hiddenTags:'',friends:[],lastRead:{},
+                        _stub:true});
+      });
+      // Anyone cached but missing from the directory (a deleted account keeps its record but
+      // frees its name) still has to appear, or moderation views lose people.
+      Object.keys(C.users).forEach(k=>{
+        const id=Number(k);
+        if(seen.has(id))return;
+        seen.add(id);
+        const v=userView(id);if(v)out.push(v);
+      });
+      return out;
+    },
+    // How many accounts exist, without downloading them. Used by the member count.
+    userCount:()=>Object.keys(C.usernames).length,
+    /* dmMembers is exposed because the whole node is readable by any signed-in account (see its
+       `.read` rule) and is already mirrored in C.dmMembers - so handing it out reveals nothing a
+       client could not read for itself. js/social/profile-data.js uses it to work out mutual
+       friends, which is otherwise impossible: friends/$a is readable only by $a. */
+    get:()=>({usernameIndex:C.usernames,rooms:C.rooms,dmMembers:C.dmMembers}),
+    onlineCount:()=>C.online,
+    onlineIds:()=>C.onlineIds.slice(),
+    // ids currently present in whichever context is open (global / this room / this DM)
+    // A scoped presence marker can outlive its owner (stale node after a crash / dropped socket), so only
+    // count someone as "here" if the account-level onlineUsers marker agrees they're online. This keeps the
+    // chat online lists, the home counter and profile status all telling the same story.
+    presenceIds:()=>{const on=new Set(C.onlineIds);return C.presenceIds.filter(id=>on.has(id))},
+    // ids of my current friends (not just anyone I've ever DMed — unfriending
+    // leaves the old dmMembers record in place so chat history survives, so we
+    // filter that record down to the live friends list instead of trusting it alone)
+    // who are currently online
+    onlineDmIds:uid=>{
+      const onlineSet=new Set(C.onlineIds);
+      const friendSet=new Set(C.friends[uid]||[]);
+      const out=new Set();
+      Object.keys(C.dmMembers||{}).forEach(key=>{
+        const m=C.dmMembers[key];
+        if(!m||!m[uid])return;
+        const parts=key.split('_');if(parts[0]!=='dm')return;
+        const a=Number(parts[1]),b=Number(parts[2]);
+        const other=a===uid?b:a;
+        if(other!==uid&&friendSet.has(other)&&onlineSet.has(other))out.add(other);
+      });
+      return[...out];
+    },
+
+    async createUser({username,email,password}){
+      if(!CFG.USERNAME_RE.test(username))throw new Error('Username must be 1-20 chars using 0-9, a-z, A-Z, ".", "_" or "-".');
+      if(!usernameAllowed(username))throw new Error('That username isn\'t allowed.');
+      if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))throw new Error('Please enter a real email address.');
+      let cred;
+      try{cred=await createUserWithEmailAndPassword(auth,email||(username.toLowerCase()+FAKE),password)}
+      catch(e){throw new Error(authMsg(e))}
+      // now signed in: safe to check the username
+      if(!(await this.checkUsernameFree(username))){
+        try{await deleteUser(cred.user)}catch(_){}
+        throw new Error('That username is already taken.');
+      }
+      try{await this._finishProfile(cred.user,username,email||null,'password')}
+      catch(e){try{await deleteUser(cred.user)}catch(_){}throw e}
+      if(email){try{await sendEmailVerification(cred.user)}catch(_){}}
+      return this.currentUser();
+    },
+    // Claims the next ID, then writes uidToId -> usernames -> users (order required by the rules)
+    async _finishProfile(fbUser,username,email,provider){
+      let id=(await get(R('uidToId/'+fbUser.uid))).val();      // reuse ID from an interrupted signup
+      if(id==null){
+        // Atomic claim: counter bump + idToUid + uidToId in ONE request. The database rules only accept
+        // it when all three agree, so nobody can squat or steal IDs. On a race, re-read and retry.
+        for(let i=0;i<8&&id==null;i++){
+          const n=((await get(R('counters/userId'))).val()||0)+1;
+          try{
+            await update(ref(rtdb),{'counters/userId':n,['idToUid/'+n]:fbUser.uid,['uidToId/'+fbUser.uid]:n});
+            id=n;
+          }catch(e){
+            if(i===7)throw new Error('Could not reserve a user ID. Try again.');
+            await sleep(150+Math.random()*250);
+          }
+        }
+      }
+      const rec={username,createdAt:Date.now()+SKEW,lastNameChange:0,provider};
+      // v54.1: a real email NEVER goes into users/$id any more - that node is readable by
+      // every signed-in account. It goes to userPrivate/$id, which only this account can read.
+      const authEmail=email||(username.toLowerCase()+FAKE);
+      // ONE atomic write: username claim + profile + login lookup. The rules check they all match each other.
+      try{
+        const first={
+          ['usernames/'+username.toLowerCase()]:id,
+          ['users/'+id]:rec,
+          ['usernameLogin/'+username.toLowerCase()]:loginRec(authEmail)
+        };
+        if(email)first['userPrivate/'+id+'/email']=email;
+        await update(ref(rtdb),first);
+      }catch(e){
+        console.error('profile write failed',e);
+        throw new Error(e.code==='PERMISSION_DENIED'||/permission/i.test(e.message)
+          ?'Username was taken or blocked by database rules. Try another.'
+          :'Could not save profile: '+(e.code||e.message));
+      }
+      // seed the cache immediately so the UI never waits on the listener round-trip
+      C.users[id]={...rec};C.usernames[username.toLowerCase()]=id;
+      myId=id;sessionError=false;startListeners();
+      emit();
+    },
+    async completeGoogleProfile(username){
+      if(!CFG.USERNAME_RE.test(username))throw new Error('Username must be 1-20 chars using 0-9, a-z, A-Z, ".", "_" or "-".');
+      if(!usernameAllowed(username))throw new Error('That username isn\'t allowed.');
+      if(!(await this.checkUsernameFree(username)))throw new Error('That username is already taken.');
+      const u=auth.currentUser;
+      await this._finishProfile(u,username,u.email||null,'google');
+      return this.currentUser();
+    },
+    async login(idf,password){
+      let email=idf.trim();
+      if(!email.includes('@')){
+        // username login: resolve the name to the Auth email this account signs in with
+        const key=email.toLowerCase();
+        let rec;
+        try{rec=(await get(R('usernameLogin/'+key))).val()}
+        catch(e){
+          throw new Error(e.code==='PERMISSION_DENIED'
+            ?'Username sign-in is unavailable right now (database rules block the lookup). Try signing in with your email instead.'
+            :'Could not look up that username: '+(e.code||e.message));
+        }
+        if(!rec)throw new Error('Incorrect username/email or password.');
+        /* v54.1: three shapes, oldest first.
+             {email:...}    legacy record, not migrated yet - behaves exactly as before
+             {alias:'bob'}  sign in as bob@itsuki.local
+             {server:true}  the Auth email is a real address the browser is not told. The
+                            server signs in on our behalf and hands back a custom token. */
+        if(typeof rec.email==='string'&&rec.email)email=rec.email;
+        else if(typeof rec.alias==='string'&&rec.alias)email=rec.alias.toLowerCase()+FAKE;
+        else if(rec.server===true){
+          const u=await serverLogin(key,password);
+          if(u)return u;
+          throw new Error('This account signs in with an email address. Enter that email instead of your username.');
+        }
+        else email=key+FAKE;
+      }
+      try{await signInWithEmailAndPassword(auth,email,password)}
+      catch(e){throw new Error(authMsg(e))}
+      await new Promise(r=>setTimeout(r,0));   // let onAuthStateChanged fire
+      await this.settle();
+      const u=this.currentUser();
+      if(!u)throw new Error('Signed in, but your account profile could not be loaded. Try again.');
+      return u;
+    },
+    async googleSignIn(){
+      try{await signInWithPopup(auth,new GoogleAuthProvider(),browserPopupRedirectResolver)}
+      catch(e){throw new Error(authMsg(e))}
+      await new Promise(r=>setTimeout(r,0));   // let onAuthStateChanged fire
+      await this.settle();
+      return{needsProfile:!this.currentUser()};
+    },
+    async signOut(){
+      signingOut=true;
+      if(myId!=null&&!kicked)await remove(R('onlineUsers/'+myId)).catch(()=>{});
+      if(msgKey!=null&&myId!=null)await remove(R('presence/'+msgKey+'/'+myId)).catch(()=>{});
+      if(myId!=null&&mySessionToken){await get(R('sessions/'+myId)).then(s=>{const v=s.val();if(v&&v.token===mySessionToken)return remove(R('sessions/'+myId))}).catch(()=>{})}
+      stopAll();await fbSignOut(auth);myId=null;
+    },
+    // Nitro-promo alert: has this account already closed it? (saved at giftPromoSeen/$id)
+    async giftPromoSeen(){
+      if(myId==null)return false;
+      try{return (await get(R('giftPromoSeen/'+myId))).val()===true}catch(_){return false}
+    },
+    async markGiftPromoSeen(){
+      if(myId==null)return;
+      try{await set(R('giftPromoSeen/'+myId),true)}catch(_){}
+    },
+    async resetPassword(email){try{await sendPasswordResetEmail(auth,email)}catch(e){throw new Error(authMsg(e))}},
+    // Lets a Google-signed-up account also sign in with username/password.
+    hasPasswordLogin:()=>!!auth.currentUser?.providerData.some(p=>p.providerId==='password'),
+    /* Change the password of an account that already signs in with one.
+     *
+     * NOT the same thing as setPassword() below, which is linkWithCredential - that ADDS password
+     * sign-in to an account that does not have it (a Google account) and throws
+     * 'provider-already-linked' for everybody else. The change-password UI needs this.
+     *
+     * Firebase refuses updatePassword when the sign-in is not recent, which for a long-lived
+     * session is most of the time. So the current password is used to reauthenticate first. That
+     * is not a workaround - it is the right check: these accounts have no email, so there is no
+     * reset link, and the current password is the only proof that the person at the keyboard is
+     * the account holder rather than somebody who sat down at an unlocked screen.
+     *
+     * Nothing is written to the database. The password only ever exists inside the Firebase Auth
+     * SDK - there is no plaintext password anywhere in the Realtime Database, by design. */
+    async changePassword(currentPassword,newPassword){
+      const u=auth.currentUser;
+      if(!u)throw new Error('Not signed in.');
+      if(!currentPassword)throw new Error('Enter your current password.');
+      if(!newPassword||newPassword.length<CFG.MIN_PW)
+        throw new Error(`New password must be at least ${CFG.MIN_PW} characters.`);
+      if(currentPassword===newPassword)
+        throw new Error('That is the password you already have.');
+
+      const rec=C.users[myId]||{};
+      /* The email Firebase knows this account by: the real one if they signed up with it,
+         otherwise the username@itsuki.local alias. u.email is authoritative when present. */
+      const email=u.email||(C.priv&&C.priv.email)||rec.email||((rec.username||'').toLowerCase()+FAKE);
+      if(!email)throw new Error('This account has no sign-in email on file. Tell an owner.');
+
+      const hasPassword=(u.providerData||[]).some(p=>p&&p.providerId==='password');
+      if(!hasPassword)
+        throw new Error('This account signs in with Google, so there is no password to change. '
+          +'Use "Set a password" to add one.');
+
+      try{
+        await reauthenticateWithCredential(u,EmailAuthProvider.credential(email,currentPassword));
+      }catch(e){
+        const c=(e&&e.code)||'';
+        if(/wrong-password|invalid-credential|invalid-login/i.test(c))
+          throw new Error('That current password is not right.');
+        if(/too-many-requests/i.test(c))
+          throw new Error('Too many attempts. Wait a few minutes and try again.');
+        if(/user-mismatch|user-not-found/i.test(c))
+          throw new Error('Could not confirm this account. Sign out, sign back in, and try again.');
+        throw new Error(authMsg(e));
+      }
+
+      try{
+        await updatePassword(u,newPassword);
+      }catch(e){
+        const c=(e&&e.code)||'';
+        if(/weak-password/i.test(c))throw new Error('That password is too weak. Try a longer one.');
+        if(/requires-recent-login/i.test(c))
+          throw new Error('Firebase wants a fresh sign-in. Sign out, sign back in, and try again.');
+        throw new Error(authMsg(e));
+      }
+      return true;
+    },
+
+    async setPassword(password){
+      const u=auth.currentUser;if(!u)throw new Error('Not signed in.');
+      if(password.length<CFG.MIN_PW)throw new Error(`Password must be at least ${CFG.MIN_PW} characters.`);
+      const rec=C.users[myId]||{};
+      const email=u.email||(C.priv&&C.priv.email)||rec.email||(rec.username?.toLowerCase()+FAKE);
+      try{await linkWithCredential(u,EmailAuthProvider.credential(email,password))}
+      catch(e){
+        if(e.code==='auth/provider-already-linked'||e.code==='auth/credential-already-in-use')
+          throw new Error('Password sign-in is already set up for this account.');
+        throw new Error(authMsg(e));
+      }
+      // make sure username-login lookup points at the real email, not a placeholder
+      if(rec.username)await set(R('usernameLogin/'+rec.username.toLowerCase()),{email}).catch(()=>{});
+    },
+
+    async renameUser(id,newName){
+      const u=C.users[id];
+      if(!u)throw new Error('Account not loaded yet. Try again in a moment.');
+      if(!CFG.USERNAME_RE.test(newName))throw new Error('Invalid username format.');
+      if(!usernameAllowed(newName))throw new Error('That username isn\'t allowed.');
+      if(newName===u.username)return userView(id);
+      const oldKey=u.username.toLowerCase(),newKey=newName.toLowerCase();
+      const wait=(u.lastNameChange||0)+CFG.NAME_CHANGE_MS-Date.now();
+      if(wait>0&&(u.lastNameChange||0)!==0){const d=Math.ceil(wait/86400000);throw new Error(`You can change your username again in ${d} day${d>1?'s':''}.`);}
+      // only a real conflict if the new key belongs to someone ELSE (changing capitalisation of your own name is fine)
+      if(newKey!==oldKey){
+        const taken=(await get(R('usernames/'+newKey))).val();
+        if(taken!=null&&Number(taken)!==Number(id))throw new Error('That username is already taken.');
+      }
+      // v54.1: via resolveAuthEmail, because the login-map record may now be {alias:'bob'}
+      // rather than an address, and reading `.email` off it would come back undefined.
+      let email=u.email||await resolveAuthEmail(id,[oldKey]);
+      if(!email)email=oldKey+FAKE;
+      const stamp=Date.now()+SKEW;
+      // Single atomic multi-path write: claim the new name, update the profile, point the
+      // login lookup at the new name, and free the old name+lookup all in one request.
+      // Rules are validated against the state that results from ALL of these together, so
+      // there is no window where the old name is freed but the new one isn't claimed yet
+      // (or vice versa) — which is what let the old username end up permanently stuck
+      // ("shows available" in the signed-out check but "already taken" on Create Account)
+      // when a partial failure or a slow network landed the writes out of order before.
+      const patch={};
+      patch['users/'+id+'/username']=newName;
+      patch['users/'+id+'/lastNameChange']=stamp;
+      if(newKey!==oldKey){
+        patch['usernames/'+newKey]=id;
+        patch['usernameLogin/'+newKey]=loginRec(email);   // v54.1: a shape, never a real address
+        patch['usernames/'+oldKey]=null;
+        patch['usernameLogin/'+oldKey]=null;
+      }
+      try{
+        await update(ref(rtdb),patch);
+      }catch(e){
+        throw new Error('Could not change username: '+(e.code||e.message));
+      }
+      C.users[id]={...u,username:newName,lastNameChange:stamp};
+      C.usernames[newKey]=id;if(newKey!==oldKey)delete C.usernames[oldKey];
+      emit();
+      return userView(id);
+    },
+    /* --- Owner-only: look up an account (by numeric ID or exact username) and rename it ---
+       Spaces are allowed in names set this way ONLY (normal signup/self-rename still can't use them).
+       The rename is one atomic multi-path write: new name claimed, profile updated, login lookup moved,
+       and every old name pointing at that account freed — so there is never a half-renamed state and the
+       old username is immediately available again. The database rules still refuse duplicates. */
+    async lookupUserForRename(q){
+      if(!isOwner(myId))throw new Error('Only owners can look up accounts to rename.');
+      q=String(q||'').trim();
+      if(!q)throw new Error('Enter a user ID or a username.');
+      const ids=[];
+      const add=async id=>{
+        id=Number(id);if(!Number.isFinite(id)||ids.includes(id))return;
+        if(!C.users[id]){try{const sn=await get(R('users/'+id));if(sn.exists())C.users[id]=sn.val()}catch(_){}}
+        if(C.users[id])ids.push(id);
+      };
+      if(/^[0-9]+$/.test(q))await add(q);
+      let byName=C.usernames[q.toLowerCase()];
+      if(byName==null){try{const sn=await get(R('usernames/'+q.toLowerCase()));if(sn.exists())byName=sn.val()}catch(_){}}
+      if(byName!=null)await add(byName);
+      return ids.map(id=>{
+        const v=userView(id);
+        return{id,username:v.username,user:v,deleted:v.deleted===true,banned:!!(C.banned&&C.banned[id]),owner:isOwner(id)};
+      });
+    },
+    async ownerRenameUser(id,rawName){
+      if(!isOwner(myId))throw new Error('Only owners can change other people\'s usernames.');
+      id=Number(id);
+      const u=C.users[id];
+      if(!u)throw new Error('That account isn\'t loaded. Look it up again.');
+      if(u.deleted===true||u.username==='Deleted User'||(C.banned&&C.banned[id]))throw new Error('Banned/deleted accounts can\'t be renamed. Unban them first.');
+      if(isOwner(id)&&id!==myId)throw new Error('You can\'t rename another owner.');
+      // collapse accidental double spaces, trim the ends, then validate: letters/digits/._- groups separated by single spaces, 1-20 chars
+      const newName=String(rawName||'').replace(/\s+/g,' ').trim();
+      if(!newName)throw new Error('Enter the new username.');
+      if(newName.length>20||!/^[0-9a-zA-Z._-]+( [0-9a-zA-Z._-]+)*$/.test(newName))
+        throw new Error('Usernames are 1-20 chars: 0-9 a-z A-Z . _ - (single spaces allowed between words, none at the ends).');
+      if(!usernameAllowed(newName))throw new Error('The content filter blocks that name. Turn off "Filter usernames too" above if you really want it.');
+      if(newName===u.username)throw new Error('That is already their username.');
+      const newKey=newName.toLowerCase(),oldKey=u.username.toLowerCase();
+      // Duplicate check against the live server index (the rules enforce it again). Their own old name (case change) is fine.
+      if(newKey!==oldKey){
+        const taken=(await get(R('usernames/'+newKey))).val();
+        if(taken!=null&&Number(taken)!==id)throw new Error('That username is already taken'+(C.users[taken]&&C.users[taken].deleted?' (reserved by a banned account).':'.'));
+        if(C.usernames[newKey]!=null&&Number(C.usernames[newKey])!==id)throw new Error('That username is already taken.');
+      }
+      // Every index key currently pointing at this account — all of them get freed.
+      const oldKeys=new Set([oldKey]);
+      Object.keys(C.usernames||{}).forEach(k=>{if(Number(C.usernames[k])===id)oldKeys.add(k)});
+      try{const sn=await get(query(R('usernames'),orderByValue(),equalTo(id)));if(sn.exists())Object.keys(sn.val()).forEach(k=>oldKeys.add(k))}catch(_){}
+      oldKeys.delete(newKey);
+      // Keep the account's real login email (never regenerate it from the new name).
+      // v54.1: via resolveAuthEmail, because the login-map record may now be {alias:'bob'}
+      // rather than an address, and reading `.email` off it would come back undefined.
+      let email=u.email||await resolveAuthEmail(id,[oldKey]);
+      if(!email)email=oldKey+FAKE;
+      const stamp=Date.now()+SKEW;
+      const patch={};
+      patch['users/'+id+'/username']=newName;
+      patch['users/'+id+'/lastNameChange']=stamp;   // also stops them instantly reverting the name for the normal cooldown
+      if(newKey!==oldKey||!C.usernames[newKey]){
+        patch['usernames/'+newKey]=id;
+        patch['usernameLogin/'+newKey]=loginRec(email);   // v54.1: a shape, never a real address
+      }
+      oldKeys.forEach(k=>{patch['usernames/'+k]=null;patch['usernameLogin/'+k]=null});
+      try{await update(ref(rtdb),patch)}
+      catch(e){throw new Error(e.code==='PERMISSION_DENIED'?'Database refused the rename. Make sure the updated database rules (username section) are published.':'Could not change username: '+(e.code||e.message))}
+      C.users[id]={...u,username:newName,lastNameChange:stamp};
+      C.usernames[newKey]=id;oldKeys.forEach(k=>delete C.usernames[k]);
+      emit();
+      return{id,oldName:u.username,newName};
+    },
+    /* HALLOWEEN:START ===== Owner-only: set someone's Halloween Pass level (use lookupUserForRename to find them by ID or username) =====
+       Writes halloween/claimed/<id> (the level they OWN, which is what grants the roles/badges/effects to everyone who sees them).
+       When raising, their logged-in minutes are also lifted to that level's requirement so their own pass screen matches
+       (otherwise it would show "Owned" on levels their time hasn't reached). Level 0 removes the pass rewards entirely.
+       Allowed by the existing owner branch of halloween/claimed and halloween/progress rules, so no rules change is needed. */
+    async ownerSetHalloweenLevel(id,level){
+      if(!isOwner(myId))throw new Error('Only owners can change Halloween Pass levels.');
+      id=Number(id);level=Math.floor(Number(level));
+      const u=C.users[id];
+      if(!Number.isFinite(id)||!u)throw new Error('That account isn\'t loaded. Look it up again.');
+      if(u.deleted===true||u.username==='Deleted User')throw new Error('Deleted accounts can\'t be given pass levels.');
+      if(!Number.isFinite(level)||level<0||level>HW.N)throw new Error('Level must be between 0 and '+HW.N+'.');
+      const patch={};
+      patch['halloween/claimed/'+id]=level>0?level:null;
+      if(level>0){
+        const need=hwCum(level);let mins=0;
+        try{const sn=await get(R('halloween/progress/'+id));if(sn.exists())mins=Number((sn.val()||{}).mins)||0}catch(_){}
+        if(mins<need)patch['halloween/progress/'+id]={mins:need,last:serverTimestamp()};
+      }
+      try{await update(ref(rtdb),patch)}
+      catch(e){throw new Error(e.code==='PERMISSION_DENIED'?'Database refused the change. Make sure the Halloween rules block is published.':'Could not set level: '+(e.code||e.message))}
+      const cl={...(window.HW_CLAIMED||{})};if(level>0)cl[id]=level;else delete cl[id];
+      window.HW_CLAIMED=cl;
+      if(typeof hwRefresh==='function'){try{hwRefresh()}catch(_){}}
+      return{id,username:u.username,level};
+    },
+    /* HALLOWEEN:END */
+    // Saves ONE settings key without re-uploading the whole settings blob (which can carry a large
+    // background image) — used for small toggles like anti-lag.
+    async setSettingKey(id,key,val){
+      const cur=C.users[id]||{};
+      C.users[id]={...cur,settings:{...(cur.settings||{}),[key]:val}};
+      if(Number(id)===myId)C.priv={...C.priv,settings:{...(C.priv.settings||{}),[key]:val}};
+      emit();
+      // v54.1: settings are private. They used to be written to users/$id/settings, which
+      // every signed-in account could read.
+      try{await set(R('userPrivate/'+id+'/settings/'+key),val)}
+      catch(e){console.error('setting save failed',key,e);throw e}
+    },
+    /* ----------------------------------------------------------------
+     * v54.9: SEVERAL scalar settings, atomically, WITHOUT touching their siblings.
+     *
+     * This exists because updateSettings() cannot safely be used for a partial patch.
+     * updateSettings builds `merged = {...C.users[id].settings, ...patch}` and then SETS
+     * userPrivate/$id/settings to it — but C.users[id].settings is the raw PUBLIC node
+     * (users/$id/settings), which v54.1 emptied when it moved settings to userPrivate, and
+     * getUser() computes the real merged object without writing it back. So for a caller that
+     * passes a few keys, `merged` is very nearly just the patch, and the write replaces the
+     * account's entire private settings blob with it.
+     *
+     * The settings pane gets away with it because its Save sends the whole object. Prefs.reset()
+     * and the v54.9 notification migration do not, and would have wiped everything else.
+     *
+     * A multi-path update() under the settings node is the right primitive regardless: the
+     * database merges, so siblings cannot be dropped no matter what the client cache believes,
+     * and the whole patch lands or none of it does.
+     * ---------------------------------------------------------------- */
+    /* ----------------------------------------------------------------
+     * v54.9: a setting EXACTLY AS STORED for my own account, with no defaults merged in.
+     *
+     * getUser().settings is a merge of defaultSettings() and what the account has saved, which
+     * is what almost everything wants — but it makes "stored" and "defaulted" indistinguishable.
+     * That broke the notification migration: defaultSettings() includes
+     * pings:{everyone:true,sound:true,desktop:true}, so ME.settings.pings exists for a brand-new
+     * account that has never had a legacy map, and a fallback reading it would conclude that
+     * every account wants desktop notifications.
+     *
+     * Reads the private blob first (where settings have lived since v54.1) and then the legacy
+     * public node, which is the same order getUser() merges them in. Returns undefined when the
+     * account genuinely has no stored value.
+     * ---------------------------------------------------------------- */
+    rawSetting(key){
+      try{
+        const priv=(C.priv&&C.priv.settings)||null;
+        if(priv&&priv[key]!==undefined&&priv[key]!==null)return priv[key];
+        const pub=(C.users[myId]&&C.users[myId].settings)||null;
+        if(pub&&pub[key]!==undefined&&pub[key]!==null)return pub[key];
+      }catch(_){}
+      return undefined;
+    },
+    async setSettingKeys(id,patch){
+      id=Number(id);
+      const keys=Object.keys(patch||{});
+      if(!keys.length)return;
+      const cur=C.users[id]||{};
+      C.users[id]={...cur,settings:{...(cur.settings||{}),...patch}};
+      if(Number(id)===myId)C.priv={...C.priv,settings:{...((C.priv&&C.priv.settings)||{}),...patch}};
+      emit();
+      try{await update(R('userPrivate/'+id+'/settings'),patch)}
+      catch(e){console.error('settings save failed',keys.join(','),e);throw e}
+    },
+    /* ---- Presence status (Discord's Online / Idle / Do Not Disturb / Invisible) ----
+       Written straight to the one field rather than through updateSettings, so changing your
+       status never re-uploads the whole style node (which can carry a banner). */
+    /* ----------------------------------------------------------------
+     * THE canonical status resolver (v54.8).
+     *
+     * Two facts decide somebody's status and they live in different places:
+     *   users/$id/style/status   what they CHOSE   (online | idle | dnd | invisible)
+     *   onlineUsers/$id          whether they are CONNECTED
+     *
+     * Before v54.8 this function only read the first, so an account that had never opened the
+     * status picker — which is everybody, since 'online' is the default — reported Online
+     * forever, whether or not it had been near the site for a month. Components that happened
+     * to check onlineUsers themselves got it right and components that asked this got it
+     * wrong, which is exactly the "online in one place, offline in another" the brief
+     * describes. Both facts are folded in here now, so there is one answer and every caller
+     * gets it.
+     *
+     * presenceIds is consulted alongside onlineIds because a room or DM has its own scoped
+     * presence node: somebody can be present in the conversation that is open while the
+     * account-level marker is momentarily missing (a reconnect in flight), and showing them as
+     * offline while their messages arrive would be the wrong answer.
+     *
+     * My own client is exempt from the connected test for the obvious reason, and is the only
+     * caller that can ever see 'invisible' — for everybody else it reads as offline, which is
+     * the entire point of the setting. */
+    statusOf(id){
+      id=Number(id);
+      const u=C.users[id];
+      const s=normStatus(u&&u.style&&u.style.status);
+      if(id===myId)return s;
+      if(s==='invisible')return 'offline';
+      const here=C.onlineIds.indexOf(id)>-1||C.presenceIds.indexOf(id)>-1;
+      return here?s:'offline';
+    },
+    /* What they CHOSE, ignoring whether they are connected. The status picker has to show the
+       option that is actually selected rather than 'offline', and auto-idle has to know whether
+       the person picked Do Not Disturb before deciding it may touch anything. */
+    chosenStatusOf(id){
+      const u=C.users[Number(id)];
+      return normStatus(u&&u.style&&u.style.status);
+    },
+    /* v54.8: an expired custom status stops being shown by EVERY client, not just by the one
+       that owns it. There is no server-side scheduler in this project (that would want a Cloud
+       Function, which it deliberately does not have), so the display rule is what makes expiry
+       actually work: the record may sit in the database for a few more minutes until its owner's
+       next sweep deletes it, and nobody sees it in the meantime. */
+    customStatusOf(id){
+      const u=C.users[Number(id)];
+      const st=u&&u.style;
+      if(!st)return '';
+      const until=Number(st.customStatusUntil||0);
+      if(until>0&&until<=Date.now())return '';
+      return String(st.customStatus||'');
+    },
+    /* When the current custom status runs out, or 0 for "never". Used by the editor to show the
+       term next to the text rather than leaving "why did this vanish" to be worked out. */
+    customStatusUntil(id){
+      const u=C.users[Number(id)];
+      const v=Number(u&&u.style&&u.style.customStatusUntil)||0;
+      return v>Date.now()?v:0;
+    },
+    /* ---- Display name (Discord's "display name", separate from the @username) ----
+       Public, so it lives in `style` with the avatar and the status. An empty value means
+       "no display name" and everything falls back to the username, which is why clearing one
+       is always allowed and why nothing stores an empty string. */
+    displayNameOf(id){
+      const u=C.users[Number(id)];
+      return String((u&&u.style&&u.style.displayName)||'');
+    },
+    normDisplayName(v){
+      return String(v||'')
+        .replace(/[\u0000-\u001f\u007f<>]/g,'')   // control chars and angle brackets never reach the DOM
+        .replace(/\s+/g,' ').trim().slice(0,32);
+    },
+    async setDisplayName(id,name){
+      id=Number(id);
+      name=this.normDisplayName(name);
+      const cur=C.users[id]||{};
+      const style={...(cur.style||{})};
+      if(name)style.displayName=name;else delete style.displayName;
+      C.users[id]={...cur,style};emit();
+      try{
+        // One field, written on its own - the whole-style write in updateSettings can carry a
+        // banner worth hundreds of KB, and renaming yourself should not re-upload that.
+        if(name)await set(R('users/'+id+'/style/displayName'),name);
+        else await remove(R('users/'+id+'/style/displayName'));
+      }catch(e){console.error('display name save failed',e);throw e}
+    },
+    async setStatus(id,status){
+      id=Number(id);status=normStatus(status);
+      const cur=C.users[id]||{};
+      C.users[id]={...cur,style:{...(cur.style||{}),status}};emit();
+      try{await set(R('users/'+id+'/style/status'),status)}
+      catch(e){console.error('status save failed',e);throw e}
+    },
+    /* v54.8: `untilMs` added, additively.
+         0 / omitted  -> never expires, which is what every existing caller gets and so is
+                         exactly the old behaviour
+         a timestamp  -> cleared at that moment (30 min / 1 h / 4 h / today, per section 5.3)
+       The two fields are written in ONE multi-path update rather than two sequential writes, so
+       there is no instant in which the text exists with the previous term attached to it — that
+       window is how a "for 30 minutes" status ends up permanent.
+       The text is sanitised here as well as validated by the rules: < and > are stripped so no
+       client can ever be handed markup, whatever any future renderer forgets to escape. */
+    async setCustomStatus(id,text,untilMs){
+      id=Number(id);
+      text=String(text||'').replace(/[\u0000-\u001f\u007f<>]/g,'').trim().slice(0,128);
+      let until=Number(untilMs)||0;
+      if(!(until>Date.now()))until=0;                 // in the past or nonsense: treat as "never"
+      if(until>Date.now()+400*24*3600*1000)until=0;   // absurdly far: ignore the term
+      const cur=C.users[id]||{};
+      const style={...(cur.style||{})};
+      if(text)style.customStatus=text;else delete style.customStatus;
+      if(text&&until)style.customStatusUntil=until;else delete style.customStatusUntil;
+      C.users[id]={...cur,style};emit('presence');
+      try{
+        await update(R('users/'+id+'/style'),{
+          customStatus:text?text:null,
+          customStatusUntil:(text&&until)?until:null
+        });
+      }catch(e){console.error('custom status save failed',e);throw e}
+    },
+    async updateSettings(id,patch){
+      const cur=C.users[id]||{};
+      patch={...patch};delete patch.hwTheme;   // hwTheme is only written by setSettingKey (Halloween toggle); a stale snapshot must not overwrite it
+      /* v54.9: merge onto the EFFECTIVE settings.
+         This used to be `{...(cur.settings||{}), ...patch}`, and cur.settings is the raw PUBLIC
+         users/$id/settings node — which v54.1 emptied when it moved settings to userPrivate, and
+         which getUser() never writes its merge back into. So for anything other than the
+         settings pane's whole-object Save, the base was very nearly empty and this write
+         replaced the account's entire private settings blob with the patch.
+         `base` is now what the account actually has. For a partial patch prefer
+         setSettingKeys() anyway: it is a database-level merge and cannot drop a sibling even if
+         this cache is wrong. */
+      let base=cur.settings||{};
+      try{
+        const eff=this.getUser(id);
+        if(eff&&eff.settings&&Object.keys(eff.settings).length>=Object.keys(base).length)base=eff.settings;
+      }catch(_){}
+      const merged={...base,...patch};
+      // Avatar lives only in the public `style` node, never in `settings` (it's
+      // deliberately stripped out below before every settings save) — so it can
+      // NEVER be read back via merged.avatar. Reading it from there always came
+      // back undefined and fell through to '', which meant every settings save
+      // that wasn't itself changing the avatar (e.g. just picking a banner color)
+      // silently wiped the person's profile picture. Carry the real current
+      // avatar forward from style unless this patch is explicitly changing it.
+      const avatar=('avatar' in patch)?(patch.avatar||''):((cur.style&&cur.style.avatar)||'');
+      // Pronouns are public (everyone sees them on your profile card), so like the avatar they live in the
+      // `style` node and never in the private `settings` blob. Carried forward unless this patch changes them.
+      const pronouns=('pronouns' in patch)?String(patch.pronouns||'').replace(/[\u0000-\u001f\u007f<>]/g,'').replace(/\s+/g,' ').trim().slice(0,30):String((cur.style&&cur.style.pronouns)||'');
+      delete merged.pronouns;
+      // Profile description is public too, so it lives in `style` like pronouns. Carried forward unless this patch changes it.
+      const description=('description' in patch)?String(patch.description||'').replace(/[\u0000-\u0009\u000b-\u001f\u007f<>]/g,'').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim().slice(0,descMaxFor(id)):String((cur.style&&cur.style.description)||'');
+      delete merged.description;
+      // MVP image banner: public like the avatar, so it lives in `style`. Only MVPs can set one; clearing is always allowed.
+      const banner=('banner' in patch)?((patch.banner&&hasMvpPerks(id)&&isSafeBannerImg(patch.banner))?patch.banner:''):String((cur.style&&cur.style.banner)||'');
+      delete merged.banner;
+      // TAG-VISIBILITY: hidden tags are public too (everyone's client needs them), so they live in `style` like pronouns.
+      const hiddenTags=('hiddenTags' in patch)?String(patch.hiddenTags||'').split(',').filter((t,i,a)=>HIDEABLE_TAGS.indexOf(t)!==-1&&a.indexOf(t)===i).join(','):String((cur.style&&cur.style.hiddenTags)||'');
+      delete merged.hiddenTags;
+      /* Presence status is public, so it lives in `style` with the avatar and pronouns. This
+         write replaces the whole style node, so it MUST be carried forward - otherwise saving
+         any unrelated setting would silently reset you to Online and wipe your custom status,
+         which is the same trap the avatar fell into above. */
+      const status=('status' in patch)?normStatus(patch.status):normStatus(cur.style&&cur.style.status);
+      delete merged.status;
+      const customStatus=('customStatus' in patch)
+        ?String(patch.customStatus||'').replace(/[\u0000-\u001f\u007f<>]/g,'').trim().slice(0,128)
+        :String((cur.style&&cur.style.customStatus)||'');
+      delete merged.customStatus;
+      /* Display name is public and lives in `style` too, so it has to be carried forward for
+         exactly the same reason the avatar and the status do: this write replaces the whole
+         node, and without this line saving any unrelated setting would wipe it. */
+      const displayName=('displayName' in patch)
+        ?this.normDisplayName(patch.displayName)
+        :String((cur.style&&cur.style.displayName)||'');
+      delete merged.displayName;
+      const style={bubble:merged.meBubble||'#7c6cff',text:merged.meText||'#ffffff',radius:Number(merged.radius)||16,avatar};
+      /* v54.5: the three v54 profile fields have to be carried forward too.
+         accent, theme and deco are written as individual children by Settings -> Profiles
+         (js/settings/settings-plus.js writes users/$id/style/accent and friends directly),
+         but THIS write replaces the whole style node. They were never added to the
+         carry-forward list the avatar, status and display name already had, so saving any
+         unrelated setting - pronouns, a description, a banner colour, removing an avatar,
+         hiding a tag - silently wiped the person's profile colour, profile theme and avatar
+         decoration. Exactly the trap described above the avatar line, one node along.
+         Each is validated the same way it is on the way in, so a junk value that somehow
+         reached the cache is dropped here rather than written back.
+
+         The two catalogue lookups go through a try: profile-data.js is loaded AFTER this file
+         (js/manifest.js), so its consts are only reachable once everything has evaluated.
+         Anything unreadable falls back to "keep whatever is already there", which is the safe
+         direction - the field is being preserved here, not set. */
+      const curStyle=cur.style||{};
+      /* The map is reached through a thunk so the identifier is only touched INSIDE the try -
+         naming it in the argument list would evaluate it first and defeat the guard. */
+      const known=(getMap,v)=>{try{return !!getMap()[v]}catch(_){return true}};
+      const keepAccent=('accent' in patch)?patch.accent:curStyle.accent;
+      if(/^#[0-9a-fA-F]{3,8}$/.test(String(keepAccent||'')))style.accent=String(keepAccent);
+      const keepTheme=('theme' in patch)?patch.theme:curStyle.theme;
+      if(keepTheme&&known(()=>THEME_BY_ID,String(keepTheme)))style.theme=String(keepTheme);
+      const keepDeco=('deco' in patch)?patch.deco:curStyle.deco;
+      if(keepDeco&&known(()=>DECO_BY_ID,String(keepDeco)))style.deco=String(keepDeco);
+      /* v54.4: the banner COLOUR is public now.
+         It has always lived in `settings`, which userView only merges for your OWN account - so
+         everybody else's banner fell back to their bubble colour and nobody had ever seen
+         anyone else's chosen banner. Mirroring it into `style` is the same thing `bubble`,
+         `text` and `avatar` already do. Named `bnc` because `style.banner` is the MVP banner
+         IMAGE, which is a different thing. Anything that is not a plain hex colour is dropped
+         rather than sent, because the rules would refuse it and take the whole save with it. */
+      const bnc=String(merged.bannerColor||'');
+      if(/^#[0-9a-fA-F]{3,8}$/.test(bnc))style.bnc=bnc;
+      if(displayName)style.displayName=displayName;
+      if(pronouns)style.pronouns=pronouns;
+      if(description)style.description=description;
+      if(banner)style.banner=banner;
+      if(status&&status!=='online')style.status=status;   // online is the default; no need to store it
+      if(customStatus)style.customStatus=customStatus;
+      if(hiddenTags)style.hiddenTags=hiddenTags;       // empty = field omitted, so nothing changes for people who don't use it
+      C.users[id]={...cur,settings:merged,style};
+      if(Number(id)===myId)C.priv={...C.priv,settings:merged};
+      emit();
+      // avatar lives in the public `style` node (above), not `settings` (which is
+      // private and rules-limited to short values) — strip it before that write.
+      const settingsToSave={...merged};delete settingsToSave.avatar;
+      try{
+        // public style first (tiny, everyone reads it), then the private settings blob.
+        // v54.1: the blob goes to userPrivate/$id/settings. It was in users/$id/settings,
+        // where the old users/.read grant let every signed-in account read it.
+        await set(R(`users/${id}/style`),style);
+        await set(R(`userPrivate/${id}/settings`),settingsToSave);
+      }catch(e){console.error('settings save failed',e);toast('Could not save settings ('+(e.code||e.message)+')','bad');throw e}
+    },
+    // Only writes when there is genuinely something newer than what's already marked read.
+    // (Without this guard: render -> markRead -> lastRead listener echo -> render -> markRead ... forever.)
+    markRead(uid,key){
+      const msgs=C.messages[key]||[];
+      const newest=msgs.length?Math.max(...msgs.map(m=>Number(m.at)||0)):0;
+      const have=C.lastRead[key]||0;
+      if(newest<=have)return;
+      C.lastRead[key]=newest;
+      set(R(`lastRead/${uid}/${key}`),newest).catch(()=>{});
+    },
+
+    /* --- Friends --- */
+    friends:id=>C.friends[id]||[],
+    // Only requests that can actually be acted on: ignore stale ones from deleted/blocked accounts,
+    // people who are already friends, or myself - otherwise a ghost request keeps a badge lit that
+    // can never be cleared because it never shows up in the Friends list.
+    incoming:me=>Object.keys(C.friendReqIn||{}).map(Number).filter(from=>{
+      if(from===me)return false;
+      const u=C.users[from];if(u&&u.deleted)return false;
+      if((C.blocked[me]||[]).includes(from)||(C.blockedBy[me]||[]).includes(from))return false;
+      return true;
+    }).map(from=>({from,to:me,status:'pending',at:(C.friendReqIn[from]||{}).at})),
+    outgoing:me=>(C.friendReqOut[me]||[]),
+    async friendReq(from,toUsername){
+      let to=C.usernames[toUsername.toLowerCase()];
+      if(to===undefined){
+        // cache may be stale; ask the server directly
+        const s=await get(R('usernames/'+toUsername.toLowerCase()));
+        if(s.exists())to=s.val();
+      }
+      return this.friendReqById(from,to);
+    },
+    async friendReqById(from,to){
+      to=Number(to);
+      if(!to||Number.isNaN(to))throw new Error('No user with that username.');
+      if(to===from)throw new Error("You can't add yourself.");
+      if((C.blocked[from]||[]).includes(to)||(C.blockedBy[from]||[]).includes(to))throw new Error("You can't add this user.");
+      if((C.friends[from]||[]).includes(to))throw new Error('Already friends.');
+      // they already asked me -> just accept
+      if(C.friendReqIn[to]){await this.acceptFriend(from,to);return 'accepted'}
+      if((C.friendReqOut[from]||[]).some(r=>r.to===to))throw new Error('Request already sent.');
+      try{
+        await set(R(`friendRequests/${to}/${from}`),{at:Date.now()});
+        await set(R(`sentRequests/${from}/${to}`),true);
+      }catch(e){
+        await remove(R(`friendRequests/${to}/${from}`)).catch(()=>{});
+        throw new Error('Could not send request ('+(e.code||e.message)+')');
+      }
+      // local echo so the button flips to "Requested" instantly (dedupe: a fast
+      // double-click can otherwise get this far twice before the cache updates
+      // and would double up the entry even though only one request exists server-side)
+      const existing=C.friendReqOut[from]||[];
+      if(!existing.some(r=>r.to===to))C.friendReqOut[from]=[...existing,{from,to,status:'pending'}];
+      emit();
+      return 'sent';
+    },
+    async acceptFriend(me,other){
+      // Order matters for the rules:
+      //  1) my side of the friendship          (I own friends/me/*)
+      //  2) their side                         (allowed only while their request to me still exists)
+      //  3) my DM membership                   (I can only write my own dmMembers entry)
+      //  4) clear the request + sent marker
+      const key=dmKey(me,other);
+      try{
+        await set(R(`friends/${me}/${other}`),true);
+        await set(R(`friends/${other}/${me}`),true);
+        await set(R(`dmMembers/${key}/${me}`),true);
+      }catch(e){
+        console.error('acceptFriend failed',e);
+        throw new Error('Could not accept request ('+(e.code||e.message)+')');
+      }
+      await remove(R(`friendRequests/${me}/${other}`)).catch(()=>{});
+      await remove(R(`sentRequests/${other}/${me}`)).catch(()=>{});
+      C.friends[me]=[...new Set([...(C.friends[me]||[]),other])];
+      delete C.friendReqIn[other];
+      (C.dmMembers[key]=C.dmMembers[key]||{})[me]=true;
+      watchPreview(key);emit();
+      // the other person's client writes THEIR dmMembers entry when it sees the friendship (ensureDmMemberships)
+    },
+    async declineFriend(me,other){
+      await remove(R(`friendRequests/${me}/${other}`));
+      await remove(R(`sentRequests/${other}/${me}`)).catch(()=>{});
+      delete C.friendReqIn[other];emit();
+    },
+    async cancelReq(me,other){
+      await remove(R(`friendRequests/${other}/${me}`));
+      await remove(R(`sentRequests/${me}/${other}`)).catch(()=>{});
+      C.friendReqOut[me]=(C.friendReqOut[me]||[]).filter(r=>r.to!==other);emit();
+    },
+    /* ==================================================================
+     *  MESSAGE REQUESTS  (v54.5)
+     *
+     *  Messaging somebody you are not friends with raises a request they accept or decline.
+     *  Friends skip all of it - there is nothing to accept between people who already added
+     *  each other, which is the whole point of having added each other.
+     *
+     *  WHAT DECIDES THE STATE OF A CONVERSATION
+     *    friends                      -> open, always
+     *    they wrote dmMembers/$key/$them -> open; that is what accepting does
+     *    neither, and I sent first    -> outgoing, waiting on them
+     *    neither, and they sent first -> incoming request, in my inbox
+     *
+     *  There is no "accepted" flag anywhere: being a dmMember IS the acceptance, because it
+     *  is exactly what the message rules check. One source of truth, and it cannot drift
+     *  from what the database will actually let you read.
+     * ================================================================== */
+
+    /* Everyone who has asked to message me and has not been dealt with, newest first.
+       Rows I ignored are left in the database (the rules read them to keep that person from
+       asking again) and filtered out here. */
+    dmRequestsIn(){
+      const me=myId;if(me==null)return [];
+      const out=[];
+      Object.keys(C.dmReqIn||{}).forEach(k=>{
+        const from=Number(k),r=C.dmReqIn[k];
+        if(!r||r.ignored===true||!Number.isFinite(from)||from===me)return;
+        if((C.friends[me]||[]).includes(from))return;            // friends need no request
+        if((C.blocked[me]||[]).includes(from))return;
+        if((C.blockedBy[me]||[]).includes(from))return;
+        if((C.users[from]||{}).deleted)return;
+        out.push({from,at:Number(r.at)||0,msg:typeof r.msg==='string'?r.msg:''});
+      });
+      return out.sort((a,b)=>b.at-a.at);
+    },
+    dmRequestCount(){return DB.dmRequestsIn().length},
+    hasDmRequestFrom(id){return DB.dmRequestsIn().some(r=>r.from===Number(id))},
+    /* True when I have ignored this person's request. Only I can know this. */
+    dmIgnored(id){const r=(C.dmReqIn||{})[String(Number(id))];return !!(r&&r.ignored===true)},
+
+    /* Is the conversation with this person open - can we both read it?
+       BOTH dmMembers rows have to be there, not just theirs. Only mine decides what I am
+       allowed to read (that is literally what the message rules check) and only theirs
+       decides whether they have accepted, so a one-sided answer is wrong from one end or the
+       other: checking theirs alone told a recipient that an unaccepted request was already an
+       open conversation, because the sender's row is the first thing a request writes.
+       Friends short-circuit: the rows follow from ensureDmMemberships either way. */
+    dmOpenWith(id){
+      const me=myId;if(me==null)return false;
+      id=Number(id);
+      if((C.friends[me]||[]).includes(id))return true;
+      const m=C.dmMembers[dmKey(me,id)];
+      return !!(m&&m[me]&&m[id]);
+    },
+    /* I have messaged them and they have not accepted yet. */
+    dmPendingWith(id){
+      const me=myId;if(me==null)return false;
+      id=Number(id);
+      if(DB.dmOpenWith(id))return false;
+      const m=C.dmMembers[dmKey(me,id)];
+      return !!(m&&m[me]);
+    },
+
+    /* Start, or continue, a conversation with somebody who is not a friend.
+       Writes my own dmMembers row (which the rules have always allowed, for any key carrying
+       my id) so I can send, then raises the request on their side.
+
+       The request write is allowed to fail softly: they may have ignored me, in which case
+       the rules refuse it and SHOULD. The message still goes into the conversation, exactly
+       as it does when somebody keeps typing into a request that was never accepted - it is
+       simply never shown to them. Telling the sender "you have been ignored" is the one
+       thing a decline must not do. */
+    async openDmRequest(to,preview){
+      const me=myId;
+      if(me==null)throw new Error('Sign in first.');
+      to=Number(to);
+      if(!to||Number.isNaN(to))throw new Error('No such user.');
+      if(to===me)throw new Error('You cannot message yourself.');
+      if((C.blocked[me]||[]).includes(to)||(C.blockedBy[me]||[]).includes(to))
+        throw new Error("You can't message this user.");
+      if((C.users[to]||{}).deleted)throw new Error('That account was deleted.');
+      const key=dmKey(me,to);
+      if(!(C.dmMembers[key]&&C.dmMembers[key][me])){
+        await set(R(`dmMembers/${key}/${me}`),true);
+        (C.dmMembers[key]=C.dmMembers[key]||{})[me]=true;
+      }
+      watchPreview(key);
+      /* They asked ME first and I am replying: replying IS accepting, so clear their request
+         out of my inbox instead of raising a competing one back at them. */
+      if((C.dmReqIn||{})[String(to)]&&C.dmReqIn[String(to)].ignored!==true){
+        try{await remove(R(`dmRequests/${me}/${to}`))}catch(_){}
+        delete C.dmReqIn[String(to)];
+        emit();
+        return key;
+      }
+      if(!DB.dmOpenWith(to)){
+        const rec={at:Date.now()+SKEW};
+        const p=String(preview||'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,200);
+        if(p)rec.msg=p;
+        try{await set(R(`dmRequests/${to}/${me}`),rec)}
+        catch(e){console.info('[dm] request not raised',e&&e.code)}
+      }
+      emit();
+      return key;
+    },
+
+    /* Accept: write my dmMembers row - that is what unlocks reading and replying - and then
+       clear the request. The order matters; a failure after the first step leaves a readable
+       conversation and a stale request row, which the next accept tidies. */
+    async acceptDmRequest(from){
+      const me=myId;if(me==null)throw new Error('Sign in first.');
+      from=Number(from);
+      const key=dmKey(me,from);
+      await set(R(`dmMembers/${key}/${me}`),true);
+      (C.dmMembers[key]=C.dmMembers[key]||{})[me]=true;
+      try{await remove(R(`dmRequests/${me}/${from}`))}catch(_){}
+      delete C.dmReqIn[String(from)];
+      watchPreview(key);emit();
+      return key;
+    },
+
+    /* Decline: keep the row and mark it ignored, rather than deleting it. The marker is what
+       the rules consult to refuse a second request from the same person, so deleting the row
+       would turn "decline" into "decline until they try again". `at` is carried because the
+       node validates that every row has one.
+       Nothing is written on the sender's side and nothing is sent to them: as far as their
+       client can tell, the message simply has not been answered. */
+    async declineDmRequest(from){
+      const me=myId;if(me==null)throw new Error('Sign in first.');
+      from=Number(from);
+      const cur=(C.dmReqIn||{})[String(from)]||{};
+      const rec={at:Number(cur.at)||(Date.now()+SKEW),ignored:true};
+      await set(R(`dmRequests/${me}/${from}`),rec);
+      C.dmReqIn[String(from)]=rec;
+      emit();
+    },
+
+    /* Un-ignore somebody, so they can reach me again. Nothing in the UI calls this yet; it
+       exists so "ignored" is a reversible state rather than a permanent one, and so the
+       marker never becomes a thing only a database edit can clear. */
+    async unignoreDm(from){
+      const me=myId;if(me==null)return;
+      from=Number(from);
+      try{await remove(R(`dmRequests/${me}/${from}`))}catch(_){}
+      delete C.dmReqIn[String(from)];
+      emit();
+    },
+
+    async removeFriend(me,other){
+      me=Number(me);other=Number(other);
+      const before=(C.friends[me]||[]).slice();
+      // optimistic: drop them from my list immediately so the UI never looks stuck
+      C.friends[me]=before.filter(x=>x!==other);
+      delete C.friendReqIn[other];
+      emit();
+      // my side first (I own friends/me/*) - this is the one that must succeed
+      try{await remove(R(`friends/${me}/${other}`))}
+      catch(e){
+        console.error('removeFriend failed',e);
+        C.friends[me]=before;emit();   // roll back so the list matches the server
+        throw new Error('Could not remove friend ('+(e.code||e.message)+')');
+      }
+      // their side too, awaited, so they stop seeing me as a friend (rules may refuse this - then they can remove me themselves)
+      let both=true;
+      try{await remove(R(`friends/${other}/${me}`))}catch(e){both=false;console.warn('could not clear their side of the friendship',e&&e.code)}
+      // clear any leftover request markers either way, so the two of you can re-add each other cleanly
+      await Promise.all([
+        remove(R(`friendRequests/${me}/${other}`)).catch(()=>{}),
+        remove(R(`sentRequests/${other}/${me}`)).catch(()=>{}),
+        remove(R(`friendRequests/${other}/${me}`)).catch(()=>{}),
+        remove(R(`sentRequests/${me}/${other}`)).catch(()=>{})
+      ]);
+      C.friendReqOut[me]=(C.friendReqOut[me]||[]).filter(r=>r.to!==other);
+      emit();
+      return{both};
+    },
+    isFriend:(me,other)=>(C.friends[me]||[]).includes(other),
+    /* --- Blocking ---
+       blocked/$me/$other = true    (people I blocked; only I can read/write my own list)
+       blockedBy/$other/$me = true  (mirror, written by me at the same time, so $other's
+       client can see I blocked them and hide my messages/requests without ever reading my list) */
+    blockedList:me=>C.blocked[me]||[],
+    isBlocked:(me,other)=>(C.blocked[me]||[]).includes(other),      // I blocked them
+    isBlockedBy:(me,other)=>(C.blockedBy[me]||[]).includes(other),  // they blocked me
+    async blockUser(me,other){
+      other=Number(other);
+      if(other===me)throw new Error("You can't block yourself.");
+      try{
+        await set(R(`blocked/${me}/${other}`),true);
+        await set(R(`blockedBy/${other}/${me}`),true);
+      }catch(e){throw new Error('Could not block ('+(e.code||e.message)+')')}
+      C.blocked[me]=[...new Set([...(C.blocked[me]||[]),other])];emit();
+      // Blocking also ends any friendship/pending requests between the two of you.
+      if((C.friends[me]||[]).includes(other))await this.removeFriend(me,other).catch(()=>{});
+      await remove(R(`friendRequests/${me}/${other}`)).catch(()=>{});
+      await remove(R(`friendRequests/${other}/${me}`)).catch(()=>{});
+      await remove(R(`sentRequests/${me}/${other}`)).catch(()=>{});
+      await remove(R(`sentRequests/${other}/${me}`)).catch(()=>{});
+      delete C.friendReqIn[other];
+      C.friendReqOut[me]=(C.friendReqOut[me]||[]).filter(r=>r.to!==other);emit();
+    },
+    async unblockUser(me,other){
+      other=Number(other);
+      try{
+        await remove(R(`blocked/${me}/${other}`));
+        await remove(R(`blockedBy/${other}/${me}`)).catch(()=>{});
+      }catch(e){throw new Error('Could not unblock ('+(e.code||e.message)+')')}
+      C.blocked[me]=(C.blocked[me]||[]).filter(x=>x!==other);emit();
+    },
+    hasIncoming:from=>!!C.friendReqIn[from],
+    hasOutgoing:(me,to)=>(C.friendReqOut[me]||[]).some(r=>r.to===to),
+
+    /* --- Rooms --- */
+    async createRoom(owner,name){
+      name=name.trim();
+      if(!name||name.length>30)throw new Error('Room name must be 1-30 characters.');
+      const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const mkCode=()=>Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b=>chars[b%32]).join('');
+      const id=push(R('rooms')).key;
+      // 1) claim a unique join code (roomCodes rule: write only if it doesn't already exist)
+      let code=null;
+      for(let i=0;i<6&&!code;i++){
+        const c=mkCode();
+        try{await set(R('roomCodes/'+c),id);code=c}catch(e){if(e.code!=='PERMISSION_DENIED')throw e}
+      }
+      if(!code)throw new Error('Could not generate a room code. Try again.');
+      const room={name,ownerId:owner,code};
+      try{
+        // 2) room record (new room => anyone signed in may create it; ownerId must be me)
+        await set(R('rooms/'+id),room);
+        // 3) my membership + my personal room index
+        await set(R('roomMembers/'+id+'/'+owner),true);
+        await set(R('userRooms/'+owner+'/'+id),true);
+      }catch(e){
+        await remove(R('rooms/'+id)).catch(()=>{});
+        console.error('createRoom failed',e);
+        throw new Error('Could not create room ('+(e.code||e.message)+'). Make sure the latest database rules are published.');
+      }
+      C.rooms[id]=room;C.roomMembers[id]={[owner]:true};
+      if(!C.myRoomIds.includes(id))C.myRoomIds=[...C.myRoomIds,id];
+      watchRoom(id);emit();
+      return{id,name,code,ownerId:owner};
+    },
+    async joinRoom(uid,code){
+      code=code.trim().toUpperCase();
+      if(!/^[A-Z0-9]{6}$/.test(code))throw new Error('Room codes are 6 letters/numbers.');
+      const id=(await get(R('roomCodes/'+code))).val();
+      if(!id)throw new Error('No room with that code.');
+      await set(R(`roomMembers/${id}/${uid}`),true);
+      await set(R('userRooms/'+uid+'/'+id),true);
+      if(!C.myRoomIds.includes(id))C.myRoomIds=[...C.myRoomIds,id];
+      watchRoom(id);fetchRoomIfMissing(id);emit();
+      return{id};
+    },
+    async leaveRoom(uid,id){
+      await remove(R(`roomMembers/${id}/${uid}`));
+      await remove(R(`userRooms/${uid}/${id}`)).catch(()=>{});
+      C.myRoomIds=C.myRoomIds.filter(x=>x!==id);emit();
+    },
+    myRooms:uid=>C.myRoomIds.filter(id=>C.rooms[id]).map(id=>({id,...C.rooms[id],type:'private',members:Object.keys(C.roomMembers[id]||{}).map(Number)})),
+    async leaveRoom(me,roomId){
+      try{
+        await remove(R(`roomMembers/${roomId}/${me}`));
+        await remove(R(`userRooms/${me}/${roomId}`)).catch(()=>{});
+      }catch(e){throw new Error('Could not leave room ('+(e.code||e.message)+')')}
+      C.myRoomIds=(C.myRoomIds||[]).filter(id=>id!==roomId);emit();
+      // If that was the last member, clean up the room itself. This can fail silently if the
+      // rules on this project haven't been updated to allow deleting an empty room — the room
+      // just sits there unused until an owner deletes it, which is harmless.
+      try{
+        const snap=await get(R(`roomMembers/${roomId}`));
+        if(!snap.exists()){
+          await remove(R(`rooms/${roomId}`)).catch(()=>{});
+          await remove(R(`roomMembers/${roomId}`)).catch(()=>{});
+        }
+      }catch(_){}
+    },
+    // Finds every message by a user ID, across every conversation the CURRENT
+    // user (the owner running this) can actually read: global chat, rooms the
+    // owner is a member of, and DMs the owner is a member of (their friends'
+    // DMs). Rules give clients no way to see conversations they're not part
+    // of — even for owners — so this can't reach every conversation on the
+    // whole server; only what this owner's own account has access to. Banning
+    // also makes the banned account's own client delete its own messages
+    // everywhere it can see (see purgeUserMessages), so no admin script is needed.
+    async searchUserMessages(userId){
+      userId=Number(userId);
+      const keys=['global','announcements','shitpost',...C.myRoomIds.filter(id=>C.rooms[id]),
+        /* Non-friend DMs count too since v54.5 - a message request is still a message. */
+        ...DB.dmPartners(myId).map(f=>dmKey(myId,f))];
+      const results=[];
+      await Promise.all(keys.map(async key=>{
+        try{
+          const snap=await get(R('messages/'+key));
+          const val=snap.val();if(!val)return;
+          Object.entries(val).forEach(([mid,msg])=>{
+            if(Number(msg.senderId)===userId){
+              results.push({id:mid,key,at:msg.at,text:msg.text||'',images:msg.images||[],files:msg.files||[]});
+            }
+          });
+        }catch(_){/* not readable by this account — skip */}
+      }));
+      results.sort((a,b)=>b.at-a.at);
+      return results;
+    },
+    getRoom:id=>{
+      if(!C.rooms[id]){fetchRoomIfMissing(id);return undefined}
+      return{id,...C.rooms[id],members:Object.keys(C.roomMembers[id]||{}).map(Number)};
+    },
+
+    /* --- Messages --- */
+    /* Anti-raid: if an account fires NUKE_MSGS messages inside NUKE_WINDOW_MS on THIS
+       client, we ban them client-side as a first line of defense (a modified/hostile
+       client can skip this, which is why the 1.5s floor below is also enforced by the
+       database rules themselves — that part can't be bypassed by any client).
+       Banning no longer signs the user out or wipes their local session: they stay
+       logged in (so they can't ban-evade by making a fresh account) but every write
+       the rules protect (sending messages, changing settings, etc.) is rejected. */
+    _sendTimes:[],
+    async antiNuke(id){
+      if(!ownersKnown()||!MODS_LOADED||!ADMINS_LOADED)return; // owners/ or mods/ hasn't loaded yet this session —
+      // isOwner()/isMod() could give a false negative for a real owner/mod right now, so
+      // refuse to auto-ban anyone until we actually know who they are. A few extra fast
+      // messages getting through for one beat is far safer than wrongly banning someone.
+      if(isOwner(id)||isAdmin(id)||isMod(id))return; // owners, admins and mods are never auto-banned by the client-side spam heuristic
+      if(DB._nuking)return;DB._nuking=true;
+      try{await DB.banUser(id)}catch(e){console.warn('anti-nuke ban failed',e)}
+      DB._nuking=false;
+    },
+    /* --- Owner / mod moderation --- */
+    isOwner(id){return isOwner(id)},
+    isMod(id){return isMod(id)},
+    isAdmin(id){return isAdmin(id)},
+    async banUser(id){
+      if(!isOwner(myId)&&!isAdmin(myId))throw new Error('Only owners and admins can ban.');
+      if(isOwner(id))throw new Error('Owners cannot be banned.');
+      if(!isOwner(myId)&&isAdmin(id))throw new Error('Admins cannot ban other admins.');
+      await set(R('banned/'+id),true);
+      try{if(typeof tosIpBanUser==='function')tosIpBanUser(id).catch(e=>{console.warn('ip ban failed',e&&e.code||e);try{toast('Account banned, but the IP ban did NOT go through: '+((e&&e.message)==='Failed to fetch'?'the server (/api) is unreachable.':((e&&e.message)||'unknown error')),'bad')}catch(_){}})}catch(_){}   // banned accounts are IP-banned too (if they accepted the TOS)
+      C.banned[id]=true;checkBanLock(myId,C.banned); // update local state immediately; don't wait on the listener round-trip
+      await update(R('users/'+id),{deleted:true,username:'Deleted User'});
+      // Deliberately NOT freeing usernames/$oldKey or usernameLogin/$oldKey here:
+      // a banned account's old username stays permanently reserved (still pointing
+      // at this now-deleted id) so nobody else can ever sign up or rename into it.
+      await remove(R('onlineUsers/'+id)).catch(()=>{});
+      // Cascade-delete this user's messages everywhere THIS owner can reach (global, VIP,
+      // announcements, my rooms/DMs). The banned account's own client wipes the rest
+      // (its own rooms/DMs) the next time it is open — see purgeUserMessages().
+      DB.purgeUserMessages(id).catch(e=>console.warn('ban cleanup failed',e));
+    },
+    // Deletes every message by `userId` in all chats the CURRENT account can read.
+    // Works for an owner (deleting someone else's) and for the banned account itself
+    // (the rules let a sender delete their own messages, banned or not).
+    async purgeUserMessages(userId){
+      userId=Number(userId);
+      const keys=[CFG.GLOBAL_ROOM,'announcements','shitpost'];
+      if(isOwner(myId)||DB.vipInfo(myId))keys.push(CFG.VIP_ROOM);
+      if(mvpAccess(myId))keys.push(CFG.MVP_ROOM);
+      (C.myRoomIds||[]).filter(r=>C.rooms[r]).forEach(r=>keys.push(r));
+      DB.dmPartners(myId).forEach(f=>keys.push(dmKey(myId,f)));   // includes non-friend DMs
+      const items=[];
+      await Promise.all([...new Set(keys)].map(async key=>{
+        let snap=null;
+        try{snap=await get(query(R('messages/'+key),orderByChild('senderId'),equalTo(userId)))}
+        catch(_){try{snap=await get(R('messages/'+key))}catch(__){return}}   // not indexed / not readable
+        snap.forEach(c=>{const v=c.val();if(v&&Number(v.senderId)===userId)items.push({key,id:c.key})});
+      }));
+      return items.length?DB.deleteMessagesBulk(items):{ok:0,fail:0};
+    },
+    async unbanUser(id){
+      // Owners and admins can both unban. An admin may not touch an owner or another admin —
+      // the same limit that applies to banning — and the database rules enforce it again server-side.
+      if(!isOwner(myId)&&!isAdmin(myId))throw new Error('Only owners and admins can unban.');
+      if(!isOwner(myId)&&(isOwner(id)||isAdmin(id)))throw new Error('Admins can\'t unban owners or other admins.');
+      // An unban is now an EXPLICIT record (banned/$id = false) instead of the flag simply vanishing.
+      // A missing flag is what a client sees before banned/ has loaded, so "missing" must never be
+      // read as "unbanned" — that misreading is what silently un-froze banned accounts.
+      await set(R('banned/'+id),false);
+      C.banned[id]=false;checkBanLock(myId,C.banned); // update local state immediately; don't wait on the listener round-trip
+      /* Lift the IP ban in the same breath. This used to be fire-and-forget with the error
+         swallowed, so an unban that left the network blocked looked completely successful and the
+         account still couldn't chat. Now it's awaited and the outcome is reported back to the
+         caller, which surfaces it in Settings. It is still never fatal: the account unban has
+         already landed either way. Note the server only clears IP bans recorded against THIS
+         account — a network banned by hand stays banned, which is deliberate. */
+      let ip={tried:false,ok:false,changed:0,error:''};
+      if(typeof tosIpUnbanUser==='function'){
+        ip.tried=true;
+        try{
+          const r=await tosIpUnbanUser(id);
+          ip.ok=!!(r&&r.ok!==false);
+          ip.changed=Number(r&&r.changed)||0;
+        }catch(e){ip.error=(e&&(e.message||e.code))||'failed'}
+      }
+      DB._lastUnbanIp=ip;
+      // Restore the profile right now (new username, un-delete). Only an OWNER can do this part —
+      // the rules deliberately keep "write someone else's username" to owners — so for an admin's
+      // unban this returns null and the account repairs itself on its own next sign-in instead
+      // (restoreBannedAccount). Either way the unban itself has already landed.
+      try{return await DB.ownerRestoreUnbanned(id)}catch(e){console.warn('owner restore skipped:',e&&(e.code||e.message))}
+      // NOTE: this is deliberately all an owner CAN do here. users/$id only lets an owner
+      // write it in the exact "ban" shape (deleted:true, username:'Deleted User') — there's
+      // no rule letting an owner set someone else's username or clear their `deleted` flag,
+      // since that would mean owners could rename/impersonate other accounts at will. So
+      // unban alone used to leave the account stuck showing "Deleted User" forever, with
+      // their old username permanently reserved and unusable by anyone. The actual profile
+      // repair (new generated username, old name freed) has to be done by that account's
+      // OWN auth the next time they sign back in — see restoreBannedAccount() below, which
+      // fires automatically on their client once banned/$id is gone.
+    },
+    async ownerRestoreUnbanned(id){
+      id=Number(id);if(!isOwner(myId)||isOwner(id))return null;
+      let u=C.users[id];
+      try{const sn=await get(R('users/'+id));if(sn.exists())u=sn.val()}catch(_){}
+      if(!u||u.deleted!==true||u.username!=='Deleted User')return null;
+      /* v54.1: the email no longer lives in users/$id, so this read goes through
+         resolveAuthEmail (a site owner may read userPrivate, and the login map still pins the
+         alias). Only give up if there is genuinely nothing to restore the sign-in identity
+         from - in which case the account still restores itself on its next sign-in. */
+      let oldKeysForEmail=[];
+      try{const s0=await get(query(R('usernames'),orderByValue(),equalTo(id)));if(s0.exists())oldKeysForEmail=Object.keys(s0.val())}catch(_){}
+      const restoreEmail=await resolveAuthEmail(id,oldKeysForEmail);
+      if(!restoreEmail)return null;
+      if((await get(R('banned/'+id))).val()!==false)return null;
+      let oldKeys=[];
+      try{const s2=await get(query(R('usernames'),orderByValue(),equalTo(id)));if(s2.exists())oldKeys=Object.keys(s2.val())}catch(_){}
+      let newName,newKey,tries=0,free=false;
+      do{
+        newName='UnbannedUser'+Math.floor(100000+Math.random()*900000);newKey=newName.toLowerCase();
+        try{free=await DB.checkUsernameFree(newName)}catch(_){free=false}
+        tries++;
+      }while(!free&&tries<8);
+      if(!free)throw new Error('no free name');
+      const stamp=Date.now()+SKEW,patch={};
+      patch['users/'+id+'/username']=newName;
+      patch['users/'+id+'/deleted']=null;
+      patch['users/'+id+'/lastNameChange']=stamp;
+      patch['usernames/'+newKey]=id;
+      patch['usernameLogin/'+newKey]=loginRec(restoreEmail);   // v54.1: a shape, never a real address
+      oldKeys.forEach(k=>{patch['usernames/'+k]=null;patch['usernameLogin/'+k]=null});
+      await update(ref(rtdb),patch);
+      const nu={...u,username:newName,lastNameChange:stamp};delete nu.deleted;
+      C.users[id]=nu;C.usernames[newKey]=id;oldKeys.forEach(k=>delete C.usernames[k]);
+      emit();
+      return newName;
+    },
+    /* Owner-only TOS acceptance log (tosLog/, written by /api/tos with the Admin SDK — see
+       the setup notes in package.json ("comments" -> "setup")). It holds the raw IP, so the rules let only owners read it, and it is
+       fetched on demand rather than watched: a non-owner's listener would just be denied. */
+    async tosLog(){
+      if(!isOwner(myId))throw new Error('Only owners can see the TOS log.');
+      const out={};
+      /* 1. The rich records. These only exist for people who accepted *through /api/tos since the
+            log was added* — so on its own this is empty on an established site, which is exactly
+            what it looked like: "nothing yet" even though everyone had accepted. */
+      try{
+        const v=(await get(R('tosLog'))).val()||{};
+        Object.keys(v).forEach(id=>{
+          if(v[id]&&typeof v[id]==='object')out[id]={id:Number(id),srv:1,...v[id]};
+        });
+      }catch(e){console.warn('[tos] log read failed',e&&e.code)}
+      /* 2. Everyone who has ever accepted, from the receipts. No raw IP in here (by design — only
+            the salted hash), but it is the complete list, including acceptances from before the
+            log existed and ones where the API call fell back to a client-side write. */
+      let acc=null;
+      try{acc=(await get(R('tosAccepted'))).val()||{}}
+      catch(_){acc=null}
+      if(acc===null){
+        /* No read permission on the whole collection — read them one at a time instead, which the
+           per-account rule does allow owners to do. Keeps this working without a rules update. */
+        acc={};
+        await Promise.all(Object.keys(C.users||{}).map(async id=>{
+          try{const v=(await get(R('tosAccepted/'+id))).val();if(v&&typeof v==='object')acc[id]=v}
+          catch(_){}
+        }));
+      }
+      Object.keys(acc).forEach(id=>{
+        const a=acc[id];
+        if(!a||typeof a!=='object')return;
+        const row=out[id];
+        if(row){                                   // have the full record; just fill any gaps
+          if(!row.at&&a.at)row.at=Number(a.at)||0;
+          if(!row.v&&a.v)row.v=a.v;
+          return;
+        }
+        const cip=typeof a.ip==='string'?a.ip:'';   // the browser fallback saves a browser-reported IP on the receipt
+        out[id]={id:Number(id),at:Number(a.at)||0,v:a.v,h:a.h,why:a.why||'',ip:cip,noip:!cip,srv:a.srv===1?1:0};
+      });
+      // name them from the live user list, so receipt-only rows aren't a wall of "(unknown)"
+      Object.keys(out).forEach(id=>{
+        if(!out[id].name){const u=(C.users||{})[id];if(u&&u.username)out[id].name=u.username}
+      });
+      /* Only the CURRENT terms version is listed. Raising CFG.TOS_VERSION voids every older acceptance (those
+         people have to accept again), so the old rows are hidden here and the list starts fresh with new ones. */
+      return Object.keys(out).map(k=>out[k])
+        .filter(r=>!isNaN(r.id)&&Number(r.v)>=CFG.TOS_VERSION)
+        .sort((a,b)=>(Number(b.at)||0)-(Number(a.at)||0));
+    },
+    /* Every network currently IP-banned, newest first. Staff-only (the rules say so too). Each
+       entry is keyed by the salted hash of the network, not the address — the raw IP is never
+       stored here, so a ban can be listed and lifted but not read back as an address. */
+    async ipBans(){
+      if(!isOwner(myId)&&!isAdmin(myId))throw new Error('Only owners and admins can see IP bans.');
+      let v=null;
+      try{v=(await get(R('ipBans'))).val()||{}}
+      catch(e){v=null}
+      if(v===null){
+        /* No read on the whole collection — probe the networks we know about instead, from the
+           TOS receipts. Finds every ban placed against an account; a network banned by hand with
+           no account attached can't be discovered this way, hence the flag back to the caller. */
+        v={};
+        const ids=Object.keys(C.users||{});
+        const hs=new Set();
+        await Promise.all(ids.map(async id=>{
+          try{const h=(await get(R('tosAccepted/'+id+'/h'))).val();if(typeof h==='string'&&h)hs.add(h)}catch(_){}
+        }));
+        await Promise.all([...hs].map(async h=>{
+          try{const r=(await get(R('ipBans/'+h))).val();if(r)v[h]=r}catch(_){}
+        }));
+        const out=Object.keys(v).map(h=>({h,partial:true,...(v[h]||{})}));
+        out.sort((a,b)=>(Number(b.at)||0)-(Number(a.at)||0));
+        return out;
+      }
+      return Object.keys(v).map(h=>({h,...(v[h]&&typeof v[h]==='object'?v[h]:{})}))
+        .sort((a,b)=>(Number(b.at)||0)-(Number(a.at)||0));
+    },
+    // Everyone whose mute has not expired yet, soonest to expire first.
+    mutedIds(){const n=Date.now()+SKEW;return Object.keys(C.muted||{})
+      .filter(k=>typeof C.muted[k]==='number'&&C.muted[k]>n)
+      .map(Number).filter(x=>!isNaN(x))
+      .sort((a,b)=>C.muted[a]-C.muted[b])},
+    // Everyone currently banned (an explicit false means "unbanned", so only true counts).
+    bannedIds(){return Object.keys(C.banned||{}).filter(k=>C.banned[k]===true).map(Number).filter(n=>!isNaN(n))},
+    async confirmBannedOnServer(id){try{return(await get(R('banned/'+id))).val()===true}catch(_){return false}},
+    isBanned(id){return!!C.banned&&!!C.banned[id]},
+    /* --- Automatic cleanup of old data ---
+       Messages older than modSettings/retentionDays (default 7, 0 = keep forever) are deleted. The database
+       RULES enforce that only messages past that age can be deleted by someone who isn't the sender/an
+       owner, so a client can never wipe recent chat. Every signed-in client trims a small batch in the chats
+       it can see; owners trim faster. Also clears this account's used-up send-rate slots and stale ping marks. */
+    retentionDays(){
+      if(!MODSET_LOADED)return 0;                      // not known yet => do nothing
+      const v=MODSET.retentionDays;
+      return typeof v==='number'?v:7;
+    },
+    async pruneRun(opts){
+      opts=opts||{};
+      if(pruning||myId==null||DB.isBanned(myId)||!ready)return{deleted:0,busy:true};
+      pruning=true;let total=0;
+      try{
+        // 1) this account's used-up rate slots (one is left behind by every message ever sent)
+        try{
+          const rs=await get(R('rate/'+myId));
+          if(rs.exists()){
+            const cut=Date.now()+SKEW-600000,upd={};let n=0;
+            rs.forEach(c=>{if(n<450&&Number(c.val())<cut){upd['rate/'+myId+'/'+c.key]=null;n++}});
+            if(n)await update(ref(rtdb),upd);
+          }
+        }catch(_){}
+        const days=DB.retentionDays();
+        // 2) ping "seen" marks for messages that no longer exist
+        try{
+          const seen=C.pingSeen||{},cut=Date.now()+SKEW-((days||14)+2)*864e5,upd={};let n=0;
+          Object.keys(seen).forEach(k=>{if(n<450&&Number(seen[k])<cut){upd['pingSeen/'+myId+'/'+k]=null;n++}});
+          if(n){await update(ref(rtdb),upd);n&&Object.keys(upd).forEach(p=>{delete C.pingSeen[p.split('/').pop()]})}
+        }catch(_){}
+        // 3) old messages
+        if(days>0){
+          const per=opts.aggressive?40:25,perKey=opts.aggressive?(opts.maxBatches||60):1;
+          const keys=[CFG.GLOBAL_ROOM];
+          if(isOwner(myId)||DB.vipInfo(myId))keys.push(CFG.VIP_ROOM);
+          if(mvpAccess(myId))keys.push(CFG.MVP_ROOM);
+          (C.myRoomIds||[]).forEach(r=>keys.push(r));
+          DB.dmPartners(myId).forEach(f=>keys.push(dmKey(myId,f)));   // includes non-friend DMs
+          for(const key of keys){
+            for(let b=0;b<perKey;b++){
+              const n=await pruneBatch(key,per,days);
+              total+=n;if(opts.onProgress)opts.onProgress(total,key);
+              if(n<per)break;
+              if(opts.aggressive)await sleep(450);
+            }
+          }
+        }
+      }catch(e){console.warn('cleanup failed',e.code||e.message)}
+      finally{pruning=false}
+      return{deleted:total};
+    },
+    async setRetention(days){
+      if(!isOwner(myId))throw new Error('Only owners can change this.');
+      days=Math.round(Number(days));
+      if(!(days===0||(days>=1&&days<=365)))throw new Error('Pick 0 (keep forever) or 1–365 days.');
+      await update(R('modSettings'),{retentionDays:days});
+    },
+    /* --- Older history, loaded only when you scroll up to it --- */
+    canLoadOlder(key){return key===msgKey&&(C.messages[key]||[]).length>=(msgLimit[key]||MSG_LIMIT)&&(msgLimit[key]||MSG_LIMIT)<1500},
+    loadOlder(key){
+      if(!DB.canLoadOlder(key))return false;
+      msgLimit[key]=(msgLimit[key]||MSG_LIMIT)+MSG_STEP;
+      attachMsgListener(key);return true;
+    },
+    /* --- Pings marked as read (synced across devices) --- */
+    pingSeenMap(){return C.pingSeen||{}},
+    async savePingsSeen(map){
+      const ids=Object.keys(map||{});if(!ids.length||myId==null)return;
+      const upd={};ids.forEach(k=>{upd['pingSeen/'+myId+'/'+k]=map[k]});
+      C.pingSeen=C.pingSeen||{};ids.forEach(k=>C.pingSeen[k]=map[k]);
+      await update(ref(rtdb),upd);
+    },
+    // Self-service repair for a just-unbanned account: only the account's own auth can
+    // rewrite its username (the security rules don't let an owner do this on someone
+    // else's behalf), so this runs on that user's own client right after sign-in once
+    // their ban has been lifted but their profile is still frozen as "Deleted User".
+    // Frees whatever old username was reserved at ban time and issues a fresh generated
+    // one (UnbannedUserXXXXXX) that they're free to change any time in Settings.
+    needsUnbanRestore(){
+      const id=myId;if(id==null||!BANNED_LOADED||!ownersKnown())return false;   // never decide before the ban list is really known
+      const u=C.users[id];
+      // only an explicit unban (banned/$id === false) qualifies; a missing flag never does
+      return!!u&&u.deleted===true&&u.username==='Deleted User'&&!!C.banned&&C.banned[id]===false;
+    },
+    async restoreBannedAccount(){
+      const id=myId;if(id==null)return null;
+      const u=C.users[id];
+      if(!u||u.username!=='Deleted User'||u.deleted!==true)return null; // nothing to restore
+      // Ask the SERVER (not the local cache) and insist on an explicit unban record, both now and again
+      // right before writing. The old version only looked at C.banned, which is empty for the first
+      // moments after sign-in — so a banned account reloading the page could "restore" itself.
+      const confirmUnbanned=async()=>{try{const b=await get(R('banned/'+id));return b.val()===false}catch(_){return false}};
+      if(!(await confirmUnbanned()))return null;
+      // Find whatever username(s) still point at me from before the ban, so they can be freed.
+      let oldKeys=[];
+      try{
+        const s=await get(query(R('usernames'),orderByValue(),equalTo(id)));
+        if(s.exists())oldKeys=Object.keys(s.val());
+      }catch(_){/* best-effort — worst case the old name just stays reserved */}
+      // Pick a fresh, available placeholder name.
+      let newName,newKey,tries=0,free=false;
+      do{
+        newName='UnbannedUser'+Math.floor(100000+Math.random()*900000);
+        newKey=newName.toLowerCase();
+        try{free=await this.checkUsernameFree(newName)}catch(_){free=false}
+        tries++;
+      }while(!free&&tries<8);
+      if(!free)throw new Error('Could not find an available name to restore your account with. Try again in a moment.');
+      if(!(await confirmUnbanned()))return null;   // re-check after all the awaits above
+      const email=u.email||(newKey+FAKE);
+      const stamp=Date.now()+SKEW;
+      const patch={};
+      patch['users/'+id+'/username']=newName;
+      patch['users/'+id+'/deleted']=null;          // un-freeze the account
+      patch['users/'+id+'/lastNameChange']=stamp;   // must change alongside username, per the rules
+      patch['usernames/'+newKey]=id;
+      patch['usernameLogin/'+newKey]=loginRec(email);   // v54.1: a shape, never a real address
+      oldKeys.forEach(k=>{patch['usernames/'+k]=null;patch['usernameLogin/'+k]=null;}); // free the old name for anyone to use
+      await update(ref(rtdb),patch);
+      const nu={...u,username:newName,lastNameChange:stamp};delete nu.deleted;
+      C.users[id]=nu;C.usernames[newKey]=id;oldKeys.forEach(k=>delete C.usernames[k]);
+      emit();
+      return newName;
+    },
+    /* Mute: blocks sending only (menus, settings, reading all still work). Stored as
+       muted/$id = a future ms timestamp (auto-expires) or false/absent = not muted.
+       Owners can mute for any duration. Mods can mute too, but only for one of the
+       preset MOD_MUTE_OPTS durations, and never against an owner or another mod — the
+       rules enforce both of those independently, this is just so a compromised/hostile
+       client gets a clear error instead of a confusing PERMISSION_DENIED. */
+    // NSFW penalty applied by the offender's own client when the pre-send scan blocks an
+    // image: a 1-hour self-mute. The database rules allow a user to mute themselves (never
+    // to lift a mute), so it is enforced server-side like any other mute.
+    // Rules agreement, saved per account at rulesAgreed/<id> = {v:<rules version>,at:<time>}
+    async rulesAgreement(){const sn=await get(R('rulesAgreed/'+myId));return sn.exists()?sn.val():null},
+    async agreeRules(v){await set(R('rulesAgreed/'+myId),{v,at:Date.now()+SKEW})},
+    async selfMuteNsfw(){
+      if(isOwner(myId))return;
+      await set(R('muted/'+myId),Date.now()+SKEW+3600000);
+    },
+    async muteUser(id,durationMs){
+      if(!isOwner(myId)&&!isAdmin(myId)&&!isMod(myId))throw new Error('Only owners, admins and mods can mute.');
+      if(isOwner(id))throw new Error('Owners cannot be muted.');
+      if(!isOwner(myId)){
+        if(isAdmin(id))throw new Error('Admins cannot be muted.');
+        if(isAdmin(myId)){
+          if(!(durationMs>0&&durationMs<=7*86400000))throw new Error('Admins can mute for up to 7 days.');
+        }else{
+          if(isMod(id))throw new Error('Mods cannot mute other mods.');
+          if(!MOD_MUTE_OPTS.some(([m])=>m*60000===durationMs))throw new Error('Mods can only use the preset timeout durations.');
+        }
+      }
+      const until=Date.now()+SKEW+durationMs;
+      await set(R('muted/'+id),until);
+    },
+    async unmuteUser(id){
+      if(!isOwner(myId)&&!isAdmin(myId)&&!isMod(myId))throw new Error('Only owners, admins and mods can unmute.');
+      // Removing the node (not setting it to `false`) — Firebase rules compare
+      // muted/$id's value against `now` with <=, and comparing the boolean `false`
+      // to a number never evaluates true in the rules engine, so a stored `false`
+      // permanently failed the "not muted" check and could never send again.
+      // Removing the key makes it genuinely absent, which the rules already treat
+      // as "not muted".
+      await remove(R('muted/'+id)).catch(()=>{});
+    },
+    isMuted(id){
+      const v=C.muted&&C.muted[id];
+      return typeof v==='number'&&v>Date.now()+SKEW;
+    },
+    muteRemainingMs(id){
+      const v=C.muted&&C.muted[id];
+      return typeof v==='number'?Math.max(0,v-(Date.now()+SKEW)):0;
+    },
+    async setFilterSettings({filterEnabled,filterNames,customNames}){
+      if(!isOwner(myId))throw new Error('Only owners can change filter settings.');
+      const upd={};
+      if(filterEnabled!=null)upd.filterEnabled=!!filterEnabled;
+      if(filterNames!=null)upd.filterNames=!!filterNames;
+      if(customNames!=null)upd.customNames=!!customNames;
+      await update(R('modSettings'),upd);
+    },
+    /* --- Owner: grant/revoke VIP directly (no spin required) --- */
+    async giveVip(id,kind){
+      if(!isOwner(myId))throw new Error('Only owners can grant VIP.');
+      id=Number(id);if(!id)throw new Error('Enter a valid user ID.');
+      if(isOwner(id))throw new Error('Owners already have full access.');
+      if(kind==='perm')await set(R('vip/'+id),{perm:true});
+      else if(kind==='24h')await set(R('vip/'+id),{until:Date.now()+SKEW+86400000});
+      else throw new Error('Unknown VIP duration.');
+    },
+    async removeVip(id){
+      if(!isOwner(myId))throw new Error('Only owners can remove VIP.');
+      id=Number(id);if(!id)throw new Error('Enter a valid user ID.');
+      await remove(R('vip/'+id)).catch(()=>{});
+    },
+    /* --- Owner: grant/revoke MVP (permanent until removed) --- */
+    async giveMvp(id){
+      if(!isOwner(myId))throw new Error('Only owners can grant MVP.');
+      id=Number(id);if(!id)throw new Error('Enter a valid user ID.');
+      if(isOwner(id))throw new Error('Owners already have every MVP perk.');
+      if(mvpOn(id))throw new Error('That user is already an MVP.');
+      try{await update(ref(rtdb),{['mvp/'+id]:Math.round(Date.now()+SKEW)})}
+      catch(e){throw new Error(e.code==='PERMISSION_DENIED'?'Database refused it. Publish the MVP database rules (see the setup notes in package.json ("comments" -> "setup")).':'Could not grant MVP: '+(e.code||e.message))}
+    },
+    async removeMvp(id){
+      if(!isOwner(myId))throw new Error('Only owners can remove MVP.');
+      id=Number(id);if(!id)throw new Error('Enter a valid user ID.');
+      try{await update(ref(rtdb),{['mvp/'+id]:null,['spinWin/'+id]:null})}
+      catch(e){throw new Error(e.code==='PERMISSION_DENIED'?'Database refused it. Publish the MVP database rules (see the setup notes in package.json ("comments" -> "setup")).':'Could not remove MVP: '+(e.code||e.message))}
+    },
+    /* --- Version history / forced updates --- */
+    // The build this tab is actually running, from the <meta name="build-version"> tag
+    // baked into the deployed index.html — never taken from the database.
+    myBuildVersion(){return MY_BUILD},
+    // Live view of appVersion/ (current + history), or null before the first snapshot arrives.
+    versionState(){return APP_VERSION_CACHE},
+    versionHistory(){
+      const h=(APP_VERSION_CACHE&&APP_VERSION_CACHE.history)||{};
+      return Object.values(h).sort((a,b)=>b.at-a.at);
+    },
+    // Pins `version` as canonical in the database and logs it to history/. Every other
+    // signed-in client is watching appVersion/current live and reloads once it disagrees
+    // with its own build (see checkForcedVersion() above) — this is what "force everyone
+    // onto the current version" actually does; there's no separate broadcast needed.
+    async forceVersion(version){
+      if(!isOwner(myId))throw new Error('Only owners can force a version update.');
+      version=String(version||'').trim();
+      if(!version)throw new Error('Enter a version label.');
+      if(version.length>60)throw new Error('Version label is too long.');
+      const at=Date.now()+SKEW;
+      const upd={};
+      upd['appVersion/current']=version;
+      upd['appVersion/updatedAt']=at;
+      upd['appVersion/history/'+at]={version,at,by:myId};
+      await update(ref(rtdb),upd);
+    },
+    async sendMessage(key,{senderId,text,images,files,pings,replyTo}){
+      files=(typeof FILES!=='undefined')?FILES.clean(files).map(f=>{const o={url:f.url,name:f.name,size:f.size,kind:f.kind};if(f.preview)o.preview=f.preview;return o}):[];
+      if(typeof tosGateGuard==='function')await tosGateGuard();   // TOS not accepted / VPN / IP-banned network -> throws, nothing is sent
+      if(key===CFG.VIP_ROOM&&!DB.vipInfo(senderId))throw new Error('VIP Chat is for VIP members. Win VIP from the Daily Spin.');
+      if(key===CFG.MVP_ROOM&&!mvpAccess(senderId))throw new Error('MVP Chat is for MVPs. MVP is a 0.1% prize on the Daily Spin.');
+      if(key===CFG.SHITPOST_ROOM&&!isStaff(senderId))throw new Error('Only mods, admins and owners can post in #shitpost.');
+      if(key!==CFG.ANNOUNCEMENTS_ROOM&&text&&text.length>maxMsgFor(senderId))throw new Error('Message is too long (max '+maxMsgFor(senderId)+' characters'+(isMvp(senderId)||isOwner(senderId)?'':'; MVPs get '+CFG.MAX_MSG*CFG.MVP_MSG_MULT)+').');
+      if(DB.isBanned(senderId))throw new Error('Your account has been banned.');
+      // The local ban list can lag (or not be loaded yet) right after a ban. Ask the server directly so a
+      // banned account is stopped HERE, before the optimistic echo, instead of the message appearing and
+      // then being auto-removed when the database rejects it.
+      if(!BANNED_LOADED&&!isOwner(senderId)){
+        let srvBanned=false;
+        try{srvBanned=(await get(R('banned/'+senderId))).val()===true}catch(_){}
+        if(srvBanned){C.banned[senderId]=true;checkBanLock(myId,C.banned);throw new Error('Your account has been banned.')}
+      }
+      if(DB.isMuted(senderId)){
+        const secs=Math.ceil(DB.muteRemainingMs(senderId)/1000);
+        throw new Error('You are muted for '+secs+'s and cannot send messages.');
+      }
+      // ---- client-side 1.5s cooldown for non-owners (owners are exempt) ----
+      // Checked FIRST and reserved synchronously (before any await below). The old order checked the
+      // cooldown against the time of the last *finished* send, so on a slow connection several taps all
+      // got through before the first one completed - and the anti-raid check below then banned the
+      // account for what was just a laggy double-tap.
+      const now0=Date.now();
+      if(!isOwner(senderId)){
+        const lastGo=Math.max(DB._lastOk||0,DB._lastStart||0);
+        if(lastGo&&now0-lastGo<CFG.SEND_COOLDOWN_MS){
+          throw new Error('Slow down a little — wait a moment before sending again.');
+        }
+      }
+      DB._lastStart=now0;
+      // ---- anti-raid: sliding window on outgoing messages (client-side first line) ----
+      // Counts only sends that actually reached Firebase successfully (recorded at the
+      // bottom of this function). Because the cooldown above already spaces real sends out, only
+      // genuine scripted spam can ever reach this.
+      DB._sendTimes=(DB._sendTimes||[]).filter(t=>now0-t<CFG.NUKE_WINDOW_MS);
+      if(!isOwner(senderId)&&DB._sendTimes.length>=CFG.NUKE_MSGS){
+        DB.antiNuke(senderId);
+        throw new Error('Sending too fast — account banned.');
+      }
+      // ---- profanity filter (censors rather than blocks, matching "Hey man, **** YOU" style) ----
+      let outText=text;
+      if(text)outText=checkMessageText_(text);
+      // DM: make sure MY membership exists before writing (fixes "can't send in a new DM")
+      if(key.startsWith('dm_')&&!(C.dmMembers[key]&&C.dmMembers[key][senderId])){
+        try{await set(R(`dmMembers/${key}/${senderId}`),true);(C.dmMembers[key]=C.dmMembers[key]||{})[senderId]=true}catch(_){}
+      }
+      const newRef=push(R('messages/'+key));
+      // The database rules require the message's `at` to be within 1.5s of the SERVER's
+      // clock at the moment the write is actually processed (not when we started building
+      // it) — so a large image payload that takes a while to upload on a slow connection
+      // can miss that window even though everything about the request was valid when sent.
+      // We try once with `at` stamped right before transmission, and — only if the write is
+      // rejected — retry a single time with a freshly-stamped `at`/rate-slot, so a slow
+      // upload gets a second chance instead of surfacing a confusing rules error.
+      // The rules reject a message whose `at` is AHEAD of the server clock (at <= now) or more than 20s behind
+      // it. SKEW (the server offset) is only an estimate - on mobile / high-latency connections it can be off
+      // by a few hundred ms, which made the write bounce for "no reason" for some people. So stamp a little in
+      // the past (still far inside the 20s window); every retry backs off further.
+      let _backoff=400;
+      const build=()=>{
+        const at=Math.round(Date.now()+SKEW-_backoff);
+        const m={senderId,at};
+        if(outText)m.text=outText;
+        if(images&&images.length)m.images=images;
+        if(files.length)m.files=files;
+        if(pings&&pings.length)m.pings=pings;
+        if(replyTo&&replyTo.id)m.replyTo={id:replyTo.id,senderId:replyTo.senderId,...(replyTo.preview?{preview:replyTo.preview}:{})};
+        return{at,m};
+      };
+      let{at,m}=build();
+      // optimistic local echo (replaced automatically when the server copy arrives with the same id)
+      const arr=C.messages[key]||(C.messages[key]=[]);
+      const tmp={...m,images:images||[],files:files,pings:pings||[],text:outText||'',id:newRef.key,replyTo:m.replyTo||null};
+      if(key===msgKey){arr.push(tmp);emit()}
+      const attemptWrite=async()=>{
+        // The database rules require rate/$senderId/$at to equal the message's own `at`
+        // (a per-write timestamped slot keyed by the same timestamp as the message), so
+        // both paths are written atomically in one multi-path update using the same value.
+        await update(ref(rtdb),{
+          ['rate/'+senderId+'/'+at]:at,
+          ['lastSend/'+senderId]:serverTimestamp(),   // server-clock cooldown the database rules enforce (1.2s)
+          ['messages/'+key+'/'+newRef.key]:m
+        });
+      };
+      try{
+        try{
+          await attemptWrite();
+        }catch(e1){
+          // A PERMISSION_DENIED that is not a real ban/mute is most often a timestamp miss (clock-offset error,
+          // or a slow upload landing late). Retry up to twice with a freshly stamped, further back-dated
+          // `at`/rate-slot; real bans/mutes would fail identically, so those are not retried.
+          let lastErr=e1;
+          if(e1.code==='PERMISSION_DENIED'&&!DB.isBanned(senderId)&&!DB.isMuted(senderId)){
+            let ok=false;
+            for(const back of [1500,4000]){
+              _backoff=back;
+              ({at,m}=build());
+              Object.assign(tmp,m,{images:images||[],files:files,pings:pings||[],text:outText||'',replyTo:m.replyTo||null});
+              try{await attemptWrite();ok=true;break}catch(e2){lastErr=e2;if(e2.code!=='PERMISSION_DENIED')break}
+            }
+            if(!ok)throw lastErr;
+          }else{
+            throw e1;
+          }
+        }
+      }
+      catch(e){
+        C.messages[key]=(C.messages[key]||[]).filter(x=>x!==tmp);emit();
+        if(e.code==='PERMISSION_DENIED'){
+          if(!DB.isBanned(senderId)&&!isOwner(senderId)){
+            try{if((await get(R('banned/'+senderId))).val()===true){C.banned[senderId]=true;checkBanLock(myId,C.banned)}}catch(_){}
+          }
+          if(DB.isBanned(senderId))throw new Error('Your account has been banned.');
+          if(DB.isMuted(senderId))throw new Error('You are muted and cannot send messages right now.');
+          // only call it "too fast" if we really did send something a moment ago
+          if(!isOwner(senderId)&&Date.now()-(DB._lastOk||0)<CFG.SEND_COOLDOWN_MS+200)throw new Error('Slow down a little - you are sending too fast.');
+          throw new Error('Blocked by database rules ('+await DB._diag(senderId)+')');
+        }
+        throw new Error('Message failed to send ('+(e.code||e.message)+')');
+      }
+      DB._lastOk=Date.now();
+      (DB._sendTimes=DB._sendTimes||[]).push(DB._lastOk); // only counted here, on confirmed success
+      /* v54: hand back the id of the message that was just written. Nothing used the old
+         undefined return, and a feature that attaches something to a message it just sent (a
+         poll) cannot work without it - the alternative is guessing which message is yours by
+         timestamp, which is a race. */
+      return newRef.key;
+    },
+    // Explains WHY a send was refused (shown in the error toast so no DevTools needed)
+    async _diag(id){
+      const out=[];
+      try{out.push('uidToId='+(await get(R('uidToId/'+auth.currentUser.uid))).val())}catch(e){out.push('uidToId '+(e.code||'err'))}
+      try{const slot=Date.now()+SKEW;await set(R('rate/'+id+'/'+slot),slot);out.push('link+rate ok');await remove(R('rate/'+id+'/'+slot)).catch(()=>{})}catch(e){out.push('account link/rate denied')}
+      return out.join(', ');
+    },
+    // Deletes one message. Allowed by the rules for the sender themselves, or
+    // for any owner deleting someone else's message. Removes it for everyone —
+    // this isn't a per-viewer hide, it's a real delete from the database.
+    async deleteMessage(key,msgId){
+      if(!key||!msgId)return;
+      const arr=C.messages[key];
+      const before=arr&&arr.find(x=>x.id===msgId);
+      // optimistic local removal
+      if(arr){
+        const idx=arr.findIndex(x=>x.id===msgId);
+        if(idx!==-1)arr.splice(idx,1);
+        if(key===msgKey)emit();
+      }
+      try{
+        await remove(R('messages/'+key+'/'+msgId));
+        if(before&&before.files&&before.files.length&&typeof FILES!=='undefined')FILES.deleteUrls(before.files);   // free the Storage space (only works on your own uploads)
+      }catch(e){
+        // roll back on failure
+        if(before&&arr&&!arr.find(x=>x.id===msgId)){arr.push(before);arr.sort((a,b)=>a.at-b.at);if(key===msgKey)emit()}
+        throw new Error(e.code==='PERMISSION_DENIED'?(((isMod(myId)||isAdmin(myId))&&!isOwner(myId))?'Permission denied. You can\'t delete that message (owners\' and admins\' messages are protected from mods, and owners\' from everyone else).':'Could not delete that message.'):'Delete failed ('+(e.code||e.message)+')');
+      }
+    },
+    // Fast bulk delete for the admin panel. Removes everything from the local cache in
+    // one go (single re-render, so the UI never stutters), then sends the deletes to the
+    // database as multi-path updates in parallel chunks instead of one awaited request
+    // per message. If a chunk is rejected it falls back to per-message removes for just
+    // that chunk so one bad message can't block the rest. Returns {ok,fail}.
+    async deleteMessagesBulk(items){
+      items=(items||[]).filter(x=>x&&x.key&&x.id);
+      if(!items.length)return{ok:0,fail:0};
+      const gone=new Set(items.map(x=>x.key+'|'+x.id));
+      const touched=new Set();
+      items.forEach(x=>{
+        const arr=C.messages[x.key];
+        if(arr&&arr.some(m=>gone.has(x.key+'|'+m.id))){
+          C.messages[x.key]=arr.filter(m=>!gone.has(x.key+'|'+m.id));
+          touched.add(x.key);
+        }
+      });
+      if(touched.has(msgKey))emit();
+      const CHUNK=200;
+      const chunks=[];
+      for(let i=0;i<items.length;i+=CHUNK)chunks.push(items.slice(i,i+CHUNK));
+      let ok=0,fail=0;
+      await Promise.all(chunks.map(async chunk=>{
+        const upd={};
+        chunk.forEach(x=>{upd['messages/'+x.key+'/'+x.id]=null});
+        try{
+          await update(ref(rtdb),upd);
+          ok+=chunk.length;
+        }catch(e){
+          const res=await Promise.all(chunk.map(x=>remove(R('messages/'+x.key+'/'+x.id)).then(()=>true,()=>false)));
+          res.forEach(r=>r?ok++:fail++);
+        }
+      }));
+      return{ok,fail};
+    },
+    // Edit the text of one of MY OWN messages in place. Only the text (and an
+    // editedAt marker) can change — sender, timestamp, images and reply target
+    // are all fixed by the database rules, so this can't be abused to alter
+    // who sent something or when, or to swap in different attachments.
+    async editMessage(key,msgId,newText){
+      if(typeof tosGateGuard==='function')await tosGateGuard();
+      if(!key||!msgId)return;
+      const limit=key===CFG.ANNOUNCEMENTS_ROOM?Infinity:maxMsgFor(ME.id);
+      const text=checkMessageText_((newText||'').trim()).slice(0,limit);
+      if(!text)throw new Error('Message can\'t be empty.');
+      const arr=C.messages[key];
+      const m=arr&&arr.find(x=>x.id===msgId);
+      if(!m)return;
+      if(Number(m.senderId)!==Number(ME.id))throw new Error('You can only edit your own messages.');
+      const before=m.text;const beforeEdited=m.editedAt;
+      const editedAt=Date.now()+SKEW;
+      // optimistic local update
+      m.text=text;m.editedAt=editedAt;
+      if(key===msgKey)emit();
+      try{
+        await update(R('messages/'+key+'/'+msgId),{text,editedAt});
+      }catch(e){
+        m.text=before;m.editedAt=beforeEdited;if(key===msgKey)emit();
+        throw new Error(e.code==='PERMISSION_DENIED'?'Could not edit that message.':'Edit failed ('+(e.code||e.message)+')');
+      }
+    },
+    // Deletes every message by a user ID across a specific conversation key
+    // (global / a room / a DM) that the CURRENT user can see. Rules don't let
+    // an owner enumerate every conversation on the server from the client —
+    // only conversations they're already a member of (or global) are readable
+    // — so this sweeps the keys the client actually has loaded, not the whole server.
+    async deleteAllByUserInKey(key,userId){
+      if(!key)return 0;
+      const arr=C.messages[key]||[];
+      const targets=arr.filter(m=>Number(m.senderId)===Number(userId));
+      await DB.deleteMessagesBulk(targets.map(m=>({key,id:m.id})));
+      return targets.length;
+    },
+    messages(key){
+      const my=myId;
+      return(C.messages[key]||[]).filter(m=>{
+        const s=C.users[m.senderId];
+        if(s&&s.deleted)return false; // deleted accounts: hide instantly, don't wait on server cleanup
+        if(m.senderId===my)return true;
+        if((C.blocked[my]||[]).includes(m.senderId))return false;   // I blocked them
+        if((C.blockedBy[my]||[]).includes(m.senderId))return false; // they blocked me
+        return true;
+      });
+    },
+    /* When the newest message in a conversation was sent, or 0 for one with nothing in it.
+       Reads the same preview cache the unread badges do - watchPreview() keeps the last 30
+       messages of every DM and room loaded - so this costs nothing extra and is as live as
+       the badge beside it. Deleted/blocked senders are filtered out exactly as messages()
+       does, so a conversation whose only recent message is hidden from you does not jump to
+       the top of a list showing nothing new. */
+    lastMsgAt(key){
+      const list=DB.messages(key);
+      let t=0;
+      for(let i=list.length-1;i>=0;i--){
+        const at=Number(list[i].at)||0;
+        if(at>t)t=at;
+      }
+      return t;
+    },
+    // Unread count for ONE conversation. Counts exactly what the chat would show you as new:
+    //  - not before lastRead has actually loaded (otherwise everything flashes as unread on startup)
+    //  - never my own messages, never from deleted accounts, never from people I blocked / who blocked me
+    //    (those are hidden in the chat, so counting them gave a badge with nothing to read)
+    //  - a conversation I have never opened only counts messages sent after my account existed
+    unreadIn(key,uid){
+      if(!C.lastReadLoaded)return 0;
+      const lr=C.lastRead[key];
+      const born=Number((C.users[uid]||{}).createdAt)||0;
+      const last=(lr===undefined||lr===null)?born:(Number(lr)||0);
+      const blocked=C.blocked[uid]||[],blockedBy=C.blockedBy[uid]||[];
+      let n=0;
+      (C.messages[key]||[]).forEach(m=>{
+        if(m.senderId===uid||!(Number(m.at)>last))return;
+        const s=C.users[m.senderId];if(s&&s.deleted)return;
+        if(blocked.includes(m.senderId)||blockedBy.includes(m.senderId))return;
+        n++;
+      });
+      return n;
+    },
+    /* Everyone I have a direct-message conversation with: my friends, plus anybody else I am
+       a dmMembers of since v54.5 - a request I sent and a request I accepted both put a row
+       there. People whose request I have ignored, and people either of us has blocked, are
+       left out: the conversation may exist in the database but it is not one I am in.
+       Returns ids, unsorted; the DM list orders them by recency. */
+    dmPartners(uid){
+      uid=Number(uid);
+      const out=new Set(C.friends[uid]||[]);
+      const blocked=new Set([...(C.blocked[uid]||[]),...(C.blockedBy[uid]||[])]);
+      Object.keys(C.dmMembers||{}).forEach(key=>{
+        const m=C.dmMembers[key];
+        if(!m||!m[uid])return;
+        const parts=String(key).split('_');
+        if(parts[0]!=='dm')return;
+        const a=Number(parts[1]),b=Number(parts[2]);
+        const other=a===uid?b:a;
+        if(!Number.isFinite(other)||other===uid)return;
+        if((C.users[other]||{}).deleted)return;
+        out.add(other);
+      });
+      blocked.forEach(id=>out.delete(id));
+      if(uid===myId)Object.keys(C.dmReqIn||{}).forEach(k=>{
+        if(C.dmReqIn[k]&&C.dmReqIn[k].ignored===true)out.delete(Number(k));
+      });
+      return [...out];
+    },
+    unreadDMs(uid){
+      let n=0;
+      DB.dmPartners(uid).forEach(f=>{n+=DB.unreadIn(dmKey(uid,f),uid)});
+      /* A message request is unread by definition until it is dealt with, and it is the only
+         sign of it anywhere else in the UI, so it carries a badge like a friend request. */
+      const reqs=(uid===myId)?DB.dmRequestCount():0;
+      return n+DB.incomingUnseen(uid).length+reqs;
+    },
+    // Friend requests that still count toward the badge. "Mark all as read" hides the current ones from the
+    // BADGE only (stored on this device); they stay in Friends & Requests so nothing is lost.
+    _dismissedReqs(uid){try{return JSON.parse(localStorage.getItem('ich_dismissed_req_'+uid)||'[]')}catch(_){return[]}},
+    incomingUnseen(uid){const d=DB._dismissedReqs(uid);return DB.incoming(uid).filter(r=>d.indexOf(r.from)===-1)},
+    unreadTotal(uid){return DB.unreadDMs(uid)+DB.unreadRooms(uid)},   // announcements are NOT part of "Mark all as read" (they keep their own badge)
+    // Marks every conversation (global, announcements, rooms, DMs) as read in one write, and hides the
+    // current friend-request count from the badge.
+    async markAllRead(uid){
+      const stamp=Math.round(Date.now()+SKEW);
+      const keys=new Set([CFG.GLOBAL_ROOM]);   // announcements + shitpost are left alone on purpose
+      (C.myRoomIds||[]).forEach(id=>keys.add(id));
+      DB.dmPartners(uid).forEach(f=>keys.add(dmKey(uid,f)));
+      const upd={};
+      keys.forEach(k=>{
+        const newest=(C.messages[k]||[]).reduce((a,m)=>Math.max(a,Number(m.at)||0),0);
+        upd[k]=Math.max(stamp,newest);
+      });
+      try{localStorage.setItem('ich_dismissed_req_'+uid,JSON.stringify(DB.incoming(uid).map(r=>r.from)))}catch(_){}
+      Object.assign(C.lastRead,upd);emit();                 // instant local update
+      await update(R('lastRead/'+uid),upd);                 // then persist (rules: own lastRead is writable)
+    },
+    // New announcements since the user last opened the Announcements room (same rule as DMs/rooms).
+    unreadAnnouncements(uid){return DB.unreadIn(CFG.ANNOUNCEMENTS_ROOM,uid)},
+    // Same for #shitpost: own badge, and (like announcements) NOT cleared by "Mark all as read".
+    unreadShitposts(uid){return DB.unreadIn(CFG.SHITPOST_ROOM,uid)},
+    unreadRooms(uid){
+      let n=0;
+      (C.myRoomIds||[]).forEach(id=>{n+=DB.unreadIn(id,uid)});
+      return n;
+    },
+    // called by the UI so a friendship created by the other person becomes a DM on this side too
+    async ensureDmMemberships(){
+      if(!myId)return;
+      for(const f of (C.friends[myId]||[])){
+        const k=dmKey(myId,f);
+        if(!(C.dmMembers[k]&&C.dmMembers[k][myId])){
+          try{await set(R(`dmMembers/${k}/${myId}`),true);(C.dmMembers[k]=C.dmMembers[k]||{})[myId]=true}catch(_){}
+        }
+      }
+    }
+  };
+  function defaultSettings(){return{
+    avatar:'',
+    meBubble:'#7c6cff',meText:'#ffffff',
+    radius:16,font:'system',size:15,bold:false,italic:false,
+    bgType:'gradient',bgColor:'#2a1f5c',bgColor2:'#7c2f66',bgImage:'',bgFit:'cover',bgBlur:0,bgDim:30,
+    uiOpacity:50,uiBlur:18,
+    autoScrollBottom:true,
+    /* v54.5: both of these default OFF now.
+       filterLocal is the personal "Content filter (your view)" switch, and music.enabled
+       starts the background player. Each used to default on, so a brand-new account arrived
+       with its chat censored and music trying to play before it had asked for either. Both
+       are one toggle away in Settings for anyone who wants them, and a stored choice still
+       wins over the default - see the one-time reset in resetOptedInDefaults(). */
+    filterLocal:false,
+    pings:{everyone:true,sound:true,desktop:true},
+    music:{enabled:false,volume:15,shuffle:true}
+  }}
+  function authMsg(e){
+    const m={
+      'auth/email-already-in-use':'That email is already registered.',
+      'auth/invalid-email':'Please enter a real email address.',
+      'auth/weak-password':'Password is too weak (min 6 characters).',
+      'auth/invalid-credential':'Incorrect username/email or password.',
+      'auth/wrong-password':'Incorrect username/email or password.',
+      'auth/user-not-found':'Incorrect username/email or password.',
+      'auth/too-many-requests':'Too many attempts. Try again later.',
+      'auth/popup-closed-by-user':'Sign-in cancelled.',
+      'auth/network-request-failed':'Network error. Check your connection.'
+    };
+    return m[e.code]||('Authentication error: '+(e.code||e.message));
+  }
+})();

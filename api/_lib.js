@@ -1,0 +1,401 @@
+/* Shared helpers for the /api functions (Vercel serverless, Node 18+). Nothing in here is ever sent to the browser.
+ *
+ * REQUIRED environment variables (Vercel > Settings > Environment Variables):
+ *   FIREBASE_SA          the whole service-account JSON (Firebase console > Project settings > Service accounts > Generate key)
+ *   DISCORD_WEBHOOK_URL  private webhook for the TOS backup log + anti-cheat alerts. Set it HERE only - never paste it into the repo.
+ *   IP_HASH_SALT         long random string. Never change it later or old IP bans stop matching.
+ *   BUILD_SECRET         long random string, same one you give tools/stamp-build.js. Never commit it.
+ * OPTIONAL:
+ *   MIN_BUILD            oldest build label still allowed, e.g. 2026-10-20.02 (anything older is refused by the server)
+ *   TOS_VERSION          default 6 (if this env var is set, it WINS - raise it to 6 or delete it)
+ *   VPN_API_KEY          free key from https://ipapi.is (VPN / proxy / Tor detection)
+ *   VPN_FAIL_CLOSED      1 = if the VPN lookup is down, refuse chat. Default: allow.
+ *   BLOCK_DATACENTER     1 = treat hosting / datacenter IPs as VPNs (can hit school filters)
+ *   TRUSTED_IP_HEADER    default x-vercel-forwarded-for. Only change this if you host somewhere else AND that host overwrites the header.
+ */
+const crypto = require('crypto');
+const net = require('net');
+
+const DB_URL = (process.env.FIREBASE_DB_URL || 'https://itsuki-chat-default-rtdb.firebaseio.com').replace(/\/$/, '');
+const API_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyCns_X-7DF2aQawb2Q3p4YsoaQmvBMuAgM';   // public web key, fine to keep here
+const TOS_VERSION = Number(process.env.TOS_VERSION || 6);   // keep equal to CFG.TOS_VERSION in js/core/config.js
+const ATTEST_TTL_MS = 8 * 60 * 1000;
+
+function cors(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');          // the site runs from many launcher origins (blob:, about:blank, ...)
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return true; }
+  return false;
+}
+function send(res, code, obj) { res.statusCode = code; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(obj)); }
+/* `limit` is the most raw JSON we will read, in characters. The default stays 20,000 so every
+   existing caller behaves exactly as before; api/nsfw.js raises it because an image data URL is
+   genuinely large. Anything past the limit is cut, which makes the JSON unparseable and yields
+   {} - a refusal, never a half-parsed body. */
+async function readBody(req, limit) {
+  if (req.body && typeof req.body === 'object') return req.body;
+  const cap = Number(limit) > 0 ? Number(limit) : 20000;
+  let raw = '';
+  for await (const c of req) { raw += c; if (raw.length > cap) break; }
+  try { return JSON.parse(raw || '{}'); } catch (_) { return {}; }
+}
+
+/* ---------- the caller's IP: ONLY from the header the hosting platform itself writes ----------
+ * The old code also trusted x-real-ip / the first x-forwarded-for entry. Those can be typed by the caller, which is how a
+ * fake "IP" could be sent. Now: one trusted header, and it must be a real IP address or the request is refused (returns null). */
+function clientIp(req) {
+  const name = String(process.env.TRUSTED_IP_HEADER || 'x-vercel-forwarded-for').toLowerCase();
+  let ip = String(req.headers[name] || '').split(',')[0].trim();
+  if (!ip && process.env.TRUST_SOCKET_IP === '1') ip = String((req.socket && req.socket.remoteAddress) || '').trim();
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+  return net.isIP(ip) ? ip : null;
+}
+function normalizeIp(ip) {   // IPv6 users change their suffix constantly, so use the /64 network
+  if (net.isIPv4(ip)) return ip;
+  if (net.isIPv6(ip)) {
+    const [head, tail] = ip.split('::');
+    const a = head ? head.split(':') : [], b = tail !== undefined ? (tail ? tail.split(':') : []) : [];
+    const fill = Array(Math.max(0, 8 - a.length - b.length)).fill('0');
+    const full = (tail === undefined ? a : a.concat(fill, b)).map(x => x.padStart(4, '0'));
+    return full.slice(0, 4).join(':') + '::/64';
+  }
+  return ip;
+}
+function ipHash(ip) {
+  const salt = process.env.IP_HASH_SALT;
+  if (!salt || salt.length < 16) throw new Error('IP_HASH_SALT is missing or too short');
+  return crypto.createHmac('sha256', salt).update('ip:' + normalizeIp(ip)).digest('hex').slice(0, 32);
+}
+function isPrivateIp(ip) {
+  return !ip || /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip) || ip === '::1' || /^f[cd]/i.test(ip);
+}
+
+/* ---------- VPN / proxy / Tor ---------- */
+const vpnCache = new Map();
+async function vpnCheck(ip) {
+  const key = process.env.VPN_API_KEY;
+  if (!key || isPrivateIp(ip)) return { checked: false, vpn: false, kind: '' };
+  const hit = vpnCache.get(ip);
+  if (hit && Date.now() - hit.t < 60 * 60 * 1000) return hit.v;
+  try {
+    const r = await fetch('https://api.ipapi.is/?q=' + encodeURIComponent(ip) + '&key=' + encodeURIComponent(key), { signal: AbortSignal.timeout(4000) });
+    const j = await r.json();
+    if (!r.ok || j.error || (j.is_vpn === undefined && j.is_proxy === undefined)) return { checked: false, vpn: false, kind: '' };
+    const kind = j.is_tor ? 'tor' : j.is_vpn ? 'vpn' : j.is_proxy ? 'proxy' : (process.env.BLOCK_DATACENTER === '1' && j.is_datacenter) ? 'datacenter' : '';
+    const v = { checked: true, vpn: !!kind, kind };
+    if (vpnCache.size > 5000) vpnCache.clear();
+    vpnCache.set(ip, { t: Date.now(), v });
+    return v;
+  } catch (_) { return { checked: false, vpn: false, kind: '' }; }
+}
+
+/* ---------- who is calling (asks Google whether the Firebase login token is real) ---------- */
+async function verifyToken(idToken) {
+  if (!idToken || typeof idToken !== 'string' || idToken.length > 4000) return null;
+  try {
+    const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + API_KEY, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }), signal: AbortSignal.timeout(6000)
+    });
+    const j = await r.json();
+    const u = r.ok && j.users && j.users[0];
+    return u && !u.disabled ? u.localId : null;
+  } catch (_) { return null; }
+}
+
+/* ---------- admin database access (service account, no npm packages) ----------
+ * The server writes tosAccepted/, attest/, ipBans/, ipSeen/ itself. The database rules block every browser from writing them,
+ * so a modified client can no longer fake a TOS accept, an "attestation", or lift an IP ban. */
+let sa = null, tok = null;
+function loadSa() {
+  if (sa) return sa;
+  const raw = process.env.FIREBASE_SA;
+  if (!raw) throw new Error('FIREBASE_SA is not set');
+  sa = JSON.parse(raw);
+  if (!sa.client_email || !sa.private_key) throw new Error('FIREBASE_SA is not a service-account key');
+  return sa;
+}
+const b64u = b => Buffer.from(b).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+async function adminToken() {
+  if (tok && tok.exp > Date.now() + 60000) return tok.t;
+  const s = loadSa(), now = Math.floor(Date.now() / 1000);
+  const head = b64u(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const claim = b64u(JSON.stringify({ iss: s.client_email, scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 }));
+  const sig = crypto.createSign('RSA-SHA256').update(head + '.' + claim).sign(s.private_key);
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + head + '.' + claim + '.' + b64u(sig), signal: AbortSignal.timeout(8000)
+  });
+  const j = await r.json();
+  if (!r.ok || !j.access_token) throw new Error('admin token failed');
+  tok = { t: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
+  return tok.t;
+}
+async function adb(method, path, body) {
+  const r = await fetch(DB_URL + '/' + path + '.json', {
+    method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await adminToken() },
+    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(8000)
+  });
+  const text = await r.text();
+  let data = null; try { data = text ? JSON.parse(text) : null; } catch (_) {}
+  if (!r.ok) throw new Error('db ' + method + ' ' + path + ' -> ' + r.status);
+  return data;
+}
+
+/* ---------- compare-and-swap on one node (v54.1) ----------
+ * The Realtime Database REST API exposes exactly one atomic primitive, and this is it:
+ *   GET  with  X-Firebase-ETag: true   -> the value AND its ETag
+ *   PUT  with  if-match: <etag>        -> applied only if the value has not changed since
+ * A concurrent writer that got in first changes the ETag, so the second PUT comes back 412 and
+ * writes nothing. That is what makes "claim a spin" safe without Cloud Functions, a transaction
+ * library, or the Blaze plan.
+ *
+ * adbGetTagged(path)        -> { value, etag }
+ * adbPutIfMatch(path, v, e) -> { ok:true, etag } | { ok:false, conflict:true }
+ */
+async function adbGetTagged(path) {
+  const r = await fetch(DB_URL + '/' + path + '.json', {
+    headers: { Authorization: 'Bearer ' + await adminToken(), 'X-Firebase-ETag': 'true' },
+    signal: AbortSignal.timeout(8000)
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error('db GET ' + path + ' -> ' + r.status);
+  let value = null; try { value = text ? JSON.parse(text) : null; } catch (_) {}
+  // A node that does not exist still has an ETag, and it is the one that means "still empty".
+  return { value, etag: r.headers.get('etag') || 'null_etag' };
+}
+async function adbPutIfMatch(path, value, etag) {
+  const r = await fetch(DB_URL + '/' + path + '.json', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + await adminToken(),
+      'if-match': etag
+    },
+    body: JSON.stringify(value), signal: AbortSignal.timeout(8000)
+  });
+  if (r.status === 412) { try { await r.text(); } catch (_) {} return { ok: false, conflict: true }; }
+  const text = await r.text();
+  if (!r.ok) throw new Error('db PUT ' + path + ' -> ' + r.status + ' ' + text.slice(0, 120));
+  return { ok: true, etag: r.headers.get('etag') || null };
+}
+
+/* ---------- build check: stops old files AND "just edit the build number" ----------
+ * Every release is stamped (tools/stamp-build.js) with a label and a token = HMAC(BUILD_SECRET, label).
+ *   - an old file carries an old label -> older than the minimum -> refused
+ *   - someone edits the label in an old file -> the token no longer matches -> refused
+ *   - they can't make a token for a newer label, because BUILD_SECRET only lives on the server. */
+const baseOf = x => { const m = /^(\d{4}-\d{2}-\d{2}\.\d+)(?:-[A-Za-z0-9_.-]{1,40})?$/.exec(String(x || '')); return m ? m[1] : null; };
+function compareBuilds(a, b) {
+  const re = /^(\d{4}-\d{2}-\d{2})\.(\d+)$/, ma = re.exec(baseOf(a) || ''), mb = re.exec(baseOf(b) || '');
+  if (!ma || !mb) return null;
+  if (ma[1] !== mb[1]) return ma[1] < mb[1] ? -1 : 1;
+  const x = +ma[2], y = +mb[2];
+  return x === y ? 0 : x < y ? -1 : 1;
+}
+function buildToken(build) {
+  const s = process.env.BUILD_SECRET;
+  if (!s || s.length < 16) throw new Error('BUILD_SECRET is missing or too short');
+  return crypto.createHmac('sha256', s).update('build:' + build).digest('hex').slice(0, 32);
+}
+let minCache = { t: 0, v: '' };
+async function minBuild() {
+  if (Date.now() - minCache.t < 30000) return minCache.v;
+  let m = String(process.env.MIN_BUILD || '');
+  try {   // the owner-pinned version in Moderation > Version control now also counts as a floor
+    const cur = await adb('GET', 'appVersion/current');
+    if (typeof cur === 'string' && compareBuilds(cur, m || '0000-00-00.0') === 1) m = cur;
+  } catch (_) {}
+  minCache = { t: Date.now(), v: m };
+  return m;
+}
+async function checkBuild(build, token) {
+  build = String(build || '').slice(0, 40); token = String(token || '');
+  const base = baseOf(build);
+  if (!base) return { ok: false, why: 'forged', build };
+  if (process.env.BUILD_SECRET) {   // token check only when BUILD_SECRET is set on the server
+    const want = buildToken(base);
+    const a = Buffer.from(token.padEnd(32).slice(0, 32)), b = Buffer.from(want);
+    if (token.length !== 32 || !crypto.timingSafeEqual(a, b)) return { ok: false, why: 'forged', build };
+  }
+  const min = await minBuild();
+  if (min && compareBuilds(build, min) === -1) return { ok: false, why: 'old', build, min };
+  return { ok: true, build };
+}
+
+/* ---------- staff check (done with the admin read, so it can't be faked from the browser) ---------- */
+async function roleOf(id) {
+  const [o, so, ad] = await Promise.all(['owners', 'secretowner', 'admin'].map(p => adb('GET', p + '/' + id).catch(() => null)));
+  const owner = o === 1 || so === 1;
+  return { owner, admin: owner || ad === 1 };
+}
+
+/* ==========================================================================
+ * v54.8 — ONE canonical authorization model
+ *
+ * Before this, eight endpoints each repeated the same three lines:
+ *
+ *     const uid = await L.verifyToken(b.idToken);
+ *     const id  = Number(await L.adb('GET', 'uidToId/' + uid));
+ *     const who = await L.roleOf(id);
+ *
+ * Repeating it is how they drifted: some checked banned/, some did not; some trusted
+ * b.id when uidToId was missing. resolveCaller() is now the ONE way a privileged
+ * endpoint learns who is calling, and it answers from the verified token alone.
+ *
+ * Nothing in the request body contributes to identity. There is deliberately no
+ * parameter by which a caller can name themselves.
+ * ========================================================================== */
+
+/* Every database node that grants site-level power. This list is the authorization
+ * model: if a node can make somebody an owner, it belongs here, and revokeOwnership()
+ * clears all of them together. The former-owner bug in v54.7 existed precisely because
+ * `secretowner` was a grant source that no list enumerated and no tool could clear. */
+const OWNER_GRANT_PATHS = ['owners', 'secretowner'];
+const STAFF_GRANT_PATHS = ['admin', 'mods'];
+const ALL_GRANT_PATHS = OWNER_GRANT_PATHS.concat(STAFF_GRANT_PATHS);
+
+/* Who is calling, resolved server-side. Returns null when the token is not real.
+ * `role` is the same shape roleOf() has always returned, plus `shown`/`secret` so an
+ * audit can say WHICH source granted ownership rather than only that it did. */
+async function resolveCaller(body) {
+  const uid = await verifyToken(body && body.idToken);
+  if (!uid) return null;
+  let id = 0;
+  try { id = Number(await adb('GET', 'uidToId/' + uid)); } catch (_) { id = 0; }
+  if (!id || !Number.isFinite(id)) return { uid, id: 0, banned: false, role: { owner: false, admin: false, shown: false, secret: false, mod: false } };
+  const [o, so, ad, md, bn] = await Promise.all(
+    ['owners/' + id, 'secretowner/' + id, 'admin/' + id, 'mods/' + id, 'banned/' + id]
+      .map(p => adb('GET', p).catch(() => null)));
+  const shown = o === 1, secret = so === 1, owner = shown || secret;
+  return {
+    uid, id, banned: bn === true,
+    role: { owner, admin: owner || ad === 1, mod: owner || ad === 1 || md === 1, shown, secret }
+  };
+}
+
+/* Standard refusal ladder for an owner-only endpoint. Returns the caller on success,
+ * or null after having already answered the request. */
+async function requireOwner(req, res, body) {
+  const who = await resolveCaller(body);
+  if (!who) { send(res, 401, { error: 'Not signed in.' }); return null; }
+  if (!who.id) { send(res, 403, { error: 'No account.' }); return null; }
+  if (who.banned) { send(res, 403, { error: 'This account is banned.' }); return null; }
+  if (!who.role.owner) { send(res, 403, { error: 'Site owners only.' }); return null; }
+  return who;
+}
+
+/* Every grant held by one numeric id, plus the integrity of its identity mapping.
+ * `problems` is the point of the whole function: it is what the v54.7 audit could not
+ * answer, because nothing could read secretowner/ to compare it against owners/. */
+async function ownershipOf(id) {
+  id = Number(id);
+  const paths = ALL_GRANT_PATHS.map(p => p + '/' + id).concat(['idToUid/' + id, 'users/' + id + '/username', 'banned/' + id]);
+  const vals = await Promise.all(paths.map(p => adb('GET', p).catch(() => null)));
+  const grants = {};
+  ALL_GRANT_PATHS.forEach((p, i) => { grants[p] = vals[i] === 1; });
+  const uid = vals[ALL_GRANT_PATHS.length];
+  const username = vals[ALL_GRANT_PATHS.length + 1];
+  const banned = vals[ALL_GRANT_PATHS.length + 2] === true;
+  // Does the uid this id claims map back to this same id? A one-way or crossed mapping is
+  // how an account can end up resolving to somebody else's numeric id.
+  let backId = null;
+  if (typeof uid === 'string' && uid) { try { backId = Number(await adb('GET', 'uidToId/' + uid)); } catch (_) { backId = null; } }
+  const problems = [];
+  if (grants.secretowner && !grants.owners) problems.push('orphan-secret-owner');
+  if (!uid) problems.push('no-idToUid-mapping');
+  if (uid && backId !== id) problems.push('mapping-mismatch:uidToId=' + backId);
+  if (username == null) problems.push('no-user-record');
+  if (banned && (grants.owners || grants.secretowner)) problems.push('banned-but-owner');
+  return { id, uid: uid || null, username: username == null ? null : String(username), banned, grants, backId, problems };
+}
+
+/* Everyone who holds any site-level grant, each one audited. */
+async function listOwnership() {
+  const tables = await Promise.all(ALL_GRANT_PATHS.map(p => adb('GET', p).catch(() => null)));
+  const ids = new Set();
+  tables.forEach(t => {
+    if (!t || typeof t !== 'object') return;
+    Object.keys(t).forEach(k => { if (t[k] === 1 && /^\d+$/.test(String(k))) ids.add(Number(k)); });
+  });
+  const rows = [];
+  for (const id of Array.from(ids).sort((a, b) => a - b)) rows.push(await ownershipOf(id));
+  return rows;
+}
+
+/* Remove every site-level grant from one account, in ONE multi-path write.
+ * One write means there is no window in which owners/ is gone but secretowner/ is not —
+ * which is the exact state the reported bug was living in.
+ *
+ * `keep` lets a caller strip only the secret grant (the usual repair) rather than all of them. */
+async function revokeOwnership(id, actorId, opts) {
+  id = Number(id);
+  const o = (opts || {});
+  const paths = o.only && o.only.length ? o.only.filter(p => ALL_GRANT_PATHS.includes(p)) : ALL_GRANT_PATHS;
+  const patch = {};
+  paths.forEach(p => { patch[p + '/' + id] = null; });
+  // Audit trail first-class: the server writes it, no client can.
+  const at = Date.now();
+  patch['ownerLog/' + at + '-' + id] = { act: 'revoke', target: id, by: Number(actorId) || 0, at, paths: paths.join(',') };
+  // Bump the account's authorization epoch. Live clients watch this and re-resolve their own
+  // permissions the moment it changes, so an open owner panel in another tab stops working
+  // rather than continuing on a snapshot taken before the revocation.
+  patch['authEpoch/' + id] = at;
+  await adb('PATCH', '', patch);
+  return { revoked: paths, at };
+}
+
+/* ---------- Discord (the webhook only ever lives in the server env - never in the repo or the browser) ----------
+ * Returns 'sent' | 'not-configured' | 'failed-<status>' | 'failed' so /api/tos can tell the owner panel whether the backup worked. */
+async function discord(payload) {
+  const url = process.env.DISCORD_WEBHOOK_URL;
+  if (!url) return 'not-configured';
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ username: 'ICH Security', allowed_mentions: { parse: [] } }, payload)), signal: AbortSignal.timeout(8000) });
+    return r.ok ? 'sent' : 'failed-' + r.status;
+  } catch (_) { return 'failed'; }
+}
+const clean = (s, n) => String(s == null ? '' : s).replace(/[`\r\n]/g, ' ').slice(0, n || 100);
+
+/* ---------- rate limit: in-memory (fast) ---------- */
+const hits = new Map();
+function limited(key, max, windowMs) {
+  const now = Date.now(), arr = (hits.get(key) || []).filter(t => now - t < windowMs);
+  arr.push(now); hits.set(key, arr);
+  if (hits.size > 5000) hits.clear();
+  return arr.length > max;
+}
+// Backup copy of a TOS acceptance, posted to Discord next to the database record.
+async function logTos(f) {
+  const v = x => '`' + (clean(x, 190) || '-') + '`';
+  return discord({ embeds: [{
+    title: (f.test ? 'TEST - ' : '') + 'TOS accepted (v' + f.version + ')',
+    color: f.saved ? 0x57f287 : 0xed4245,
+    fields: [
+      { name: 'Username', value: v(f.name), inline: true },
+      { name: 'Account ID', value: v(f.id), inline: true },
+      { name: 'IP', value: v(f.ip), inline: true },
+      { name: 'Network hash', value: v(String(f.h || '').slice(0, 10)), inline: true },
+      { name: 'VPN check', value: v(f.vpn), inline: true },
+      { name: 'Saved to database', value: v(f.saved ? 'yes' : 'NO - database write failed'), inline: true },
+      { name: 'Build', value: v(f.build), inline: true },
+      { name: 'Browser', value: v(f.ua), inline: false }
+    ],
+    timestamp: new Date(f.at).toISOString()
+  }] });
+}
+// cheat alerts: at most one Discord post per (kind, id) every 10 minutes so nobody can flood the log
+const alerted = new Map();
+async function alert(kind, id, fields) {
+  const k = kind + ':' + id, now = Date.now();
+  if (now - (alerted.get(k) || 0) < 10 * 60 * 1000) return;
+  alerted.set(k, now); if (alerted.size > 2000) alerted.clear();
+  await discord({ embeds: [{ title: 'Anti-cheat: ' + kind, color: 0xfaa61a, fields: Object.entries(fields).map(([n, v]) => ({ name: n, value: '`' + clean(v, 120) + '`', inline: true })), timestamp: new Date().toISOString() }] });
+}
+
+module.exports = { cors, send, readBody, clientIp, normalizeIp, ipHash, isPrivateIp, vpnCheck, verifyToken, adb, adbGetTagged, adbPutIfMatch, checkBuild, compareBuilds, buildToken, roleOf, discord, logTos, alert, clean, limited, net, TOS_VERSION, ATTEST_TTL_MS,
+  /* v54.8 canonical authorization */
+  resolveCaller, requireOwner, ownershipOf, listOwnership, revokeOwnership,
+  OWNER_GRANT_PATHS, STAFF_GRANT_PATHS, ALL_GRANT_PATHS };
