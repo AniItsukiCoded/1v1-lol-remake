@@ -5,6 +5,10 @@
    room = open room: no bots, players join / leave at any time, rounds repeat (rounds = how many, roundSec = seconds per round) and a round starts as soon as 2 players are in
    Menu art (mode picker): grp = group label · badge = corner ribbon · c1/c2 = card colours · art = big emoji on the card · where = map line · rule = match rule line */
 window.MODES={
+/* BATTLE ROYALE: one continuous match (rounds:1) on the island. br:1 switches on the loot / chest / inventory / harvesting rules in game.js.
+   max = player cap. It is 10 because the match is synchronised through the Realtime Database (no dedicated game server); raise it only together with
+   networking work. warm = seconds of warm-up after the 2nd player arrives before the match starts (it starts at once when the room is full). */
+'br':{id:'br',n:'Battle Royale',ic:'🪂',tag:'Drop in with a pistol and a pickaxe · loot chests · harvest · build · survive the storm',short:'Loot, build and outlast everyone on the island. Last one standing wins.',ffa:1,room:1,br:1,rounds:1,roundSec:900,warm:25,min:2,max:10,win:1,map:'zone',ppl:10,grp:'FEATURED',badge:'NEW',c1:'#ffd23f',c2:'#ff5a1f',art:'🪂',where:'The Island',rule:'Last one standing',feat:1},
 '1v1':{id:'1v1',n:'1v1',ic:'⚔️',tag:'Classic duel · vote for the map',short:'One on one. Vote for the map, first to 3 rounds.',size:1,win:3,map:'arena',ppl:2,grp:'SOLO',badge:'CLASSIC',c1:'#2f8bff',c2:'#5a2ad8',art:'⚔️',where:'Voted map',rule:'First to 3 rounds'},
 '2v2':{id:'2v2',n:'2v2',ic:'🤝',tag:'You + a teammate vs two enemies',short:'Team up with a partner against two enemies.',size:2,win:3,map:'arena',ppl:4,grp:'DUOS',badge:'TEAMS',c1:'#16c9a0',c2:'#1c6fd0',art:'🤝',where:'Voted map',rule:'First to 3 rounds'},
 '3v3':{id:'3v3',n:'3v3',ic:'👥',tag:'Squad up: three vs three',short:'Squad up for a three vs three showdown.',size:3,win:3,map:'arena',ppl:6,grp:'SQUADS',badge:'TEAMS',c1:'#ff8a2a',c2:'#d02a6a',art:'👥',where:'Voted map',rule:'First to 3 rounds'},
@@ -23,7 +27,7 @@ track:{n:'Tracking',ic:'🌀',c:'#b04dff',d:'Hold fire and keep the crosshair gl
 strafe:{n:'Strafing dummies',ic:'🏃',c:'#ff9a2e',d:'Running dummies that change direction. Head shots count double.',tip:'100 body · 250 head',max:3,g:[1500,3000,4500,6000]}};
 window.DRILL_ORDER=['grid','micro','flick','track','strafe'];
 window.modeOf=id=>window.MODES[id]||window.MODES['1v1'];
-window.MODE_ORDER=['1v1','2v2','3v3','ranked','box','zone','trainer'];
+window.MODE_ORDER=['br','1v1','2v2','3v3','ranked','box','zone','trainer'];
 /* AFK zone: stand in the zone and collect these every minute. candyRank=false keeps AFK candy out of the event leaderboard & candy goals (it is still spendable). */
 window.AFK={ms:60000,candy:5,coins:10,candyRank:false};
 /* Which party sizes a mode accepts. kind: 'solo' (aim trainer: everybody plays on their own) · 'queue' (the party queues as one group and is matched with others) ·

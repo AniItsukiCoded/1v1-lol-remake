@@ -10,16 +10,15 @@ const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const owner=()=>!!(typeof EV!='undefined'&&EV.owner&&EV.owner()),qk=()=>'lbkq_'+(user?user.uid:'x');
 function pend(){try{const q=JSON.parse(localStorage.getItem(qk())||'{}');return{k:+q.k||0,dm:+q.dm||0}}catch(e){return{k:0,dm:0}}}
 function putPend(q){try{localStorage.setItem(qk(),JSON.stringify(q))}catch(e){}}
-function add(k,dm,bots){k=Math.max(0,Math.floor(+k||0));dm=Math.max(0,Math.round(+dm||0));if(bots&&!COUNT_BOTS)return;if((!k&&!dm)||!user||owner())return;const q=pend();q.k+=k;q.dm+=dm;putPend(q);flush()}
-function flush(){if(fl||!user||owner()||typeof db=='undefined')return;const q=pend();if(!q.k&&!q.dm)return;fl=1;
- db.ref(PATH+'/'+user.uid).transaction(c=>{c=c||{};return{n:nm().slice(0,14),k:Math.min(5e6,(c.k||0)+q.k),dm:Math.min(5e8,(c.dm||0)+q.dm),s:+CFG.skin||0}})
- .then(r=>{if(r&&r.committed){const p=pend();p.k=Math.max(0,p.k-q.k);p.dm=Math.max(0,p.dm-q.dm);putPend(p)}},()=>{}).then(()=>{fl=0})}
+/* kills / damage are added by the SERVER when it validates a finished match (js/econ.js -> functions/lib/economy.js); the browser cannot write the board */
+function add(){}
+function flush(){try{localStorage.removeItem(qk())}catch(e){}}
 const top=f=>db.ref(PATH).orderByChild(f).limitToLast(50).once('value').then(s=>{const a=[];s.forEach(c=>{const v=c.val();if(v&&Number.isFinite(v[f])&&v[f]>0)a.push(Object.assign({id:c.key},v))});a.sort((x,y)=>y[f]-x[f]);return a});
 const mine=()=>user?db.ref(PATH+'/'+user.uid).once('value').then(s=>s.val()||{k:0,dm:0}):Promise.resolve({k:0,dm:0});
 function load(){const t=++tok,f=tab,box=$('#lbl'),me=$('#lbme');box.innerHTML='<p class="sub l">Loading…</p>';me.textContent='';
- Promise.all([top(f),mine()]).then(([a,m])=>{if(t!==tok)return;const p=pend(),mv=(m[f]||0)+p[f],i=user?a.findIndex(x=>x.id==user.uid):-1;
+ Promise.all([top(f),mine()]).then(([a,m])=>{if(t!==tok)return;const mv=(m[f]||0),i=user?a.findIndex(x=>x.id==user.uid):-1;
   me.innerHTML='<div class="lbme"><span>YOUR '+(f=='k'?'KILLS':'DAMAGE')+'</span><b>'+nf(mv)+'</b><small>'+(i>=0?'Rank #'+(i+1):mv>0?'Outside the top 50':'Play a match to get on the board')+'</small></div>';
-  box.innerHTML=a.length?a.map((x,i)=>'<div class="lbr r'+(i<3?i+1:0)+(user&&x.id==user.uid?' me':'')+'"><span class="lbn">'+(i+1)+'</span><i class="lba" style="background:'+(typeof hx=='function'?hx(x.s||0x2f9bff):'#2f9bff')+'"></i><span class="lbu">'+esc(x.n||'Player')+'</span><span class="lbv"><b>'+nf(x[f])+'</b><small>'+(f=='k'?'kills':'damage')+'</small></span></div>').join(''):'<p class="sub l">Nobody is on the board yet — be the first!</p>'},
+  box.innerHTML=a.length?a.map((x,i)=>'<div data-uid="'+esc(x.id)+'" data-n="'+esc(x.n||'Player')+'" class="lbr r'+(i<3?i+1:0)+(user&&x.id==user.uid?' me':'')+'"><span class="lbn">'+(i+1)+'</span><i class="lba" style="background:'+(typeof hx=='function'?hx(x.s||0x2f9bff):'#2f9bff')+'"></i><span class="lbu">'+esc(x.n||'Player')+'</span><span class="lbv"><b>'+nf(x[f])+'</b><small>'+(f=='k'?'kills':'damage')+'</small></span></div>').join(''):'<p class="sub l">Nobody is on the board yet — be the first!</p>';try{ADM.lbTools(box,f)}catch(e){}},
  ()=>{if(t===tok){box.innerHTML='<p class="sub l">Could not load the leaderboard. Check your connection and try again.</p>'}})}
 function open(){SFX.click();$('#lbm').classList.add('on');flush();load()}
 $('#lbb').onclick=open;

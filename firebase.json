@@ -2,13 +2,29 @@
  "database": {
   "rules": "database.rules.json"
  },
+ "functions": [
+  {
+   "source": "functions",
+   "codebase": "default",
+   "ignore": ["node_modules", ".git", "*.log"],
+   "predeploy": ["node tools/build-catalog.js", "node -e \"require('fs').copyFileSync('js/rankcore.js','functions/lib/rankcore.js')\"", "node tools/build-ownerlocal.js"]
+  }
+ ],
  "hosting": {
   "public": ".",
   "ignore": [
    "firebase.json",
    "database.rules.json",
    "README.md",
+   "CHANGELOG.md",
    ".gitignore",
+   "functions/**",
+   "screenshots/**",
+   "tests/**",
+   "tools/**",
+   "node_modules/**",
+   "package.json",
+   "package-lock.json",
    "**/.*"
   ]
  }

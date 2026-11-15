@@ -1,0 +1,74 @@
+/* ================= "Battle bus" skin: one visual language for lobby, mode picker, panels and HUD =================
+   Loaded last. It only RESTYLES existing elements (no layout the scripts depend on is moved), using the theme.css tokens.
+   The language: slanted slabs (-7deg), heavy italic display type, yellow = primary action, deep blue glass panels, rarity colour bars.
+   Sections: 1 tokens · 2 lobby · 3 mode picker · 4 panels / modals / cards · 5 match HUD · 6 end screens · 7 small screens */
+:root{--fn-skew:-7deg;--fn-yel:#ffe14a;--fn-yel2:#ffb800;--fn-ink:#0c1230;--fn-blue:#1c4fd6;--fn-blue2:#0e2a8a;--fn-glass:linear-gradient(180deg,#1b3fb4e6,#0c1c66f0);--fn-line:#8fb6ff55}
+
+/* ---------- 2 lobby ---------- */
+#lob::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(70% 55% at 62% 62%,#3d7bff33,transparent 70%),linear-gradient(180deg,#0a1a6a66,transparent 28%,transparent 70%,#060d3d99)}
+#play{transform:skewX(var(--fn-skew));border-radius:10px!important;background:linear-gradient(180deg,var(--fn-yel),var(--fn-yel2))!important;color:var(--fn-ink)!important;font-style:italic;letter-spacing:.06em;border:0!important;box-shadow:0 8px 0 #a86a00,0 18px 34px #0009!important;text-shadow:0 2px 0 #fff6;transition:transform .12s var(--ease),filter .12s}
+#play:hover{transform:skewX(var(--fn-skew)) translateY(-3px) scale(1.03);filter:brightness(1.07)}#play:active{transform:skewX(var(--fn-skew)) translateY(5px);box-shadow:0 3px 0 #a86a00,0 8px 16px #0009!important}
+#modebox{transform:skewX(var(--fn-skew));border-radius:10px!important;background:var(--fn-glass)!important;border:2px solid var(--fn-line)!important;box-shadow:0 6px 0 #071046,0 14px 28px #0008!important;transition:transform .12s var(--ease),border-color .12s}
+#modebox:hover{transform:skewX(var(--fn-skew)) translateY(-3px);border-color:var(--fn-yel)!important}#modebox small{color:var(--fn-yel);letter-spacing:.18em;font-weight:900}#modebox b{font-style:italic;text-transform:uppercase;letter-spacing:.04em}
+#prof{transform:skewX(-3deg);border-radius:12px!important;background:var(--fn-glass)!important;border:2px solid var(--fn-line)!important;box-shadow:0 6px 0 #071046,0 14px 28px #0007!important}#prof>*{transform:skewX(3deg)}
+#who{font-style:italic;text-transform:uppercase;letter-spacing:.04em}#lvl #lv{background:linear-gradient(180deg,var(--fn-yel),var(--fn-yel2));color:var(--fn-ink)}#xf{background:linear-gradient(90deg,var(--fn-yel2),var(--fn-yel))!important}
+#lside .sq{transform:skewX(-4deg);border-radius:10px!important;background:var(--fn-glass);border:2px solid var(--fn-line);box-shadow:0 5px 0 #071046,0 10px 18px #0006;font-style:italic;text-transform:uppercase;letter-spacing:.05em;font-weight:900;transition:transform .12s var(--ease),border-color .12s,filter .12s}
+#lside .sq:hover{transform:skewX(-4deg) translateY(-3px);border-color:var(--fn-yel);filter:brightness(1.12)}#lside .sq:active{transform:skewX(-4deg) translateY(3px)}
+#lside .sq.hw{background:linear-gradient(180deg,#ff8a1fe6,#b3340fee)}#lside .sq.rkq{background:linear-gradient(180deg,#e0336fe6,#7a1040ee)}#lside .sq.lbq{background:linear-gradient(180deg,#e0a81fe6,#8a5a00ee)}#lside .sq.afkq{background:linear-gradient(180deg,#22b89ae6,#0d5a66ee)}
+#coins,#candyc{transform:skewX(var(--fn-skew));border-radius:8px!important;background:#0a1450e6!important;border:2px solid var(--fn-line)!important;font-weight:900}
+#chips span,#gbtn,#acct{border-radius:6px!important}
+#lpass,#hpass{box-shadow:0 6px 0 #0007,0 14px 24px #0007}
+#mhint span{font-style:italic;font-weight:900;letter-spacing:.2em}
+
+/* ---------- 3 mode picker ---------- */
+.mcard{border-radius:14px!important;transform:skewX(-2deg);transition:transform .16s var(--ease),box-shadow .16s,border-color .16s!important;border:3px solid #ffffff2e!important;overflow:hidden}
+.mcard>*{transform:skewX(2deg)}
+.mcard:hover{transform:skewX(-2deg) translateY(-8px) scale(1.02);border-color:#fff!important;box-shadow:0 22px 44px #000b}
+.mcard.on{border-color:var(--fn-yel)!important;box-shadow:0 0 0 3px var(--fn-yel),0 22px 44px #000b!important}
+.mcard .minfo b{font-style:italic;text-transform:uppercase;letter-spacing:.03em}.mcard .mgrp{color:var(--fn-yel);letter-spacing:.2em;font-weight:900}
+.mcard .mbadge{transform:skewX(-10deg);border-radius:4px!important;background:var(--fn-yel)!important;color:var(--fn-ink)!important;font-weight:900;font-style:normal}
+.mcard .mbig{filter:drop-shadow(0 10px 16px #0008);transition:transform .25s var(--ease)}.mcard:hover .mbig{transform:scale(1.14) rotate(-6deg)}
+.mcard.feat{flex-basis:clamp(230px,27vw,330px)!important;max-width:none!important}
+.mcard.feat .mart::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,#ffffff14 0 14px,transparent 14px 34px),radial-gradient(60% 60% at 70% 20%,#fff5,transparent 70%);pointer-events:none}
+.mcard.feat .mbig{font-size:1.25em}
+.mcard.feat .minfo b::after{content:"FEATURED";margin-left:8px;font:900 10px var(--font-b);letter-spacing:.14em;vertical-align:middle;background:#fff;color:var(--fn-ink);padding:2px 6px;border-radius:3px;font-style:normal}
+#msplay{transform:skewX(var(--fn-skew));border-radius:10px!important;background:linear-gradient(180deg,var(--fn-yel),var(--fn-yel2))!important;color:var(--fn-ink)!important;font-style:italic;box-shadow:0 7px 0 #a86a00,0 16px 30px #0009!important;border:0!important}
+#msbot,#msback{transform:skewX(var(--fn-skew));border-radius:8px!important}
+
+/* ---------- 4 panels, modals, buttons, item cards ---------- */
+.panel{border-radius:14px!important;border:2px solid var(--fn-line)!important;box-shadow:0 0 0 1px #000a,0 30px 80px #000c!important}
+.panel .ph{position:relative}.panel .ph::after{content:"";position:absolute;left:18px;bottom:-1px;width:74px;height:4px;background:var(--fn-yel);transform:skewX(-30deg)}
+.panel .ph h2{font-style:italic;text-transform:uppercase;letter-spacing:.05em}
+.btn{transform:skewX(var(--fn-skew));border-radius:8px!important;font-style:italic;text-transform:uppercase}.btn:hover:not(:disabled){filter:brightness(1.1)}.btn:active:not(:disabled){transform:skewX(var(--fn-skew)) translateY(3px)}
+.btn:not(.alt):not(.red){background:linear-gradient(180deg,var(--fn-yel),var(--fn-yel2));color:var(--fn-ink);box-shadow:0 5px 0 #a86a00}
+.t2{transform:skewX(var(--fn-skew));border-radius:6px!important;font-style:italic;text-transform:uppercase}.t2.on{background:var(--fn-yel)!important;color:var(--fn-ink)!important}
+.fc{transform:skewX(var(--fn-skew));border-radius:5px!important}.fc.on{background:var(--fn-yel)!important;color:var(--fn-ink)!important}
+/* item cards: rarity colour floods up from the bottom, name on a dark slab (locker, shop, pass rewards) */
+.lk2 .cd,.rw{border-radius:10px!important;overflow:hidden}
+.lk2 .cd{background:linear-gradient(180deg,color-mix(in srgb,var(--r,#8a93b0) 28%,#0c1444) 0%,color-mix(in srgb,var(--r,#8a93b0) 62%,#0c1444) 100%)!important;border:2px solid color-mix(in srgb,var(--r,#8a93b0) 80%,#fff)!important}
+.lk2 .cd b{font-style:italic;text-transform:uppercase;letter-spacing:.02em}.lk2 .cd .pr{transform:skewX(-10deg);border-radius:4px}
+.lkside{border-radius:12px;background:var(--fn-glass);border-color:var(--fn-line)}.lkname b{font-style:italic;text-transform:uppercase}.lkrar{transform:skewX(-10deg);border-radius:4px}
+.slot{border-radius:10px!important}.codebox{transform:skewX(-3deg);border-radius:8px!important}
+/* purchase confirmation sheet (shop) */
+#buyc{position:fixed;inset:0;z-index:60;display:none;place-items:center;background:#040824cc;backdrop-filter:blur(4px)}#buyc.on{display:grid}
+#buyc .bx{width:min(380px,92vw);background:var(--fn-glass);border:2px solid var(--fn-line);border-radius:14px;padding:18px;text-align:center;box-shadow:0 30px 80px #000c;animation:v2in .2s var(--ease)}
+#buyc h3{margin:0 0 4px;font:400 26px var(--font-d);font-style:italic;text-transform:uppercase}#buyc p{margin:6px 0 14px;opacity:.85}#buyc .pr2{font:400 30px var(--font-d);color:var(--fn-yel)}#buyc .row{display:flex;gap:10px}#buyc .row .btn{flex:1;min-height:46px;margin:0}
+
+/* ---------- 5 match HUD (every mode) ---------- */
+#bot .bar{border-radius:4px!important;height:16px;transform:skewX(-12deg);border:2px solid #000a!important;background:#0b0d1acc!important;box-shadow:0 2px 0 #0008}
+#bot .bar.shb{height:11px;margin-bottom:3px}#hp{background:linear-gradient(180deg,#8dff7a,#2fd257)!important}#shp{background:linear-gradient(180deg,#8ad4ff,#2f8dff)!important}
+#hpt{font:400 22px var(--font-d);font-style:italic;text-shadow:0 2px 0 #000}
+#ammo b{font-family:var(--font-d);font-style:italic}#ammo em{font-style:italic;font-weight:900;letter-spacing:.12em;opacity:.8}
+#rnd,#zinfo,#rmst{border-radius:6px!important;transform:translateX(-50%) skewX(-8deg)}#rmst{transform:skewX(-8deg)}
+.ws,.bs{border-radius:8px!important;transform:skewX(-5deg)}.ws.on,.bs.on{border-color:var(--fn-yel)!important;box-shadow:0 0 0 2px var(--fn-yel)}
+#feed div,#msg{font-style:italic}
+#pause .card,.endc{border-radius:14px!important;border:2px solid var(--fn-line)!important;background:var(--fn-glass)!important}
+
+/* ---------- 6 end screens ---------- */
+#res{font-style:italic;text-transform:uppercase;letter-spacing:.04em}
+#vroy .vrt b{font-style:italic;background:linear-gradient(180deg,#fff,var(--fn-yel) 55%,var(--fn-yel2));-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 0 #0009)}
+#vroy .vrn{transform:skewX(-10deg);background:var(--fn-yel);color:var(--fn-ink);border-radius:6px;padding:0 10px}
+
+/* ---------- 7 small screens / reduced motion ---------- */
+@media (max-width:900px){#lside .sq,#prof{transform:none}#prof>*{transform:none}.mcard,.mcard>*{transform:none}.mcard:hover{transform:translateY(-4px)}.mcard.feat{flex-basis:66vw!important}}
+@media (prefers-reduced-motion:reduce){#play,#modebox,.mcard,.btn,#lside .sq{transition:none}}

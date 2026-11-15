@@ -3,11 +3,13 @@
    A skin value is one number: colour + cosmetic*2^24 (see cosmetics.js).                                                                 */
 window.EVT=(()=>{
 const C={name:'HAUNTED HARVEST',title:'Halloween 2026',start:Date.UTC(2026,9,1),end:Date.UTC(2026,11,1)}; /* Oct 1 -> Dec 1 (2 months) */
-const q=typeof location!=='undefined'?new URLSearchParams(location.search).get('event'):null;
-const on=()=>q=='1'||(q!='0'&&Date.now()>=C.start&&Date.now()<C.end);
-const left=()=>q=='1'?864e5*30:Math.max(0,C.end-Date.now());
-const GRACE=7*864e5,open=()=>on()||(q!='0'&&Date.now()>=C.start&&Date.now()<C.end+GRACE);/* collecting stops at the end; spending/claiming stays open 7 more days */
-return{name:C.name,title:C.title,start:C.start,end:C.end,on,open,left,ended:()=>q!='1'&&Date.now()>=C.end,lb:'halloween26v2'}})();
+/* owners can force the event on / off for everybody with the /event command (meta/event in the database, mirrored to window.EVFORCE by js/live.js).
+   The old ?event=1 URL switch is gone: the rewards server decides whether the event is live, so a URL could only desync the screen. */
+const F=()=>(typeof window!=='undefined'&&window.EVFORCE)||null;
+const on=()=>F()=='on'||(F()!='off'&&Date.now()>=C.start&&Date.now()<C.end);
+const left=()=>F()=='on'?864e5*30:Math.max(0,C.end-Date.now());
+const GRACE=7*864e5,open=()=>on()||(F()!='off'&&Date.now()>=C.start&&Date.now()<C.end+GRACE);/* collecting stops at the end; spending/claiming stays open 7 more days */
+return{name:C.name,title:C.title,start:C.start,end:C.end,on,open,left,ended:()=>F()!='on'&&Date.now()>=C.end,lb:'halloween26v2'}})();
 
 window.RAR={common:['COMMON','#9aa3c7'],rare:['RARE','#4da6ff'],epic:['EPIC','#b36bff'],legendary:['LEGENDARY','#ffb020'],mythic:['MYTHIC','#ff4dd2']};
 /* candy economy: normal candy = 5, golden pumpkin = 25 (used by game.js), plus a bonus for finishing a match */

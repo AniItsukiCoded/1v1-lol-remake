@@ -1,0 +1,38 @@
+/* ================= Battle Royale HUD (only while body.brm) =================
+   Hotbar bottom-right (pickaxe + 5 slots, rarity-coloured), ammo reserves above it, compass top-centre, alive / kill chips under the minimap,
+   interaction prompt + progress bar above the crosshair line, pickup toasts on the left. Built on the theme tokens (--font-d, --sun, --r-sm ...). */
+#brhud{position:absolute;inset:0;pointer-events:none;font-family:var(--font-b)}
+body.brm #wbar{display:none}
+body.spec #brbar,body.spec #bram,body.spec #brprompt,body.spec #brprog,body.spec #bruse{display:none!important}
+#brcomp{position:absolute;top:10px;left:50%;width:min(420px,46vw);height:30px;transform:translateX(-50%);overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent)}
+#brcompi{position:absolute;left:50%;top:0;white-space:nowrap;will-change:transform}
+#brcompi b{display:inline-block;width:36px;text-align:center;font:900 12px var(--font-b);color:#ffffffb0;line-height:26px;text-shadow:0 1px 2px #000}
+#brcompi b.c1{font:400 19px var(--font-d);color:#fff}#brcompi b.c2{font-size:13px;color:#fff}
+#brcomp>i{position:absolute;left:50%;bottom:0;width:2px;height:8px;margin-left:-1px;background:var(--sun);border-radius:2px}
+#brtop{position:absolute;top:18px;right:182px;display:flex;gap:6px}
+#brtop span{background:#0b0d1acc;border-radius:8px;padding:5px 11px;font:900 15px var(--font-b);letter-spacing:.5px;color:#fff;transform:skewX(-8deg);box-shadow:inset 0 -2px 0 #ffffff1c}
+#brprompt{position:absolute;left:50%;top:60%;transform:translateX(-50%) skewX(-6deg);background:#0b0d1ae0;border:2px solid #ffffff38;border-radius:8px;padding:8px 16px;font:900 15px var(--font-b);letter-spacing:.4px;white-space:nowrap;opacity:0;transition:opacity .12s}
+#brprompt.on{opacity:1}
+#brprog{position:absolute;left:50%;top:66%;width:min(260px,60vw);transform:translateX(-50%);display:none;flex-direction:column;align-items:center;gap:5px}
+#brprog.on{display:flex}#brprog>div{width:100%;height:10px;background:#0b0d1ad0;border-radius:6px;overflow:hidden;border:1px solid #ffffff40}#brprog u{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--sun),#fff3b0)}
+#brprog span{font:900 11px var(--font-b);letter-spacing:2px;text-shadow:0 1px 3px #000}
+#brtoast{position:absolute;left:14px;top:42%;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+#brtoast div{background:#0b0d1acc;border-left:4px solid var(--sun);border-radius:4px 8px 8px 4px;padding:5px 12px;font:900 13px var(--font-b);animation:brin .22s var(--ease)}
+#brbar{position:absolute;right:14px;bottom:86px;display:flex;gap:5px;pointer-events:auto;touch-action:none}
+.bsl{--rc:#5b6274;position:relative;width:62px;height:62px;border-radius:8px;background:linear-gradient(180deg,color-mix(in srgb,var(--rc) 55%,#0b0d1a),color-mix(in srgb,var(--rc) 18%,#0b0d1a));border:2px solid color-mix(in srgb,var(--rc) 70%,#000);display:grid;place-items:center;cursor:pointer;transition:transform .1s,box-shadow .1s;box-shadow:inset 0 -3px 0 #0005}
+.bsl.em{background:#0b0d1a88;border:2px dashed #ffffff2e;box-shadow:none}
+.bsl.pk{--rc:#7a8194;margin-right:8px}
+.bsl.on{transform:translateY(-7px) scale(1.06);border-color:#fff;box-shadow:0 0 0 2px #fff,0 6px 14px #000a}
+.bsl i{position:absolute;top:2px;left:5px;font:900 10px var(--font-b);font-style:normal;opacity:.85}
+.bsl em{position:absolute;right:4px;bottom:1px;font:900 13px var(--font-b);font-style:normal;text-shadow:0 1px 2px #000}
+.bsl svg{max-width:54px;height:auto;filter:drop-shadow(0 2px 2px #0008)}.bsl .ci{font-size:26px}
+#bram{position:absolute;right:14px;bottom:158px;display:flex;gap:5px}
+#bram span{background:#0b0d1ab8;border-radius:6px;padding:3px 9px;font:900 12px var(--font-b);opacity:.7}#bram span.on{opacity:1;background:var(--sun);color:#2a1500}
+#bruse{display:none;position:absolute;left:50%;bottom:150px;transform:translateX(-50%);pointer-events:auto;border:0;border-radius:12px;padding:14px 22px;background:linear-gradient(180deg,var(--sun),var(--sun2));color:#2a1500;font:400 18px var(--font-d);letter-spacing:.05em;box-shadow:0 5px 0 #8a5a00}
+body.touch #bruse.on{display:block}body.touch #brprompt{top:54%}
+body.brm #rnd{font-family:var(--font-d);letter-spacing:.08em;top:42px}body.brm #zinfo{top:76px}
+body.brm:not(.touch) #bq{bottom:188px}
+body.touch #brtop{top:max(10px,env(safe-area-inset-top));right:calc(max(10px,env(safe-area-inset-right)) + 104px)}body.touch #brcomp{width:min(300px,36vw)}body.touch #brbar{bottom:max(64px,calc(env(safe-area-inset-bottom) + 58px));right:50%;transform:translateX(50%)}body.touch #bram{bottom:max(118px,calc(env(safe-area-inset-bottom) + 112px));right:50%;transform:translateX(50%)}
+@keyframes brin{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@media (max-width:900px){.bsl{width:48px;height:48px}.bsl svg{max-width:42px}.bsl .ci{font-size:20px}#brbar{bottom:78px;gap:3px;right:8px}#bram{bottom:132px;right:8px}#brcompi b{width:36px}#brtop span{font-size:13px;padding:4px 8px}}
+@media (max-height:480px){#brbar{bottom:64px}#bram{bottom:116px}#brprompt{top:56%}}

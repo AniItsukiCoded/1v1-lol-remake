@@ -25,7 +25,7 @@ function modeShow(){const M=modeOf(CFG.mode);{const b=$('#msbot');if(b)b.style.d
  document.querySelectorAll('#mstrack .mcard').forEach(c=>{const on=c.dataset.m==CFG.mode;c.classList.toggle('on',on);c.setAttribute('aria-pressed',on)})}
 function cards(){const h=$('#mstrack');if(h.dataset.built)return;h.dataset.built=1;
  h.innerHTML=MODE_ORDER.map(id=>{const M=MODES[id],pl=M.plt?M.plt:M.solo?'1 player':M.ffa?M.min+'–'+M.max+' players':M.ppl+' players';
- return`<button class="mcard" data-m="${id}" style="--c1:${M.c1};--c2:${M.c2}"><i class="mbadge">${M.ranked?"SEASON "+RKC.season():M.badge}</i><i class="mchk">✓</i>
+ return`<button class="mcard${M.feat?" feat":""}" data-m="${id}" style="--c1:${M.c1};--c2:${M.c2}"><i class="mbadge">${M.ranked?"SEASON "+RKC.season():M.badge}</i><i class="mchk">✓</i>
 <div class="mart"><span class="mg1"></span><span class="mg2"></span><span class="mbig">${M.art}</span></div>
 <div class="minfo"><small class="mgrp">${M.grp}</small><b>${M.n}</b><p>${M.short||M.tag}</p><div class="mchips"><span><i>👤</i>${pl}</span><span><i>🏆</i>${M.rule}</span><span><i>🗺️</i>${M.where}</span></div></div></button>`}).join('');
  h.querySelectorAll('.mcard').forEach(b=>{b.onclick=()=>pick(b.dataset.m);b.ondblclick=()=>{pick(b.dataset.m,1);$('#msplay').click()}});
@@ -75,7 +75,10 @@ function afkUi(){const ev=EV.on();$('#afkcoins').textContent=nf(CFG.coins);$('#a
  if(!A)return;$('#afkt').textContent=fmtT(AFK.ms-A.acc);$('#afkarc').style.strokeDashoffset=(CIRC*(A.acc/AFK.ms)).toFixed(1);
  $('#afkel').textContent=fmtT(A.el);$('#afkcn').textContent=nf(A.candy);$('#afkco').textContent=nf(A.coins)}
 function fly(txt,cls){const f=$('#afkfx'),e=document.createElement('span');e.className='afkf '+(cls||'');e.textContent=txt;e.style.left=(35+Math.random()*30)+'%';f.appendChild(e);setTimeout(()=>e.remove(),2600)}
-function drop(){const co=AFK.coins,c=EV.afkCandy(AFK.candy);CFG.coins+=co;saveCfg();ui();A.coins+=co;A.candy+=c;A.drops++;
+/* one AFK drop = one request; the server checks a real minute has passed since the last one (so a sped-up or duplicated tab earns nothing extra) */
+function drop(){const a=A;if(!a)return;if(!ECON.on()){if(!a.gw){a.gw=1;toast('Sign in to earn AFK rewards')}return}
+ ECON.act('afk',{},{quiet:1}).then(r=>{if(A!==a)return;const co=r.res.coins|0,c=r.res.candy|0;a.coins+=co;a.candy+=c;a.drops++;afkPaid(co,c)},e=>{if(A===a&&e.code=='rate'&&!a.rw){a.rw=1;toast(e.message)}})}
+function afkPaid(co,c){
  SFX.claim();fly('+'+co+' 🪙','co');if(c)setTimeout(()=>fly('+'+c+' 🍬','cd'),180)}
 function afkTick(){if(!A)return;if(!$('#afk').classList.contains('on'))return afkStop(); /* the zone screen was replaced (party closed, sign-out...): stop paying out */
  const n=Date.now();let d=Math.max(0,n-A.last);A.last=n;d=Math.min(d,document.hidden?65000:3000); /* a sleeping laptop / frozen tab can never fast-forward the clock */

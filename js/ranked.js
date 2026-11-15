@@ -100,8 +100,8 @@ function loadTop(force){const n=C.season();if(!force&&topS===n&&Date.now()-topT<
 const fetchTop=n=>db.ref(path(n)).orderByChild('e').limitToLast(C.TOPN).once('value').then(s=>{const a=[];s.forEach(c=>{const v=c.val();if(v&&v.e>0)a.push(Object.assign({id:c.key},v))});a.sort((x,y)=>y.e-x.e||y.pk-x.pk);return a});
 /* send results to Firebase one at a time (offline results wait in CFG.rkd.pend). Deltas are applied inside the transaction, so two devices can not overwrite each other. */
 function flush(){const d=D();if(fl||!user||user.isAnonymous||!d.pend.length||typeof db=='undefined')return;fl=1;const e=d.pend[0],n=d.s,uid=user.uid,own=owner();
- db.ref(path(n)+'/'+uid).transaction(cur=>{const c=C.applyRes(cur,e);c.n=nm().slice(0,14);c.s=+CFG.skin||0;c.e=!own&&C.isPlaced(c)&&c.g>=C.MINGAMES?c.r:0;
-  ['r','mm','pl','g','w','l','pk','e'].forEach(k=>{if(!Number.isFinite(c[k]))delete c[k]});return c})
+ db.ref(path(n)+'/'+uid).transaction(cur=>{const c=C.applyRes(cur,e);c.n=nm().slice(0,14);c.s=(+CFG.skin||0)%4294967296;c.t=firebase.database.ServerValue.TIMESTAMP;c.e=!own&&C.isPlaced(c)&&c.g>=C.MINGAMES?c.r:0;
+  ['r','mm','pl','g','w','l','pk','e'].forEach(k=>{if(!Number.isFinite(c[k]))c[k]=0});return c}) /* every field is always a number: the database rules do arithmetic on them */
  .then(r=>{if(r&&r.committed){const dd=D();if(dd.s===n){dd.pend.shift();let x=Object.assign(C.blank(),r.snapshot.val()||{});dd.pend.forEach(q=>{x=C.applyRes(x,q)});dd.rec=x}saveLocal();loadTop(true).then(paint)}},()=>{}).then(()=>{fl=0;paint();if(hubOpen)render()})}
 
 /* ================= RESULT OF A MATCH ================= */
@@ -147,11 +147,13 @@ async function checkClaims(){if(!user||user.isAnonymous||owner())return;if(Date.
   const i=t.findIndex(x=>x.id==user.uid),pos=i>=0&&i<C.TOPN?i+1:0,rw=v?C.rewardsFor(v,pos):null;
   if(!rw){d.cl[s]=-1;continue}out.push({s,rw,v,pos})}
  claims=out;saveLocal();paint();if(hubOpen)render()}
-function claim(s){const c=claims.find(x=>x.s==s);if(!c)return;const d=D();if(d.cl[s]>0)return;d.cl[s]=1;
- const rw=[{k:'coins',n:c.rw.coins}].concat(c.rw.items.map(id=>({k:'item',id})));
- if(c.rw.top)d.tr.push({s,p:c.rw.top});else if(c.rw.arch)d.tr.push({s,p:0});
- const txt=EV.give(rw,false);claims=claims.filter(x=>x.s!=s);saveCfg();ui();paint();render();
- toast('Season '+s+' rewards claimed: '+txt)}
+/* the SERVER looks up your final rating / top-10 place for that season and grants the prize (once); this only shows what it gave */
+let claiming=0;
+async function claim(s){const c=claims.find(x=>x.s==s);if(!c||claiming)return;const d=D();if(d.cl[s]>0)return;claiming=1;
+ try{const r=(await ECON.act('rkClaim',{s})).res;d.cl[s]=1;if(r.top)d.tr.push({s,p:r.top});else if(r.arch)d.tr.push({s,p:0});
+  claims=claims.filter(x=>x.s!=s);saveCfg();paint();render();toast(r.none?'Season '+s+': no rewards earned':'Season '+s+' rewards claimed: '+EV.shown(r.got,false))}
+ catch(e){if(e.code=='done'){d.cl[s]=1;claims=claims.filter(x=>x.s!=s);saveCfg();paint();render()}}
+ finally{claiming=0}}
 
 /* ================= QUEUE ================= */
 const playlist=()=>PL.includes(CFG.rkpl)?CFG.rkpl:'1v1';
@@ -233,12 +235,12 @@ function tLadder(){const inf=mine(),r=rec(),taken=top.filter(x=>x.r>=C.ARCH_MIN)
  return'<p class="sub l">Divisions go 1 → 3, then you move up a rank. Rewards are given when the season ends.</p><div class="rkladder">'+rows.join('')+'</div>'}
 function lbRows(a,s){if(!a.length)return'<p class="sub l">Nobody is on the board yet.<br>Play '+C.MINGAMES+' ranked matches to be listed – the best three players of the season win exclusive skins!</p>';
  return a.map((x,i)=>{const pos=i+1,inf=C.info({r:x.r,a:x.r>=C.ARCH_MIN?pos:0}),p=palKey(keyOf(inf)),me=user&&x.id==user.uid;
-  return`<div class="rkr r${pos<=3?pos:0}${me?' me':''}" style="--gl:${p.gl}"><span class="n">${pos<=3?['🥇','🥈','🥉'][i]:pos}</span><i class="av" style="background:${hx(x.s||0x2f9bff)}"></i><span class="u">${esc(x.n||'Player')}<small>${x.w|0}W · ${x.l|0}L</small></span><span class="rm">${emblem(inf,{h:34})}<small>${esc(inf.arch?'ARCHNEMESIS':inf.label)}</small></span><span class="v"><b>${nf(x.r)}</b><small>RP</small></span></div>`}).join('')}
+  return`<div data-uid="${esc(x.id)}" data-n="${esc(x.n||'Player')}" class="rkr r${pos<=3?pos:0}${me?' me':''}" style="--gl:${p.gl}"><span class="n">${pos<=3?['🥇','🥈','🥉'][i]:pos}</span><i class="av" style="background:${hx(x.s||0x2f9bff)}"></i><span class="u">${esc(x.n||'Player')}<small>${x.w|0}W · ${x.l|0}L</small></span><span class="rm">${emblem(inf,{h:34})}<small>${esc(inf.arch?'ARCHNEMESIS':inf.label)}</small></span><span class="v"><b>${nf(x.r)}</b><small>RP</small></span></div>`}).join('')}
 function tLb(){const cur=C.season(),s=lbSeason&&lbSeason<cur?lbSeason:cur;let h='';
  if(cur>1)h+=`<div class="seg rklbs"><button data-ls="0" class="${s==cur?'on':''}">Season ${cur}</button><button data-ls="${cur-1}" class="${s!=cur?'on':''}">Season ${cur-1} (final)</button></div>`;
  h+=`<p class="sub l">The top 10 players. Only players with <b>${C.MINGAMES}+ ranked matches</b> are listed. Reach 2400 RP inside the top 10 to become <b>Archnemesis</b>.</p><div id="rklb"><p class="sub l">Loading…</p></div>`;
  const me=rec();h+=`<div class="lbme rkme"><span>YOU</span><b>${nf(me.r||0)} RP</b><small>${myPos()?'Season rank #'+myPos():(me.g|0)<C.MINGAMES?(me.g|0)+'/'+C.MINGAMES+' matches to be listed':placed()?'Outside the top 10':'Finish your placements first'}</small></div>`;
- setTimeout(()=>{const t=++lbTok;fetchTop(s).then(a=>{if(t!==lbTok||!$('#rklb'))return;if(s==cur){top=a;topS=cur;topT=Date.now()}$('#rklb').innerHTML=lbRows(a,s)},()=>{$('#rklb')&&($('#rklb').innerHTML='<p class="sub l">Could not load the leaderboard.</p>')})},0);return h}
+ setTimeout(()=>{const t=++lbTok;fetchTop(s).then(a=>{if(t!==lbTok||!$('#rklb'))return;if(s==cur){top=a;topS=cur;topT=Date.now()}$('#rklb').innerHTML=lbRows(a,s);try{ADM.lbTools($('#rklb'),'r')}catch(e){}},()=>{$('#rklb')&&($('#rklb').innerHTML='<p class="sub l">Could not load the leaderboard.</p>')})},0);return h}
 let lbTok=0;
 function tRew(){const cur=C.season();let h='';
  claims.forEach(c=>{const rw=c.rw,inf=C.info({r:c.v.pk,a:0});h+=`<div class="rkclaim"><div class="ch"><b>🎁 SEASON ${c.s} REWARDS</b><small>${rw.top?'You finished #'+rw.top+' in the world!':rw.arch?'You finished as Archnemesis!':'Peak rank: '+esc(C.RANKS[rw.ri].n)}</small></div><div class="ci">${esc(nf(rw.coins))} 🪙 ${rw.items.map(itemChip).join('')}</div><button class="btn" data-claim="${c.s}">CLAIM</button></div>`});

@@ -119,6 +119,42 @@ P.push(C(.022,.022,.2,0,.03,-.14,K1,{m:'s'}),F(.05,.12,.046,.09,.17,0,-.012,-.25
  ...sym(s=>[B(.004,.012,.11,s*.0255,-.002,-.25,{e:[4,1.5]},{m:'g',r:sk})]));
 return P}
 
+/* =========================== PISTOL (semi-auto sidearm) ===========================
+   slots: 0 slide, 1 frame, 2 grip, 3 barrel */
+function pistol(){const P=[];
+/* slide (slot 0): body, rear serrations, ejection port, sights */
+P.push(B(.05,.05,.3,0,.062,.14,0,{m:'s'}),B(.046,.012,.29,0,.091,.14,[0,1.2],{m:'s'}),B(.012,.016,.012,0,.103,.02,K0,{m:'s'}),B(.008,.014,.01,0,.102,.27,K0,{m:'s'}),S(.004,.004,.004,0,.108,.27,{e:'#3dff8a'},{m:'g',ws:6,hs:4}),
+ ...sym(s=>[B(.004,.022,.07,s*.0255,.07,.16,K0,{m:'s'}),B(.004,.008,.16,s*.0255,.045,.15,{e:[0,1.5]},{m:'g'})]));
+for(let i=0;i<5;i++)P.push(...sym(s=>[B(.004,.034,.007,s*.0258,.064,.01+i*.014,K0,{q:1})]));
+/* barrel (slot 3) + bore */
+P.push(C(.014,.014,.05,0,.062,.305,3,{m:'s',seg:10}),C(.008,.008,.006,0,.062,.332,{r:'#050507'}));
+/* frame (slot 1): dust cover with rail, trigger guard, trigger, slide stop */
+P.push(B(.046,.034,.27,0,.022,.13,1,{m:'p'}),B(.04,.012,.1,0,.0,.22,[1,.75],{m:'s'}),B(.012,.01,.08,0,-.042,.07,K1,{m:'s'}),B(.012,.04,.01,0,-.022,.108,K1,{m:'s'}),B(.008,.024,.01,0,-.018,.062,K0,{r:[.25,0,0]}),
+ ...sym(s=>[B(.004,.01,.03,s*.0245,.03,.1,K3,{m:'s',q:1})]));
+/* grip (slot 2): raked grip, textured panels, magazine base, beavertail */
+P.push(B(.044,.13,.062,0,-.058,.0,2,{m:'p',r:[.26,0,0]}),B(.048,.014,.07,0,-.126,-.016,K1,{m:'s',r:[.26,0,0]}),B(.04,.02,.03,0,.03,-.035,[1,.9],{m:'p'}),
+ ...sym(s=>[B(.004,.085,.04,s*.0235,-.06,.0,[2,.6],{m:'p',r:[.26,0,0]})]));
+return P}
+
+/* =========================== SMG (compact, high rate of fire) ===========================
+   slots: 0 body, 1 barrel shroud, 2 barrel, 3 magazine, 4 folding stock, 5 grip */
+function smg(){const P=[];
+/* receiver (slot 0): boxy body, top rail, charging handle, ejection port, glow strips */
+P.push(B(.06,.085,.34,0,.035,.14,0,{m:'s'}),B(.044,.012,.3,0,.083,.15,K1,{m:'s'}),B(.022,.016,.03,0,.094,.06,K2,{m:'s'}),
+ ...sym(s=>[B(.006,.026,.07,s*.0305,.05,.2,K0,{m:'s'}),B(.004,.01,.2,s*.0305,.012,.14,{e:[0,1.6]},{m:'g'})]));
+for(let i=0;i<6;i++)P.push(B(.048,.006,.012,0,.091,.03+i*.048,K0,{m:'s',q:1}));
+/* perforated barrel shroud (slot 1) + barrel (slot 2) + muzzle */
+P.push(C(.03,.03,.2,0,.04,.41,1,{m:'s',seg:10}),C(.033,.033,.014,0,.04,.315,K1,{m:'s',seg:10}),C(.033,.033,.014,0,.04,.505,K1,{m:'s',seg:10}),C(.014,.014,.1,0,.04,.55,2,{m:'s'}),C(.02,.02,.04,0,.04,.6,K0,{m:'s',seg:10}),C(.009,.009,.006,0,.04,.622,{r:'#050507'}));
+for(let i=0;i<4;i++)P.push(...sym(s=>[S(.007,.007,.004,s*.03,.04,.35+i*.04,K0,{ws:6,hs:4,q:1})]),S(.007,.004,.007,0,.07,.35+i*.04,K0,{ws:6,hs:4,q:1}));
+/* long straight magazine in front of the trigger (slot 3) */
+P.push(B(.034,.2,.05,0,-.105,.19,3,{m:'p',r:[-.08,0,0]}),B(.04,.012,.056,0,-.207,.2,K1,{m:'s',r:[-.08,0,0]}),...sym(s=>[B(.004,.1,.02,s*.0175,-.1,.19,{e:[3,1.6]},{m:'g',r:[-.08,0,0]})]));
+/* grip (slot 5), trigger guard, trigger, vertical foregrip */
+P.push(B(.042,.1,.05,0,-.062,-.01,5,{m:'p',r:[.3,0,0]}),B(.012,.012,.09,0,-.045,.055,K1,{m:'s'}),B(.012,.034,.012,0,-.028,.1,K1,{m:'s'}),B(.008,.024,.012,0,-.022,.05,K0,{r:[.25,0,0]}),
+ B(.034,.075,.036,0,-.04,.33,[5,.85],{m:'p'}));
+/* folding wire stock (slot 4) */
+P.push(...sym(s=>[C(.007,.007,.24,s*.024,.05,-.15,4,{m:'s',seg:6})]),B(.06,.1,.016,0,.03,-.275,4,{m:'p'}),B(.058,.02,.03,0,.05,-.035,[4,.8],{m:'s'}));
+return P}
+
 /* =========================== PICKAXE =========================== */
 const HZ=.775; /* z of the head */
 function pickaxe(sk){const P=[],v=sk&&sk.v||'pick';
@@ -161,6 +197,8 @@ return P}
 const BONE={r:'#e9e4cc'};
 const AN={shotgun:{side:[.034,.04,.1],top:[.085,.28,.82],muz:[0,.047,.885],hang:[0,-.056,.075],eye:[0,.115,.12],gem:[.034,.05,.04,.05]},
  ar:{side:[.034,.04,.24],top:[.075,.46,.72],muz:[0,.04,.99],hang:[0,-.056,.1],eye:[0,.19,.235],gem:[.034,.04,.1,.06]},
+ pistol:{side:[.026,.05,.12],top:[.1,.04,.26],muz:[0,.062,.335],hang:[0,-.05,.07],eye:[0,.11,.1],gem:[.026,.03,.06,.04]},
+ smg:{side:[.031,.04,.14],top:[.09,.02,.3],muz:[0,.04,.625],hang:[0,-.05,.08],eye:[0,.11,.12],gem:[.031,.03,.06,.05]},
  pickaxe:{head:[0,0,HZ],butt:[0,0,-.2]}};
 const DECO={
  skull:A=>sym(s=>{const[x,y,z]=A.side,X=s*(x+.016);return[S(.026,.03,.028,X,y,z,BONE,{m:'p'}),B(.024,.014,.024,X,y-.026,z+.004,BONE,{m:'p'}),S(.007,.009,.007,s*(x+.04),y+.004,z-.011,{e:'#080808'},{m:'g',ws:6,hs:4}),S(.007,.009,.007,s*(x+.04),y+.004,z+.011,{e:'#080808'},{m:'g',ws:6,hs:4})]}),
@@ -184,12 +222,12 @@ const DECO={
 const DECO_W={shotgun:1,ar:1};
 
 /* =========================== resolving parts for a skin =========================== */
-const STOCK={shotgun:['#23262f','#b9814f','#3a3f4d','#7a4c27','#1d2029'],ar:['#343a48','#ff9a2f','#232730','#262a34','#3b4252','#1d2029','#2a2f3b'],pickaxe:['#8a5a30','#cfd6e6','#59607a']};
-const TINT={shotgun:2,ar:0,pickaxe:1},RB={common:0,rare:.04,epic:.08,legendary:.13,mythic:.18};
+const STOCK={shotgun:['#23262f','#b9814f','#3a3f4d','#7a4c27','#1d2029'],ar:['#343a48','#ff9a2f','#232730','#262a34','#3b4252','#1d2029','#2a2f3b'],pickaxe:['#8a5a30','#cfd6e6','#59607a'],pistol:['#2b2f3a','#3a4150','#1d2029','#8a909f'],smg:['#30343f','#454b5a','#1a1c22','#22252d','#3b4252','#1d2029']};
+const TINT={shotgun:2,ar:0,pickaxe:1,pistol:0,smg:0},RB={common:0,rare:.04,epic:.08,legendary:.13,mythic:.18};
 const MAT={s:[.4,.42],p:[.08,.62],w:[0,.72],g:[.15,.45]};
 const cache={};
 function parts(id,sk){const key=id+(sk&&sk.v?sk.v:'')+(sk&&sk.d?sk.d.join():'');if(cache[key])return cache[key];
- const base={shotgun,ar:rifle,pickaxe}[id](sk),A=AN[id];let out=base;if(sk&&sk.d)sk.d.forEach(n=>{if(DECO[n])out=out.concat(DECO[n](A))});return cache[key]=out}
+ const base={shotgun,ar:rifle,pickaxe,pistol,smg}[id](sk),A=AN[id];let out=base;if(sk&&sk.d)sk.d.forEach(n=>{if(DECO[n])out=out.concat(DECO[n](A))});return cache[key]=out}
 /* -> [{p: part, col:'#rrggbb', em:null|['#hex',intensity], rough, metal}] */
 function resolve(id,sk){const prim=STOCK[id].map((h,i)=>h2r(sk&&sk.c&&sk.c[i]?sk.c[i]:h)),sg=sk&&sk.e,gl=sk&&sk.g,glows=i=>sg&&(!gl||gl.indexOf(i)>=0),rb=sk?RB[sk.rar]||0:0,tint=prim[TINT[id]];
  return parts(id,sk).map(p=>{const c=p.c;let rgb,em=null;
